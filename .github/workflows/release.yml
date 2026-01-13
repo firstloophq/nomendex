@@ -1,9 +1,6 @@
 name: Release macOS App
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -36,12 +33,8 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/}"
-          fi
-          # Always strip leading v if present
+          VERSION="${{ github.event.inputs.version }}"
+          # Strip leading v if present
           VERSION="${VERSION#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
@@ -194,6 +187,7 @@ jobs:
         env:
           APPCAST_API_KEY: ${{ secrets.APPCAST_API_KEY }}
         run: |
+          set -euo pipefail
           cd mac-app
           VERSION="${{ steps.version.outputs.version }}"
           ZIP_NAME="Noetect-${VERSION}.zip"
