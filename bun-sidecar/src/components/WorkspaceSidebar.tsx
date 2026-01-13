@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Settings, GitBranch, Bot, HelpCircle } from "lucide-react";
 import {
     Sidebar,
@@ -25,6 +26,14 @@ export function WorkspaceSidebar() {
     const { workspace, addNewTab, setActiveTabId } = useWorkspaceContext();
     const { navigate, currentPath } = useRouting();
     const { currentTheme } = useTheme();
+    const [appVersion, setAppVersion] = useState("...");
+
+    useEffect(() => {
+        fetch("/api/version")
+            .then(res => res.json())
+            .then(data => setAppVersion(data.version))
+            .catch(() => setAppVersion("dev"));
+    }, []);
 
     const handleAddPlugin = async (plugin: { id: string; name: string; icon: PluginIcon }) => {
         // If a tab for this plugin and view already exists, focus it
@@ -227,7 +236,7 @@ export function WorkspaceSidebar() {
                     }}
                 >
                     <div className="text-xs" style={{ color: currentTheme.styles.contentSecondary }}>
-                        Noetect v0.1.0
+                        Noetect v{appVersion}
                     </div>
                 </div>
             </SidebarFooter>
