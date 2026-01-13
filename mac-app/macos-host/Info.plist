@@ -31,7 +31,7 @@
 
   <!-- Sparkle Auto-Update Configuration -->
   <key>SUFeedURL</key>
-  <string>https://firstloophq.github.io/noetect/appcast.xml</string>
+  <string>https://raw.githubusercontent.com/firstloophq/noetect/main/docs/appcast.xml</string>
   <key>SUPublicEDKey</key>
   <string>chyH/s9EXs0e7NxKo0LjrfrhdjpmhSeb1J7hSH4MUMI=</string>
   <key>SUEnableAutomaticChecks</key>
