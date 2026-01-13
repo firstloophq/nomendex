@@ -2,10 +2,6 @@ name: Release macOS App
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number (e.g., 0.2.0)'
-        required: true
 
 env:
   APP_NAME: Noetect
@@ -33,20 +29,9 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          # Strip leading v if present
-          VERSION="${VERSION#v}"
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" mac-app/macos-host/Info.plist)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
-
-      - name: Update version in Info.plist
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          cd mac-app
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" macos-host/Info.plist
-          # Extract build number from version (e.g., 0.2.0 -> 2, 1.0.0 -> 100)
-          BUILD_NUM=$(echo "$VERSION" | awk -F. '{print $1*100 + $2*10 + $3}')
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" macos-host/Info.plist
 
       - name: Build app
         run: |
