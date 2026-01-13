@@ -193,14 +193,13 @@ jobs:
           ZIP_NAME="Noetect-${VERSION}.zip"
           FILE_SIZE=$(stat -f%z "$ZIP_NAME")
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ZIP_NAME}"
+          PUB_DATE=$(date -R)
+
+          # Build XML item
+          XML_ITEM="<item><title>Version ${VERSION}</title><pubDate>${PUB_DATE}</pubDate><sparkle:version>${VERSION}</sparkle:version><sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString><sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion><enclosure url=\"${DOWNLOAD_URL}\" length=\"${FILE_SIZE}\" type=\"application/octet-stream\" sparkle:edSignature=\"${SPARKLE_SIGNATURE}\"/></item>"
 
           # Build JSON payload with jq for proper escaping
-          JSON_PAYLOAD=$(jq -n \
-            --arg version "$VERSION" \
-            --arg signature "$SPARKLE_SIGNATURE" \
-            --argjson length "$FILE_SIZE" \
-            --arg url "$DOWNLOAD_URL" \
-            '{version: $version, signature: $signature, length: $length, url: $url}')
+          JSON_PAYLOAD=$(jq -n --arg item "$XML_ITEM" '{item: $item}')
 
           echo "Sending payload: $JSON_PAYLOAD"
 
