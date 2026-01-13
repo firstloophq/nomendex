@@ -198,16 +198,36 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ZIP_NAME="Noetect-${VERSION}.zip"
           FILE_SIZE=$(stat -f%z "$ZIP_NAME")
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ZIP_NAME}"
 
-          curl -X POST https://releases.noetect.com/appcast/entry \
+          # Build JSON payload
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+            "version": "${VERSION}",
+            "signature": "${SPARKLE_SIGNATURE}",
+            "length": ${FILE_SIZE},
+            "url": "${DOWNLOAD_URL}"
+          }
+          EOF
+          )
+
+          echo "Sending payload: $JSON_PAYLOAD"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://releases.noetect.com/appcast/entry \
             -H "Authorization: Bearer $APPCAST_API_KEY" \
             -H "Content-Type: application/json" \
-            -d '{
-              "version": "'"$VERSION"'",
-              "signature": "'"$SPARKLE_SIGNATURE"'",
-              "length": '"$FILE_SIZE"',
-              "url": "https://github.com/${{ github.repository }}/releases/download/v'"$VERSION"'/'"$ZIP_NAME"'"
-            }'
+            -d "$JSON_PAYLOAD")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Response: $BODY"
+          echo "HTTP Code: $HTTP_CODE"
+
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "Failed to update appcast"
+            exit 1
+          fi
 
           echo "Appcast updated for v$VERSION"
 
