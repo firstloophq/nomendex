@@ -3,6 +3,7 @@ import { RoutingProvider } from "./hooks/useRouting";
 import { ThemeProvider } from "./hooks/useTheme";
 import { useNativeKeyboardBridge } from "./hooks/useNativeKeyboardBridge";
 import { useUpdateNotification } from "./hooks/useUpdateNotification";
+import { useSkillUpdates } from "./hooks/useSkillUpdates";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HelpPage } from "./pages/HelpPage";
@@ -31,6 +32,12 @@ function NativeKeyboardBridge() {
 // Bridge component for native Mac app update notifications
 function UpdateNotificationBridge() {
     useUpdateNotification();
+    return null;
+}
+
+// Bridge component for checking skill updates after workspace loads
+function SkillUpdatesBridge() {
+    useSkillUpdates();
     return null;
 }
 
@@ -63,6 +70,7 @@ export function App() {
                 <RoutingProvider>
                     <WorkspaceGuard>
                         <WorkspaceProvider>
+                            <SkillUpdatesBridge />
                             <KeyboardShortcutsProvider>
                                 <GHSyncProvider>
                                     <CommandDialogProvider>

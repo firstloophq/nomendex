@@ -13,6 +13,9 @@ interface WebKitMessageHandlers {
     triggerAppUpdate?: {
         postMessage: (data: Record<string, never>) => void;
     };
+    checkForUpdatesInBackground?: {
+        postMessage: (data: Record<string, never>) => void;
+    };
 }
 
 declare global {

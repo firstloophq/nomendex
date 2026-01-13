@@ -55,6 +55,7 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
         userContentController.add(self, name: "chooseDataRoot")
         userContentController.add(self, name: "setNativeTheme")
         userContentController.add(self, name: "triggerAppUpdate")
+        userContentController.add(self, name: "checkForUpdatesInBackground")
         config.userContentController = userContentController
         config.preferences.javaScriptEnabled = true
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -212,6 +213,11 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
             // Trigger Sparkle update UI via AppDelegate
             if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
                 appDelegate.triggerAppUpdate()
+            }
+        } else if message.name == "checkForUpdatesInBackground" {
+            // Check for updates silently in background
+            if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
+                appDelegate.checkForUpdatesInBackground()
             }
         }
     }

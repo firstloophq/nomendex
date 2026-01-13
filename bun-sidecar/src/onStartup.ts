@@ -3,10 +3,12 @@ import { getRootPath, getNoetectPath, getTodosPath, getNotesPath, getUploadsPath
 import { mkdir } from "node:fs/promises";
 import { initializeBacklinksService } from "./features/notes/backlinks-service";
 import { initializeTagsService } from "./features/notes/tags-service";
+import { initializeDefaultSkills } from "./services/default-skills";
+import type { SkillUpdateCheckResult } from "./services/skills-types";
 
 const startupLogger = createServiceLogger("STARTUP");
 
-export async function onStartup() {
+export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
     startupLogger.info("=== Server Startup Sequence ===");
     startupLogger.info("Starting initialization...");
 
@@ -21,7 +23,7 @@ export async function onStartup() {
     if (!hasActiveWorkspace()) {
         startupLogger.info("No active workspace configured - skipping directory creation");
         startupLogger.info("=== Startup Sequence Complete ===");
-        return;
+        return null;
     }
 
     // Ensure root directory and feature folders exist
@@ -96,6 +98,21 @@ export async function onStartup() {
         // Non-fatal - continue startup
     }
 
+    // Initialize default skills
+    startupLogger.info("Initializing default skills...");
+    let skillUpdateResult: SkillUpdateCheckResult | null = null;
+    try {
+        skillUpdateResult = await initializeDefaultSkills();
+        startupLogger.info("Default skills initialized");
+    } catch (error) {
+        startupLogger.error("Failed to initialize default skills", {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        // Non-fatal - continue startup
+    }
+
     startupLogger.info("Initialization complete");
     startupLogger.info("=== Startup Sequence Complete ===");
+
+    return skillUpdateResult;
 }

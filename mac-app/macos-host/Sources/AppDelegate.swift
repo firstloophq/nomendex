@@ -2,7 +2,7 @@ import Cocoa
 import WebKit
 import Sparkle
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var windowController: WebViewWindowController?
     private var statusBar: StatusBarController?
     private var hotKey: GlobalHotKey?
@@ -16,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize Sparkle for auto-updates
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
-            updaterDelegate: nil,
+            updaterDelegate: self,
             userDriverDelegate: nil
         )
 
@@ -213,9 +213,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Sparkle Updates
 
-    /// Trigger the Sparkle update UI - called from web view
+    /// Trigger the Sparkle update UI (shows dialog) - for manual checks
     func triggerAppUpdate() {
-        log("Triggering update check...")
+        log("Triggering update check (with UI)...")
         updaterController.checkForUpdates(nil)
+    }
+
+    /// Check for updates silently in background - called from web view polling
+    func checkForUpdatesInBackground() {
+        log("Checking for updates in background...")
+        updaterController.updater.checkForUpdatesInBackground()
+    }
+
+    // MARK: - SPUUpdaterDelegate
+
+    /// Called when Sparkle finds a valid update (from background check)
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        log("Update found: \(item.displayVersionString) - showing update dialog")
+        // Show the Sparkle update UI
+        DispatchQueue.main.async { [weak self] in
+            self?.updaterController.checkForUpdates(nil)
+        }
     }
 }

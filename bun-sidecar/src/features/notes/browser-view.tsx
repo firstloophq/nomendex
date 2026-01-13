@@ -15,6 +15,8 @@ import { NotesView } from "./note-view";
 import { NotesFileTree } from "./NotesFileTree";
 import { CreateFolderDialog, RenameFolderDialog, MoveToFolderDialog } from "./NotesFolderDialogs";
 import { toast } from "sonner";
+import { useCommandDialog } from "@/components/CommandDialogProvider";
+import { CreateNoteDialog } from "./create-note-dialog";
 
 export function NotesBrowserView({ tabId }: { tabId: string }) {
     if (!tabId) {
@@ -31,6 +33,7 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
     const [createNoteInFolderPath, setCreateNoteInFolderPath] = useState<string | null>(null);
     const placement = getViewSelfPlacement(tabId);
     const { currentTheme } = useTheme();
+    const { openDialog } = useCommandDialog();
 
     // Folder dialog state
     const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
@@ -403,7 +406,13 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
                                 />
                             </div>
                             <div className="flex items-center">
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setCreateNoteInFolderPath(null); setCreateDialogOpen(true); }} title="New note">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                                    openDialog({
+                                        title: "Create New Note",
+                                        description: "Enter a name for your new note",
+                                        content: <CreateNoteDialog />,
+                                    });
+                                }} title="New note">
                                     <FilePlus className="h-4 w-4" />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCreateFolder(null)} title="New folder">
