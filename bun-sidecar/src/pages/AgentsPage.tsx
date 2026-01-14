@@ -95,7 +95,7 @@ function AgentsContent() {
         setFormModel(agent.model);
         setFormMcpServers([...agent.mcpServers]);
         // Check if the model is a predefined one
-        setUseCustomModel(!PREDEFINED_MODELS.includes(agent.model as typeof PREDEFINED_MODELS[number]));
+        setUseCustomModel(!PREDEFINED_MODELS.includes(agent.model));
         setIsDialogOpen(true);
     }
 
@@ -333,7 +333,7 @@ function AgentsContent() {
                                         setUseCustomModel(!useCustomModel);
                                         if (useCustomModel) {
                                             // Switching back to predefined, reset to default if current model is not predefined
-                                            if (!PREDEFINED_MODELS.includes(formModel as typeof PREDEFINED_MODELS[number])) {
+                                            if (!PREDEFINED_MODELS.includes(formModel)) {
                                                 setFormModel("claude-sonnet-4-5-20250929");
                                             }
                                         }
