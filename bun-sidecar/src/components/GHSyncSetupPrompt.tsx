@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGHSync } from "@/contexts/GHSyncContext";
+import { useEnvConfig } from "@/hooks/useEnvConfig";
 import {
     Dialog,
     DialogContent,
@@ -14,19 +15,20 @@ import { GitBranch, Key, CheckCircle2, XCircle, ExternalLink, Download } from "l
 export function GHSyncSetupPrompt() {
     const navigate = useNavigate();
     const { setupStatus, needsSetup } = useGHSync();
+    const { config } = useEnvConfig();
     const [dismissed, setDismissed] = useState(false);
     const [open, setOpen] = useState(false);
 
-    // Show dialog when setup is needed and not dismissed
+    // Show dialog when setup is needed, not dismissed, and warnings are not suppressed
     useEffect(() => {
-        if (setupStatus.checked && needsSetup && !dismissed) {
+        if (setupStatus.checked && needsSetup && !dismissed && !config?.suppressWarnings) {
             // Small delay to not show immediately on app load
             const timer = setTimeout(() => setOpen(true), 500);
             return () => clearTimeout(timer);
         } else {
             setOpen(false);
         }
-    }, [setupStatus.checked, needsSetup, dismissed]);
+    }, [setupStatus.checked, needsSetup, dismissed, config?.suppressWarnings]);
 
     const handleSetup = () => {
         setOpen(false);

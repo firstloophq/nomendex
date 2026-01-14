@@ -3,12 +3,14 @@ import { FolderOpen } from "lucide-react";
 import { Button } from "./ui/button";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { useTheme } from "@/hooks/useTheme";
+import { useEnvConfig } from "@/hooks/useEnvConfig";
 import { FolderPickerDialog } from "./FolderPickerDialog";
 import { WorkspaceWarningDialog } from "./WorkspaceWarningDialog";
 
 export function WorkspaceOnboarding() {
     const { addWorkspace } = useWorkspaceSwitcher();
     const { currentTheme } = useTheme();
+    const { config } = useEnvConfig();
     const [folderPickerOpen, setFolderPickerOpen] = useState(false);
     const [warningDialogOpen, setWarningDialogOpen] = useState(false);
     const [pendingPath, setPendingPath] = useState<string | null>(null);
@@ -21,10 +23,15 @@ export function WorkspaceOnboarding() {
     // Set up callback for native folder picker
     const handleSetDataRoot = useCallback(
         (path: string) => {
-            setPendingPath(path);
-            setWarningDialogOpen(true);
+            // If warnings are suppressed, add workspace immediately
+            if (config?.suppressWarnings) {
+                addWorkspace(path);
+            } else {
+                setPendingPath(path);
+                setWarningDialogOpen(true);
+            }
         },
-        []
+        [config?.suppressWarnings, addWorkspace]
     );
 
     useEffect(() => {
@@ -46,8 +53,13 @@ export function WorkspaceOnboarding() {
     };
 
     const handleFolderSelect = (path: string) => {
-        setPendingPath(path);
-        setWarningDialogOpen(true);
+        // If warnings are suppressed, add workspace immediately
+        if (config?.suppressWarnings) {
+            addWorkspace(path);
+        } else {
+            setPendingPath(path);
+            setWarningDialogOpen(true);
+        }
     };
 
     const handleWarningConfirm = () => {
