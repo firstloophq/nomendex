@@ -1,9 +1,18 @@
 ---
-name: versioning
-description: Document how to update app version numbers and release new versions. Use when bumping version, preparing a release, or understanding the versioning system.
+name: version-bump
+description: Increment app version numbers. Use when user asks to bump version, increment version, or prepare a release.
 ---
 
-# Versioning
+# Version Bump
+
+## Action
+
+When this skill is invoked:
+1. Read current version from `mac-app/macos-host/Info.plist`
+2. Increment CFBundleShortVersionString (bump the last number, e.g., `0.2.0-alpha.10` → `0.2.0-alpha.11`)
+3. Increment CFBundleVersion build number (e.g., `11` → `12`)
+4. Apply the changes to Info.plist
+5. Report the version change to the user
 
 ## Single Source of Truth
 
