@@ -509,12 +509,9 @@ export function createGitClient(config: GitClientConfig) {
             }
 
             // Get the oid for the version we want
-            // In a merge conflict, stage 2 is ours, stage 3 is theirs
+            // In a merge conflict, stage 2 is ours (HEAD), stage 3 is theirs (MERGE_HEAD)
             try {
-                const stageNum = resolution === "ours" ? 2 : 3;
-
-                // Read the blob from the appropriate stage
-                // First, we need to get the index entry
+                // Read the blob from the appropriate ref
                 const index = await git.readBlob({
                     fs,
                     dir,
