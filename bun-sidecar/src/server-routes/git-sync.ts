@@ -201,7 +201,13 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
                 recentCommits,
             };
 
-            logger.info("Returning git status", response);
+            logger.info("Returning git status", {
+                initialized: response.initialized,
+                hasRemote: response.hasRemote,
+                currentBranch: response.currentBranch,
+                changedFiles: response.changedFiles,
+                hasMergeConflict: response.hasMergeConflict,
+            });
             return Response.json(response);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
