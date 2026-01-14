@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { getRootPath, getNoetectPath, getUploadsPath } from "@/storage/root-path";
 import { getAgent, getPreferences, savePreferences, addAllowedTool, getAgentAllowedTools } from "@/features/agents/fx";
 import { DEFAULT_AGENT, MCP_REGISTRY } from "@/features/agents/index";
+import { listUserMcpServers, expandEnvVars } from "@/features/mcp-servers/fx";
 import type { AgentConfig } from "@/features/agents/index";
 import { createServiceLogger } from "@/lib/logger";
 import { secrets } from "@/lib/secrets";
@@ -55,13 +56,71 @@ const MCP_SERVER_SECRETS: Record<string, string> = {
 };
 
 // Build MCP servers from agent config - supports stdio, sse, and http transports
+// Checks user-defined servers first, then falls back to built-in registry
 async function buildMcpServersFromConfig(mcpServerIds: string[]): Promise<Record<string, McpServerConfig>> {
     chatLogger.info("Building MCP servers", { serverIds: mcpServerIds });
     const mcpServers: Record<string, McpServerConfig> = {};
 
+    // Load user-defined servers
+    const userServers = await listUserMcpServers();
+    chatLogger.info("User-defined MCP servers loaded", { count: userServers.length });
+
     for (const serverId of mcpServerIds) {
+        // First, check user-defined servers
+        const userServer = userServers.find((s) => s.id === serverId);
+
+        if (userServer) {
+            // Build config from user-defined server with environment variable expansion
+            const transport = userServer.transport;
+
+            if ("type" in transport && transport.type === "sse") {
+                const config: McpServerConfig = {
+                    type: "sse",
+                    url: await expandEnvVars(transport.url),
+                };
+                if (transport.headers) {
+                    config.headers = {};
+                    for (const [key, value] of Object.entries(transport.headers)) {
+                        config.headers[key] = await expandEnvVars(value);
+                    }
+                }
+                mcpServers[serverId] = config;
+                chatLogger.info(`MCP server added (user-defined SSE): ${serverId}`, { url: config.url });
+            } else if ("type" in transport && transport.type === "http") {
+                const config: McpServerConfig = {
+                    type: "http",
+                    url: await expandEnvVars(transport.url),
+                };
+                if (transport.headers) {
+                    config.headers = {};
+                    for (const [key, value] of Object.entries(transport.headers)) {
+                        config.headers[key] = await expandEnvVars(value);
+                    }
+                }
+                mcpServers[serverId] = config;
+                chatLogger.info(`MCP server added (user-defined HTTP): ${serverId}`, { url: config.url });
+            } else if ("command" in transport) {
+                // stdio transport
+                const config: McpServerConfig = {
+                    command: await expandEnvVars(transport.command),
+                    args: await Promise.all(transport.args.map((arg) => expandEnvVars(arg))),
+                };
+                if (transport.env) {
+                    config.env = {};
+                    for (const [key, value] of Object.entries(transport.env)) {
+                        config.env[key] = await expandEnvVars(value);
+                    }
+                }
+                mcpServers[serverId] = config;
+                chatLogger.info(`MCP server added (user-defined stdio): ${serverId}`, { command: config.command });
+            }
+            continue;
+        }
+
+        // Fall back to built-in registry
         const serverDef = MCP_REGISTRY.find((s) => s.id === serverId);
-        chatLogger.info(`MCP server lookup: ${serverId}`, { found: !!serverDef });
+        chatLogger.info(`MCP server lookup in registry: ${serverId}`, { found: !!serverDef });
+
         if (serverDef) {
             const sourceConfig = serverDef.config;
 
@@ -89,7 +148,7 @@ async function buildMcpServersFromConfig(mcpServerIds: string[]): Promise<Record
                     config.headers = headers;
                 }
                 mcpServers[serverId] = config;
-                chatLogger.info(`MCP server added (SSE): ${serverId}`, { url: sourceConfig.url, hasAuth: !!authToken });
+                chatLogger.info(`MCP server added (registry SSE): ${serverId}`, { url: sourceConfig.url, hasAuth: !!authToken });
             } else if ("type" in sourceConfig && sourceConfig.type === "http") {
                 // HTTP transport
                 const config: McpServerConfig = {
@@ -104,7 +163,7 @@ async function buildMcpServersFromConfig(mcpServerIds: string[]): Promise<Record
                     config.headers = headers;
                 }
                 mcpServers[serverId] = config;
-                chatLogger.info(`MCP server added (HTTP): ${serverId}`, { url: sourceConfig.url, hasAuth: !!authToken });
+                chatLogger.info(`MCP server added (registry HTTP): ${serverId}`, { url: sourceConfig.url, hasAuth: !!authToken });
             } else if ("command" in sourceConfig) {
                 // stdio transport (default)
                 const config: McpServerConfig = {
@@ -115,7 +174,7 @@ async function buildMcpServersFromConfig(mcpServerIds: string[]): Promise<Record
                     config.env = sourceConfig.env;
                 }
                 mcpServers[serverId] = config;
-                chatLogger.info(`MCP server added (stdio): ${serverId}`, { command: sourceConfig.command });
+                chatLogger.info(`MCP server added (registry stdio): ${serverId}`, { command: sourceConfig.command });
             }
         }
     }
