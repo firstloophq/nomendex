@@ -5,6 +5,19 @@ import { createServiceLogger } from "../lib/logger";
 
 const logger = createServiceLogger("GIT-SYNC");
 
+// Augment PATH for GUI app context (macOS GUI apps don't inherit shell PATH)
+// This ensures git is found in common Homebrew locations
+const EXTRA_PATHS = [
+    "/opt/homebrew/bin",  // Homebrew on Apple Silicon
+    "/usr/local/bin",     // Homebrew on Intel Mac
+];
+const currentPath = process.env.PATH || "";
+const pathsToAdd = EXTRA_PATHS.filter(p => !currentPath.includes(p));
+if (pathsToAdd.length > 0) {
+    process.env.PATH = `${pathsToAdd.join(":")}:${currentPath}`;
+    logger.info("Augmented PATH for git discovery", { added: pathsToAdd });
+}
+
 // Get GitHub PAT from environment (loaded from secrets)
 function getGitHubPAT(): string | undefined {
     const pat = process.env.GITHUB_PAT;
@@ -95,7 +108,7 @@ export const gitInstalledRoute: RouteHandler<GitInstalledResponse> = {
         try {
             logger.info("Checking if git is installed");
 
-            // Use 'which git' to check if git is in PATH
+            // Use 'which git' to check if git is in PATH (PATH is augmented at module load)
             const whichResult = await $`which git 2>&1`.nothrow();
 
             if (whichResult.exitCode !== 0) {
@@ -106,6 +119,8 @@ export const gitInstalledRoute: RouteHandler<GitInstalledResponse> = {
                 });
             }
 
+            const gitPath = whichResult.text().trim();
+
             // Git is installed, get version
             const versionResult = await $`git --version 2>&1`.nothrow();
             let version: string | undefined;
@@ -115,7 +130,7 @@ export const gitInstalledRoute: RouteHandler<GitInstalledResponse> = {
                 version = match ? match[1] : undefined;
             }
 
-            logger.info("Git is installed", { version });
+            logger.info("Git is installed", { version, path: gitPath });
 
             return Response.json({
                 success: true,
