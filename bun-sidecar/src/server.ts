@@ -14,6 +14,7 @@ import { agentsRoutes } from "./server-routes/agents-routes";
 import { secretsRoutes } from "./server-routes/secrets-routes";
 import { skillsRoutes } from "./server-routes/skills-routes";
 import { workspacesRoutes } from "./server-routes/workspaces-routes";
+import { mcpServersRoutes } from "./server-routes/mcp-servers-routes";
 import { filesystemRoutes } from "./server-routes/filesystem-routes";
 import { uploadsRoutes } from "./server-routes/uploads-routes";
 import { versionRoutes } from "./server-routes/version-routes";
@@ -66,6 +67,7 @@ const server = serve<WSData>({
         ...agentsRoutes,
         ...secretsRoutes,
         ...skillsRoutes,
+        ...mcpServersRoutes,
         ...versionRoutes,
         ...logsRoutes,
         // WebSocket route handler

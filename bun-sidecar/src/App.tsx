@@ -10,6 +10,8 @@ import { HelpPage } from "./pages/HelpPage";
 import { SyncPage } from "./pages/SyncPage";
 import { ConflictResolvePage } from "./pages/ConflictResolvePage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { McpServersPage } from "./pages/McpServersPage";
+import { McpServerFormPage } from "./pages/McpServerFormPage";
 import { NewAgentPage } from "./pages/NewAgentPage";
 import { TestEditorPage } from "./features/test-editor";
 import { Toaster } from "@/components/ui/sonner";
@@ -84,6 +86,9 @@ export function App() {
                                             <Route path="/help" element={<HelpPage />} />
                                             <Route path="/agents" element={<AgentsPage />} />
                                             <Route path="/new-agent" element={<NewAgentPage />} />
+                                            <Route path="/mcp-servers" element={<McpServersPage />} />
+                                            <Route path="/mcp-servers/new" element={<McpServerFormPage />} />
+                                            <Route path="/mcp-servers/:serverId/edit" element={<McpServerFormPage />} />
                                             <Route path="/sync" element={<SyncPage />} />
                                             <Route path="/sync/resolve" element={<ConflictResolvePage />} />
                                             <Route path="/test-editor" element={<TestEditorPage />} />

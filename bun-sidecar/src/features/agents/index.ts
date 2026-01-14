@@ -74,17 +74,10 @@ export type McpServerDefinition = z.infer<typeof McpServerDefinitionSchema>;
 export type McpConfig = z.infer<typeof McpConfigSchema>;
 
 // App-level MCP Server Registry (hardcoded, user selects from these)
+// User-defined servers can be added via the MCP Servers settings page
 export const MCP_REGISTRY: McpServerDefinition[] = [
-    {
-        id: "linear",
-        name: "Linear",
-        description: "Linear project management - issues, projects, teams",
-        config: {
-            type: "http",
-            url: "https://mcp.linear.app/mcp",
-        },
-    },
-    // Add more MCP servers here over time
+    // Built-in MCP servers can be added here
+    // Most servers should be user-defined via the MCP Servers settings
 ];
 
 // Default agent that ships with the app

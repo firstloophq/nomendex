@@ -19,18 +19,26 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useTheme } from "@/hooks/useTheme";
 import { useAgentsAPI } from "@/hooks/useAgentsAPI";
-import type { AgentConfig, McpServerDefinition } from "@/features/agents/index";
+import { useMcpServersAPI } from "@/hooks/useMcpServersAPI";
+import type { AgentConfig } from "@/features/agents/index";
 import { MODEL_DISPLAY_NAMES } from "@/features/agents/index";
+import type { UserMcpServer } from "@/features/mcp-servers/mcp-server-types";
 import { ArrowLeft } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+
+interface CombinedMcpServer extends UserMcpServer {
+    isBuiltIn?: boolean;
+}
 
 type AgentModel = AgentConfig["model"];
 
 function NewAgentContent() {
     const { currentTheme } = useTheme();
     const api = useAgentsAPI();
+    const mcpServersAPI = useMcpServersAPI();
     const navigate = useNavigate();
 
-    const [mcpRegistry, setMcpRegistry] = useState<McpServerDefinition[]>([]);
+    const [allMcpServers, setAllMcpServers] = useState<CombinedMcpServer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -41,22 +49,27 @@ function NewAgentContent() {
     const [formModel, setFormModel] = useState<AgentModel>("claude-sonnet-4-5-20250929");
     const [formMcpServers, setFormMcpServers] = useState<string[]>([]);
 
-    // Load MCP registry on mount
+    // Load all MCP servers on mount
     useEffect(() => {
-        loadMcpRegistry();
+        loadMcpServers();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    async function loadMcpRegistry() {
+    async function loadMcpServers() {
         setIsLoading(true);
         try {
-            const registry = await api.getMcpRegistry();
-            setMcpRegistry(registry);
+            const response = await mcpServersAPI.getAllServers();
+            setAllMcpServers(response.servers);
         } catch (error) {
-            console.error("Failed to load MCP registry:", error);
+            console.error("Failed to load MCP servers:", error);
         } finally {
             setIsLoading(false);
         }
     }
+
+    // Separate built-in and user-defined servers
+    const builtInServers = allMcpServers.filter((s) => s.isBuiltIn);
+    const userServers = allMcpServers.filter((s) => !s.isBuiltIn);
 
     async function handleSave() {
         setIsSaving(true);
@@ -177,34 +190,76 @@ function NewAgentContent() {
                         </p>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                         <Label>MCP Servers</Label>
-                        {mcpRegistry.length === 0 ? (
+                        {allMcpServers.length === 0 ? (
                             <p className="text-sm" style={{ color: currentTheme.styles.contentSecondary }}>
-                                No MCP servers available.
+                                No MCP servers available. Add some in the MCP Servers settings.
                             </p>
                         ) : (
-                            <div className="space-y-2">
-                                {mcpRegistry.map((server) => (
-                                    <div key={server.id} className="flex items-start space-x-3">
-                                        <Checkbox
-                                            id={`mcp-${server.id}`}
-                                            checked={formMcpServers.includes(server.id)}
-                                            onCheckedChange={() => toggleMcpServer(server.id)}
-                                        />
-                                        <div className="grid gap-1.5 leading-none">
-                                            <label
-                                                htmlFor={`mcp-${server.id}`}
-                                                className="text-sm font-medium cursor-pointer"
-                                            >
-                                                {server.name}
-                                            </label>
-                                            <p className="text-xs" style={{ color: currentTheme.styles.contentSecondary }}>
-                                                {server.description}
-                                            </p>
+                            <div className="space-y-4">
+                                {/* User-defined servers */}
+                                {userServers.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium" style={{ color: currentTheme.styles.contentSecondary }}>
+                                            User Defined
+                                        </p>
+                                        <div className="space-y-2">
+                                            {userServers.map((server) => (
+                                                <div key={server.id} className="flex items-start space-x-3">
+                                                    <Checkbox
+                                                        id={`mcp-${server.id}`}
+                                                        checked={formMcpServers.includes(server.id)}
+                                                        onCheckedChange={() => toggleMcpServer(server.id)}
+                                                    />
+                                                    <div className="grid gap-1.5 leading-none">
+                                                        <label
+                                                            htmlFor={`mcp-${server.id}`}
+                                                            className="text-sm font-medium cursor-pointer"
+                                                        >
+                                                            {server.name}
+                                                        </label>
+                                                        <p className="text-xs" style={{ color: currentTheme.styles.contentSecondary }}>
+                                                            {server.description || "No description"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
-                                ))}
+                                )}
+
+                                {/* Built-in servers */}
+                                {builtInServers.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-medium" style={{ color: currentTheme.styles.contentSecondary }}>
+                                            Built-in
+                                        </p>
+                                        <div className="space-y-2">
+                                            {builtInServers.map((server) => (
+                                                <div key={server.id} className="flex items-start space-x-3">
+                                                    <Checkbox
+                                                        id={`mcp-${server.id}`}
+                                                        checked={formMcpServers.includes(server.id)}
+                                                        onCheckedChange={() => toggleMcpServer(server.id)}
+                                                    />
+                                                    <div className="grid gap-1.5 leading-none">
+                                                        <label
+                                                            htmlFor={`mcp-${server.id}`}
+                                                            className="text-sm font-medium cursor-pointer flex items-center gap-2"
+                                                        >
+                                                            {server.name}
+                                                            <Badge variant="secondary" className="text-[10px] px-1 py-0">Built-in</Badge>
+                                                        </label>
+                                                        <p className="text-xs" style={{ color: currentTheme.styles.contentSecondary }}>
+                                                            {server.description || "No description"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

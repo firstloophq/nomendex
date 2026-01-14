@@ -7,19 +7,13 @@ function getSecretsPath(): string {
     return `${getNoetectPath()}/secrets.json`;
 }
 
-// Define the known secret keys and their metadata
-const SECRET_DEFINITIONS: Record<string, { label: string; description: string; placeholder: string; helpText: string }> = {
+// Define the predefined secret keys and their metadata
+const PREDEFINED_SECRETS: Record<string, { label: string; description: string; placeholder: string; helpText: string }> = {
     CLAUDE_CODE_OAUTH_TOKEN: {
         label: "Claude OAuth Token",
         description: "OAuth token for Claude Agent SDK. Generate with 'claude setup-token'",
         placeholder: "sk-ant-oat01-...",
         helpText: "Run 'claude setup-token' in terminal to generate a token",
-    },
-    LINEAR_OAUTH_TOKEN: {
-        label: "Linear API Key",
-        description: "API key for Linear MCP server. Get from Linear → Settings → API → Personal API keys.",
-        placeholder: "lin_api_...",
-        helpText: "Go to linear.app/settings/api and create a Personal API key",
     },
     GITHUB_PAT: {
         label: "GitHub Personal Access Token",
@@ -73,8 +67,17 @@ export const secretsRoutes = {
             try {
                 const secrets = await loadSecrets();
 
-                // Return secret definitions with masked values
-                const result = Object.entries(SECRET_DEFINITIONS).map(([key, def]) => ({
+                // Start with predefined secrets
+                const result: Array<{
+                    key: string;
+                    label: string;
+                    description: string;
+                    placeholder: string;
+                    helpText: string;
+                    hasValue: boolean;
+                    maskedValue: string;
+                    isPredefined: boolean;
+                }> = Object.entries(PREDEFINED_SECRETS).map(([key, def]) => ({
                     key,
                     label: def.label,
                     description: def.description,
@@ -82,7 +85,25 @@ export const secretsRoutes = {
                     helpText: def.helpText,
                     hasValue: !!secrets[key],
                     maskedValue: secrets[key] ? maskSecret(secrets[key]) : "",
+                    isPredefined: true,
                 }));
+
+                // Add custom secrets (keys not in predefined list)
+                const predefinedKeys = new Set(Object.keys(PREDEFINED_SECRETS));
+                for (const [key, value] of Object.entries(secrets)) {
+                    if (!predefinedKeys.has(key)) {
+                        result.push({
+                            key,
+                            label: key,
+                            description: "Custom API key",
+                            placeholder: "",
+                            helpText: "",
+                            hasValue: true,
+                            maskedValue: maskSecret(value),
+                            isPredefined: false,
+                        });
+                    }
+                }
 
                 return Response.json({ secrets: result });
             } catch (error) {
@@ -96,14 +117,18 @@ export const secretsRoutes = {
         async POST(req: Request) {
             try {
                 const body = await req.json();
-                const { key, value } = body;
+                const { key, value } = body as { key: string; value: string };
 
                 if (!key || typeof key !== "string") {
                     return Response.json({ error: "Key is required" }, { status: 400 });
                 }
 
-                if (!SECRET_DEFINITIONS[key]) {
-                    return Response.json({ error: "Unknown secret key" }, { status: 400 });
+                // Validate key format (uppercase letters, numbers, underscores)
+                if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
+                    return Response.json(
+                        { error: "Key must be uppercase letters, numbers, and underscores, starting with a letter" },
+                        { status: 400 }
+                    );
                 }
 
                 const secrets = await loadSecrets();
@@ -132,7 +157,7 @@ export const secretsRoutes = {
         async POST(req: Request) {
             try {
                 const body = await req.json();
-                const { key } = body;
+                const { key } = body as { key: string };
 
                 if (!key || typeof key !== "string") {
                     return Response.json({ error: "Key is required" }, { status: 400 });
