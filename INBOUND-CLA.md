@@ -18,9 +18,8 @@ You grant Licensor a perpetual, worldwide, non-exclusive, no-charge, royalty-fre
 - reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute your Contributions and derivative works of your Contributions as part of the Project or otherwise.
 
 This license allows Licensor to license or relicense the Project (including your Contributions) under:
-- the Project’s current license (Business Source License 1.1),
-- future versions of that license,
-- the Change License identified in `LICENSE`, and/or
+- the Project's current license (MIT License),
+- future versions of that license, and/or
 - additional commercial or open-source licenses.
 
 ## 3. Patent license grant

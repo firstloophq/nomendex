@@ -4,7 +4,7 @@ Thanks for your interest in contributing.
 
 ## License reminder
 
-This project is licensed under the Business Source License 1.1 (see `LICENSE`). It is source-available and includes restrictions on certain third-party deployments.
+This project is licensed under the MIT License (see `LICENSE`). It is free and open source software.
 
 ## Contribution terms (Inbound=CLA)
 
