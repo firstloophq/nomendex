@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -29,12 +30,13 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAgentsAPI } from "@/hooks/useAgentsAPI";
 import type { AgentConfig, McpServerDefinition } from "@/features/agents/index";
 import { MODEL_DISPLAY_NAMES } from "@/features/agents/index";
-import { Plus, Pencil, Trash2, Copy, Bot } from "lucide-react";
+import { Plus, Pencil, Trash2, Copy, Bot, Server } from "lucide-react";
 
 type AgentModel = AgentConfig["model"];
 
 function AgentsContent() {
     const { currentTheme } = useTheme();
+    const navigate = useNavigate();
     const api = useAgentsAPI();
 
     const [agents, setAgents] = useState<AgentConfig[]>([]);
@@ -179,10 +181,16 @@ function AgentsContent() {
                         Configure AI agents with custom system prompts and MCP servers.
                     </p>
                 </div>
-                <Button onClick={openCreateDialog}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    New Agent
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={() => navigate("/mcp-servers")}>
+                        <Server className="mr-2 h-4 w-4" />
+                        MCP Servers
+                    </Button>
+                    <Button onClick={openCreateDialog}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        New Agent
+                    </Button>
+                </div>
             </div>
 
             <Separator />
