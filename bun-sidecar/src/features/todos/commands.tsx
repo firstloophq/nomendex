@@ -53,7 +53,7 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
         },
         {
             id: "todos.openBrowser",
-            name: "Open Todos Browser",
+            name: "Open All Todos",
             description: "Open the todos browser view",
             icon: "ListChecks",
             callback: () => {
