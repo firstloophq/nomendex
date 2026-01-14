@@ -10,6 +10,7 @@ import { HelpPage } from "./pages/HelpPage";
 import { SyncPage } from "./pages/SyncPage";
 import { ConflictResolvePage } from "./pages/ConflictResolvePage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { NewAgentPage } from "./pages/NewAgentPage";
 import { TestEditorPage } from "./features/test-editor";
 import { Toaster } from "@/components/ui/sonner";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
@@ -82,6 +83,7 @@ export function App() {
                                             <Route path="/settings" element={<SettingsPage />} />
                                             <Route path="/help" element={<HelpPage />} />
                                             <Route path="/agents" element={<AgentsPage />} />
+                                            <Route path="/new-agent" element={<NewAgentPage />} />
                                             <Route path="/sync" element={<SyncPage />} />
                                             <Route path="/sync/resolve" element={<ConflictResolvePage />} />
                                             <Route path="/test-editor" element={<TestEditorPage />} />

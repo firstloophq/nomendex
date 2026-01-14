@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -36,17 +37,18 @@ type AgentModel = AgentConfig["model"];
 function AgentsContent() {
     const { currentTheme } = useTheme();
     const api = useAgentsAPI();
+    const navigate = useNavigate();
 
     const [agents, setAgents] = useState<AgentConfig[]>([]);
     const [mcpRegistry, setMcpRegistry] = useState<McpServerDefinition[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Dialog state
+    // Dialog state (for edit and delete only)
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingAgent, setEditingAgent] = useState<AgentConfig | null>(null);
     const [deleteConfirmAgent, setDeleteConfirmAgent] = useState<AgentConfig | null>(null);
 
-    // Form state
+    // Form state (for editing)
     const [formName, setFormName] = useState("");
     const [formDescription, setFormDescription] = useState("");
     const [formSystemPrompt, setFormSystemPrompt] = useState("");
@@ -75,14 +77,8 @@ function AgentsContent() {
         }
     }
 
-    function openCreateDialog() {
-        setEditingAgent(null);
-        setFormName("");
-        setFormDescription("");
-        setFormSystemPrompt("");
-        setFormModel("claude-sonnet-4-5-20250929");
-        setFormMcpServers([]);
-        setIsDialogOpen(true);
+    function openCreatePage() {
+        navigate("/new-agent");
     }
 
     function openEditDialog(agent: AgentConfig) {
@@ -97,26 +93,16 @@ function AgentsContent() {
 
     async function handleSave() {
         try {
-            if (editingAgent) {
-                await api.updateAgent({
-                    agentId: editingAgent.id,
-                    updates: {
-                        name: formName,
-                        description: formDescription || undefined,
-                        systemPrompt: formSystemPrompt,
-                        model: formModel,
-                        mcpServers: formMcpServers,
-                    },
-                });
-            } else {
-                await api.createAgent({
+            await api.updateAgent({
+                agentId: editingAgent!.id,
+                updates: {
                     name: formName,
                     description: formDescription || undefined,
                     systemPrompt: formSystemPrompt,
                     model: formModel,
                     mcpServers: formMcpServers,
-                });
-            }
+                },
+            });
             setIsDialogOpen(false);
             await loadData();
         } catch (error) {
@@ -179,7 +165,7 @@ function AgentsContent() {
                         Configure AI agents with custom system prompts and MCP servers.
                     </p>
                 </div>
-                <Button onClick={openCreateDialog}>
+                <Button onClick={openCreatePage}>
                     <Plus className="mr-2 h-4 w-4" />
                     New Agent
                 </Button>
@@ -286,11 +272,11 @@ function AgentsContent() {
                 ))}
             </div>
 
-            {/* Create/Edit Dialog */}
+            {/* Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>{editingAgent ? "Edit Agent" : "Create New Agent"}</DialogTitle>
+                        <DialogTitle>Edit Agent</DialogTitle>
                         <DialogDescription>
                             Configure the agent's settings, system prompt, and MCP servers.
                         </DialogDescription>
@@ -385,7 +371,7 @@ function AgentsContent() {
                             Cancel
                         </Button>
                         <Button onClick={handleSave} disabled={!formName.trim()}>
-                            {editingAgent ? "Save Changes" : "Create Agent"}
+                            Save Changes
                         </Button>
                     </DialogFooter>
                 </DialogContent>
