@@ -1,18 +1,18 @@
-# Noetect
+# Nomendex
 
-Noetect is a desktop application for macOS that helps you work with notes, tasks, and AI agents. Built with Bun, React, and Swift, it provides a fast, native experience for managing your workspace.
+Nomendex is a desktop application for macOS that helps you work with notes, tasks, and AI agents. Built with Bun, React, and Swift, it provides a fast, native experience for managing your workspace.
 
 ## Installation
 
 ### Download Release (Users)
 
-1. Download the latest `.app` file from the [Releases page](https://github.com/firstloophq/noetect/releases)
-2. Move `Noetect.app` to your `/Applications` folder
-3. Open Noetect from Applications or Spotlight
+1. Download the latest `.app` file from the [Releases page](https://github.com/firstloophq/nomendex/releases)
+2. Move `Nomendex.app` to your `/Applications` folder
+3. Open Nomendex from Applications or Spotlight
 
 On first launch, macOS may show a security warning. To allow the app:
 - Go to System Settings → Privacy & Security
-- Click "Open Anyway" next to the Noetect warning
+- Click "Open Anyway" next to the Nomendex warning
 
 ## Development Setup
 
@@ -26,8 +26,8 @@ On first launch, macOS may show a security warning. To allow the app:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/firstloophq/noetect.git
-   cd noetect
+   git clone https://github.com/firstloophq/nomendex.git
+   cd nomendex
    ```
 
 2. **Install dependencies**
@@ -44,10 +44,10 @@ On first launch, macOS may show a security warning. To allow the app:
 
 ### Building the App
 
-To build and install Noetect locally:
+To build and install Nomendex locally:
 
 ```bash
-# Build and install to /Applications/Noetect.app
+# Build and install to /Applications/Nomendex.app
 ./build-install.sh
 
 # Or install as dev version (no .sh extension)
@@ -70,7 +70,7 @@ From the `bun-sidecar` directory:
 ### Project Structure
 
 ```
-noetect/
+nomendex/
 ├── bun-sidecar/       # React app built with Bun
 │   ├── src/           # Application source code
 │   └── package.json   # Dependencies and scripts
@@ -82,7 +82,7 @@ noetect/
 
 ## Architecture
 
-Noetect uses a unique architecture:
+Nomendex uses a unique architecture:
 - **Swift Host**: Native macOS app that provides the window and menu bar
 - **Bun Sidecar**: React application served by Bun's built-in HTTP server
 - **WKWebView**: Bridge between Swift and the web-based UI

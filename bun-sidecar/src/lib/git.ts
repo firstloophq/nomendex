@@ -14,8 +14,8 @@ const logger = createServiceLogger("GIT");
 
 // Default author for commits
 const DEFAULT_AUTHOR = {
-    name: "Noetect",
-    email: "sync@noetect.app",
+    name: "Nomendex",
+    email: "sync@nomendex.app",
 };
 
 // Types for git operations

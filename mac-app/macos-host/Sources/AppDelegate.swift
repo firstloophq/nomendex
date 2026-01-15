@@ -145,10 +145,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // App menu
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
-        let appMenu = NSMenu(title: "Noetect")
+        let appMenu = NSMenu(title: "Nomendex")
         appMenuItem.submenu = appMenu
 
-        appMenu.addItem(NSMenuItem(title: "About Noetect", action: nil, keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem(title: "About Nomendex", action: nil, keyEquivalent: ""))
         appMenu.addItem(NSMenuItem.separator())
 
         // Check for Updates menu item (Sparkle)
@@ -161,7 +161,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         appMenu.addItem(checkForUpdatesItem)
 
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(NSMenuItem(title: "Quit Noetect", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        appMenu.addItem(NSMenuItem(title: "Quit Nomendex", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         
         // Edit menu (for copy/paste)
         let editMenuItem = NSMenuItem()

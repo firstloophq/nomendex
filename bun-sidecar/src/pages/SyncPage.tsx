@@ -528,7 +528,7 @@ After you provide the merged content, I will manually update the file and mark t
                                         </p>
                                         <div className="flex items-center gap-2">
                                             <a
-                                                href="https://github.com/settings/tokens/new?scopes=repo&description=Noetect%20Sync"
+                                                href="https://github.com/settings/tokens/new?scopes=repo&description=Nomendex%20Sync"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-xs text-primary hover:underline flex items-center gap-1"

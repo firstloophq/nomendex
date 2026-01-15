@@ -1,10 +1,10 @@
-import { getNoetectPath, hasActiveWorkspace } from "@/storage/root-path";
+import { getNomendexPath, hasActiveWorkspace } from "@/storage/root-path";
 
 function getSecretsPath(): string {
     if (!hasActiveWorkspace()) {
-        return `${process.env.HOME}/Library/Application Support/com.firstloop.noetect/secrets.json`;
+        return `${process.env.HOME}/Library/Application Support/com.firstloop.nomendex/secrets.json`;
     }
-    return `${getNoetectPath()}/secrets.json`;
+    return `${getNomendexPath()}/secrets.json`;
 }
 
 // Define the predefined secret keys and their metadata

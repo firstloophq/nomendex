@@ -1,10 +1,10 @@
 # Appcast Backend Spec
 
-A minimal Bun server to host and update Sparkle appcast.xml for Noetect auto-updates.
+A minimal Bun server to host and update Sparkle appcast.xml for Nomendex auto-updates.
 
 ## Overview
 
-- **URL:** `https://releases.noetect.com`
+- **URL:** `https://releases.nomendex.com`
 - **Runtime:** Bun
 - **Storage:** Local file (`data/appcast.xml`)
 - **Auth:** API key via Authorization header
@@ -27,7 +27,7 @@ Serves the current appcast file.
 
 **Example:**
 ```bash
-curl https://releases.noetect.com/appcast.xml
+curl https://releases.nomendex.com/appcast.xml
 ```
 
 ---
@@ -49,7 +49,7 @@ Adds a new release entry to the appcast. Inserts the new entry at the top (newes
   "version": "0.1.0-alpha.3",
   "signature": "BASE64_EDDSA_SIGNATURE_HERE",
   "length": 15728640,
-  "url": "https://github.com/firstloophq/noetect/releases/download/v0.1.0-alpha.3/Noetect-0.1.0-alpha.3.zip",
+  "url": "https://github.com/firstloophq/nomendex/releases/download/v0.1.0-alpha.3/Nomendex-0.1.0-alpha.3.zip",
   "minimumSystemVersion": "12.0",
   "description": "<h2>What's New</h2><ul><li>Feature X</li></ul>"
 }
@@ -91,14 +91,14 @@ Adds a new release entry to the appcast. Inserts the new entry at the top (newes
 
 **Example:**
 ```bash
-curl -X POST https://releases.noetect.com/appcast/entry \
+curl -X POST https://releases.nomendex.com/appcast/entry \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "version": "0.1.0-alpha.3",
     "signature": "abc123...",
     "length": 15728640,
-    "url": "https://github.com/firstloophq/noetect/releases/download/v0.1.0-alpha.3/Noetect-0.1.0-alpha.3.zip"
+    "url": "https://github.com/firstloophq/nomendex/releases/download/v0.1.0-alpha.3/Nomendex-0.1.0-alpha.3.zip"
   }'
 ```
 
@@ -146,9 +146,9 @@ On first run, if `data/appcast.xml` doesn't exist, create it with this template:
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>Noetect Updates</title>
-    <link>https://github.com/firstloophq/noetect</link>
-    <description>Updates for Noetect</description>
+    <title>Nomendex Updates</title>
+    <link>https://github.com/firstloophq/nomendex</link>
+    <description>Updates for Nomendex</description>
     <language>en</language>
   </channel>
 </rss>
@@ -210,7 +210,7 @@ Deploy wherever Bun runs:
 - VPS with Docker
 - Any container platform
 
-Point `releases.noetect.com` DNS to the deployment.
+Point `releases.nomendex.com` DNS to the deployment.
 
 ---
 
@@ -221,13 +221,13 @@ The release workflow will call this endpoint after signing:
 ```yaml
 - name: Update appcast
   run: |
-    curl -X POST https://releases.noetect.com/appcast/entry \
+    curl -X POST https://releases.nomendex.com/appcast/entry \
       -H "Authorization: Bearer ${{ secrets.APPCAST_API_KEY }}" \
       -H "Content-Type: application/json" \
       -d '{
         "version": "${{ steps.version.outputs.version }}",
         "signature": "${{ env.SPARKLE_SIGNATURE }}",
-        "length": '"$(stat -f%z "mac-app/Noetect-${{ steps.version.outputs.version }}.zip")"',
-        "url": "https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/Noetect-${{ steps.version.outputs.version }}.zip"
+        "length": '"$(stat -f%z "mac-app/Nomendex-${{ steps.version.outputs.version }}.zip")"',
+        "url": "https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/Nomendex-${{ steps.version.outputs.version }}.zip"
       }'
 ```

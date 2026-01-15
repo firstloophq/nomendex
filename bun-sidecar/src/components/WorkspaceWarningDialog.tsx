@@ -66,10 +66,10 @@ export function WorkspaceWarningDialog({
                                 style={{ color: warningColor }}
                             />
                         </div>
-                        <DialogTitle>Welcome to the Noetect Alpha!</DialogTitle>
+                        <DialogTitle>Welcome to the Nomendex Alpha!</DialogTitle>
                     </div>
                     <DialogDescription className="sr-only">
-                        Welcome to the Noetect Alpha with backup recommendations
+                        Welcome to the Nomendex Alpha with backup recommendations
                     </DialogDescription>
                 </DialogHeader>
 
@@ -97,9 +97,9 @@ export function WorkspaceWarningDialog({
                         }}
                     >
                         <p style={{ color: styles.contentPrimary }}>
-                            <strong>Obsidian Compatibility:</strong> Noetect strives to not break
+                            <strong>Obsidian Compatibility:</strong> Nomendex strives to not break
                             Obsidian vaults, but there is significantly more testing that needs to
-                            be done. If you are connecting Noetect to an Obsidian vault please back
+                            be done. If you are connecting Nomendex to an Obsidian vault please back
                             up the vault first, or make a copy of it and connect to the copy
                             instead.
                         </p>
@@ -144,7 +144,7 @@ export function WorkspaceWarningDialog({
                                 className="text-sm leading-tight"
                                 style={{ color: styles.contentPrimary }}
                             >
-                                I have backed up my vault before connecting Noetect to it
+                                I have backed up my vault before connecting Nomendex to it
                             </span>
                         </label>
                     </div>

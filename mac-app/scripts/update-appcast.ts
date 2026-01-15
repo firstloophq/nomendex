@@ -20,7 +20,7 @@ const xmlItem = `<item><title>Version ${version}</title><pubDate>${pubDate}</pub
 
 console.log("Sending item:", xmlItem);
 
-const response = await fetch("https://releases.noetect.com/appcast/entry", {
+const response = await fetch("https://releases.nomendex.com/appcast/entry", {
   method: "POST",
   headers: {
     "Authorization": `Bearer ${apiKey}`,

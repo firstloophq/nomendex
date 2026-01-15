@@ -21,7 +21,7 @@ const DEFAULT_SKILLS: DefaultSkill[] = [
         files: {
             "SKILL.md": `---
 name: todos
-description: Manages project todos via REST API. Use when the user asks to create, view, update, or delete todos, list tasks by project, check task status, or filter by due date. Requires the Noetect app to be running.
+description: Manages project todos via REST API. Use when the user asks to create, view, update, or delete todos, list tasks by project, check task status, or filter by due date. Requires the Nomendex app to be running.
 version: 1
 ---
 
@@ -29,14 +29,14 @@ version: 1
 
 ## Overview
 
-Manages todos via the Noetect REST API. The API handles all validation, ID generation, timestamps, and ordering automatically.
+Manages todos via the Nomendex REST API. The API handles all validation, ID generation, timestamps, and ordering automatically.
 
 ## Port Discovery
 
 The server writes its port to a discoverable location. Extract it with:
 
 \`\`\`bash
-PORT=$(cat ~/Library/Application\\ Support/com.firstloop.noetect/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
+PORT=$(cat ~/Library/Application\\ Support/com.firstloop.nomendex/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
 \`\`\`
 
 ## API Endpoints

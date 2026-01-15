@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUILD_DIR="build/host"
-APP_NAME="Noetect"
+APP_NAME="Nomendex"
 BIN_NAME="${APP_NAME}"
 SPARKLE_DIR="Frameworks/Sparkle"
 

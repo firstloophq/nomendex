@@ -1,5 +1,5 @@
 import { createServiceLogger } from "./lib/logger";
-import { getRootPath, getNoetectPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace } from "./storage/root-path";
+import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace } from "./storage/root-path";
 import { mkdir } from "node:fs/promises";
 import { initializeBacklinksService } from "./features/notes/backlinks-service";
 import { initializeTagsService } from "./features/notes/tags-service";
@@ -45,9 +45,9 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
         await mkdir(uploadsPath, { recursive: true });
         startupLogger.info(`Uploads directory verified: ${uploadsPath}`);
 
-        const noetectPath = getNoetectPath();
-        await mkdir(noetectPath, { recursive: true });
-        startupLogger.info(`.noetect directory verified: ${noetectPath}`);
+        const nomendexPath = getNomendexPath();
+        await mkdir(nomendexPath, { recursive: true });
+        startupLogger.info(`.nomendex directory verified: ${nomendexPath}`);
 
         const skillsPath = getSkillsPath();
         await mkdir(skillsPath, { recursive: true });
@@ -57,14 +57,14 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
         const gitignorePath = `${rootPath}/.gitignore`;
         const gitignoreFile = Bun.file(gitignorePath);
         if (!(await gitignoreFile.exists())) {
-            await Bun.write(gitignorePath, ".noetect/\n");
+            await Bun.write(gitignorePath, ".nomendex/\n");
             startupLogger.info(`.gitignore created at: ${gitignorePath}`);
         } else {
-            // Check if .noetect/ is already in .gitignore
+            // Check if .nomendex/ is already in .gitignore
             const content = await gitignoreFile.text();
-            if (!content.includes(".noetect")) {
-                await Bun.write(gitignorePath, content.trimEnd() + "\n.noetect/\n");
-                startupLogger.info(`.noetect/ added to existing .gitignore`);
+            if (!content.includes(".nomendex")) {
+                await Bun.write(gitignorePath, content.trimEnd() + "\n.nomendex/\n");
+                startupLogger.info(`.nomendex/ added to existing .gitignore`);
             }
         }
     } catch (error) {

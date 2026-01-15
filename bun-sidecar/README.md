@@ -1,4 +1,4 @@
-# Noetect
+# Nomendex
 
 A modular workspace application built with Bun, React, and a plugin architecture for extensible functionality.
 

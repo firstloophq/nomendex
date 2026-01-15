@@ -69,3 +69,6 @@ bun.lockb
 
 # Code signing
 *.entitlements.backup
+
+# Nomendex workspace data
+.nomendex/

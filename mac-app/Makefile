@@ -1,4 +1,4 @@
-APP_NAME := BunSidecar
+APP_NAME := Nomendex
 APP_DIR := bundle/$(APP_NAME).app
 
 .PHONY: all build clean build-ui build-sidecar build-host package run-host zip release sign notarize sparkle-keys sparkle-release

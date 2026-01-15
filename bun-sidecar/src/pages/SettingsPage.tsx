@@ -941,7 +941,7 @@ function SettingsContent() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Info className="h-5 w-5" />
-                                About Noetect
+                                About Nomendex
                             </CardTitle>
                             <CardDescription>
                                 Version information and updates
@@ -985,7 +985,7 @@ function SettingsContent() {
                             {/* Update Settings Info */}
                             <div className="text-sm" style={{ color: currentTheme.styles.contentSecondary }}>
                                 <p>
-                                    Noetect automatically checks for updates every 15 minutes.
+                                    Nomendex automatically checks for updates every 15 minutes.
                                     When an update is available, you'll see a notification.
                                 </p>
                             </div>

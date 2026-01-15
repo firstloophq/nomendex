@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Result, ErrorCodes } from "../types/Result";
 import { WorkspaceState, WorkspaceStateSchema } from "../types/Workspace";
-import { getNoetectPath } from "../storage/root-path";
+import { getNomendexPath } from "../storage/root-path";
 
 const ThemeRequestSchema = z.object({
     themeName: z.string(),
@@ -11,7 +11,7 @@ export const workspaceRoutes = {
     "/api/workspace": {
         async GET() {
             try {
-                const file = Bun.file(`${getNoetectPath()}/workspace.json`);
+                const file = Bun.file(`${getNomendexPath()}/workspace.json`);
                 const exists = await file.exists();
 
                 if (!exists) {
@@ -25,7 +25,7 @@ export const workspaceRoutes = {
                         projectPreferences: {},
                         gitAuthMode: "local",
                     };
-                    await Bun.write(`${getNoetectPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
+                    await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
 
                     const response: Result<WorkspaceState> = {
                         success: true,
@@ -59,7 +59,7 @@ export const workspaceRoutes = {
             try {
                 const workspace = await req.json();
                 const workspaceValidated = WorkspaceStateSchema.parse(workspace);
-                await Bun.write(`${getNoetectPath()}/workspace.json`, JSON.stringify(workspaceValidated, null, 2));
+                await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(workspaceValidated, null, 2));
 
                 const response: Result<{ success: boolean }> = {
                     success: true,
@@ -82,7 +82,7 @@ export const workspaceRoutes = {
     "/api/theme": {
         async GET() {
             try {
-                const file = Bun.file(`${getNoetectPath()}/workspace.json`);
+                const file = Bun.file(`${getNomendexPath()}/workspace.json`);
                 const exists = await file.exists();
 
                 if (!exists) {
@@ -118,7 +118,7 @@ export const workspaceRoutes = {
                 const body = await req.json();
                 const { themeName } = ThemeRequestSchema.parse(body);
 
-                const file = Bun.file(`${getNoetectPath()}/workspace.json`);
+                const file = Bun.file(`${getNomendexPath()}/workspace.json`);
                 const exists = await file.exists();
 
                 let workspace: WorkspaceState;
@@ -139,7 +139,7 @@ export const workspaceRoutes = {
                 }
 
                 workspace.themeName = themeName;
-                await Bun.write(`${getNoetectPath()}/workspace.json`, JSON.stringify(workspace, null, 2));
+                await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(workspace, null, 2));
 
                 const response: Result<{ themeName: string }> = {
                     success: true,

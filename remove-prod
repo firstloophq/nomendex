@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Remove Noetect (production) from Applications and user data
+# Remove Nomendex (production) from Applications and user data
 
-echo "Removing Noetect from /Applications..."
-rm -rf /Applications/Noetect.app
+echo "Removing Nomendex from /Applications..."
+rm -rf /Applications/Nomendex.app
 
 echo "Removing user data from ~/Library/Application Support..."
-rm -rf ~/Library/Application\ Support/com.firstloop.noetect
+rm -rf ~/Library/Application\ Support/com.firstloop.nomendex
 
-echo "Done! Noetect and all user data have been removed."
+echo "Done! Nomendex and all user data have been removed."

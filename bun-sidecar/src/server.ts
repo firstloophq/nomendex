@@ -454,6 +454,6 @@ serverLogger.info(`Environment: ${process.env.NODE_ENV || "development"}`, { env
 serverLogger.info(`Centralized logging initialized to ${getLogFile()}`);
 
 // Write server port to discoverable location for external tools (e.g., Claude skills)
-const serverPortPath = `${process.env.HOME}/Library/Application Support/com.firstloop.noetect/serverport.json`;
+const serverPortPath = `${process.env.HOME}/Library/Application Support/com.firstloop.nomendex/serverport.json`;
 await Bun.write(serverPortPath, JSON.stringify({ port: server.port, startedAt: new Date().toISOString() }));
 serverLogger.info(`Server port written to ${serverPortPath}`);

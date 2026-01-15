@@ -17,7 +17,7 @@ if [[ -z "$VERSION" ]]; then
     echo "[release] Using version from Info.plist: $VERSION"
 fi
 
-APP_NAME="Noetect"
+APP_NAME="Nomendex"
 APP_DIR="bundle/${APP_NAME}.app"
 RELEASE_DIR="releases"
 ZIP_NAME="${APP_NAME}-${VERSION}.zip"
@@ -70,7 +70,7 @@ else
     echo "    </ul>"
     echo "  ]]></description>"
     echo "  <enclosure"
-    echo "    url=\"https://github.com/YOUR_ORG/noetect/releases/download/v${VERSION}/${ZIP_NAME}\""
+    echo "    url=\"https://github.com/YOUR_ORG/nomendex/releases/download/v${VERSION}/${ZIP_NAME}\""
     echo "    length=\"$(stat -f%z "$RELEASE_DIR/$ZIP_NAME")\""
     echo "    type=\"application/octet-stream\""
     echo "    sparkle:edSignature=\"$SIGNATURE\""
@@ -81,5 +81,5 @@ fi
 
 echo "[release] Next steps:"
 echo "  1. Upload $RELEASE_DIR/$ZIP_NAME to GitHub Releases as v$VERSION"
-echo "  2. Update appcast.xml on noetect.com with the XML above"
+echo "  2. Update appcast.xml on nomendex.com with the XML above"
 echo "  3. Test by running the previous version and checking for updates"

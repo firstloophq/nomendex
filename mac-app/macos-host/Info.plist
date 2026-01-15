@@ -5,13 +5,13 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>Noetect</string>
+  <string>Nomendex</string>
   <key>CFBundleIdentifier</key>
-  <string>com.firstloop.noetect</string>
+  <string>com.firstloop.nomendex</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Noetect</string>
+  <string>Nomendex</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -31,7 +31,7 @@
 
   <!-- Sparkle Auto-Update Configuration -->
   <key>SUFeedURL</key>
-  <string>https://releases.noetect.com/appcast.xml</string>
+  <string>https://releases.nomendex.com/appcast.xml</string>
   <key>SUPublicEDKey</key>
   <string>chyH/s9EXs0e7NxKo0LjrfrhdjpmhSeb1J7hSH4MUMI=</string>
   <key>SUEnableAutomaticChecks</key>

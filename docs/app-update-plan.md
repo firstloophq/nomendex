@@ -1,6 +1,6 @@
 # macOS App Update Plan
 
-This document outlines the automatic update system for the Noetect macOS app using [Sparkle](https://sparkle-project.org/).
+This document outlines the automatic update system for the Nomendex macOS app using [Sparkle](https://sparkle-project.org/).
 
 ## Status: Implemented
 
@@ -10,10 +10,10 @@ Sparkle has been integrated into the build system. Follow the setup steps below 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Noetect.app                            │
+│                      Nomendex.app                            │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Sparkle.framework                                   │   │
-│  │  - Checks https://noetect.com/appcast.xml daily     │   │
+│  │  - Checks https://nomendex.com/appcast.xml daily     │   │
 │  │  - Downloads updates from GitHub Releases           │   │
 │  │  - Verifies EdDSA signatures                        │   │
 │  │  - Runs Autoupdate helper for install/relaunch      │   │
@@ -22,14 +22,14 @@ Sparkle has been integrated into the build system. Follow the setup steps below 
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  noetect.com                                                │
+│  nomendex.com                                                │
 │  - /appcast.xml (version manifest, points to GitHub)       │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  GitHub Releases                                            │
-│  - Noetect-x.x.x.zip (signed releases)                     │
+│  - Nomendex-x.x.x.zip (signed releases)                     │
 │  - Free, reliable hosting with CDN                          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -76,7 +76,7 @@ make sparkle-release VERSION=0.2.0
 ```
 
 This will:
-- Create `releases/Noetect-0.2.0.zip`
+- Create `releases/Nomendex-0.2.0.zip`
 - Sign it with your EdDSA key
 - Output the appcast.xml entry with the signature
 
@@ -84,12 +84,12 @@ This will:
 
 1. Go to your GitHub repo → Releases → Create new release
 2. Tag: `v0.2.0`
-3. Upload `releases/Noetect-0.2.0.zip`
+3. Upload `releases/Nomendex-0.2.0.zip`
 4. Publish
 
-### 6. Update appcast.xml on noetect.com
+### 6. Update appcast.xml on nomendex.com
 
-Host at `https://noetect.com/appcast.xml`. Use `mac-app/appcast-template.xml` as a starting point.
+Host at `https://nomendex.com/appcast.xml`. Use `mac-app/appcast-template.xml` as a starting point.
 
 Example entry:
 ```xml
@@ -107,7 +107,7 @@ Example entry:
     </ul>
   ]]></description>
   <enclosure
-    url="https://github.com/YOUR_ORG/noetect/releases/download/v0.2.0/Noetect-0.2.0.zip"
+    url="https://github.com/YOUR_ORG/nomendex/releases/download/v0.2.0/Nomendex-0.2.0.zip"
     length="15728640"
     type="application/octet-stream"
     sparkle:edSignature="YOUR_SIGNATURE_FROM_STEP_4"
@@ -130,9 +130,9 @@ For each new version:
    make sparkle-release VERSION=0.2.0
    ```
 
-3. Upload `releases/Noetect-0.2.0.zip` to GitHub Releases
+3. Upload `releases/Nomendex-0.2.0.zip` to GitHub Releases
 
-4. Update `appcast.xml` on noetect.com
+4. Update `appcast.xml` on nomendex.com
 
 5. Test: Install the previous version and check for updates
 

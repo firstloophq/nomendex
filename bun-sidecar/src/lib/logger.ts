@@ -12,7 +12,7 @@ const logLevels = {
 };
 
 // Centralized log directory in app support (shared across all workspaces)
-const LOG_DIR = join(homedir(), 'Library/Application Support/com.firstloop.noetect');
+const LOG_DIR = join(homedir(), 'Library/Application Support/com.firstloop.nomendex');
 const LOG_FILE = join(LOG_DIR, 'logs.txt');
 
 function getLogDir(): string {

@@ -2,12 +2,12 @@
  * Backlinks Service
  *
  * Manages the backlinks index for wiki-style [[links]] between notes.
- * Index is stored at {workspace}/.noetect/backlinks.json
+ * Index is stored at {workspace}/.nomendex/backlinks.json
  */
 
 import { mkdir } from "node:fs/promises";
 import { join } from "path";
-import { getNoetectPath, getNotesPath, hasActiveWorkspace } from "@/storage/root-path";
+import { getNomendexPath, getNotesPath, hasActiveWorkspace } from "@/storage/root-path";
 import {
     BacklinksIndex,
     BacklinksResult,
@@ -43,7 +43,7 @@ export function extractWikiLinks(content: string): string[] {
  * Get the path to the backlinks index file
  */
 function getIndexPath(): string {
-    return join(getNoetectPath(), "backlinks.json");
+    return join(getNomendexPath(), "backlinks.json");
 }
 
 /**
@@ -67,8 +67,8 @@ async function loadIndexFromDisk(): Promise<BacklinksIndex | null> {
  * Save the index to disk
  */
 async function saveIndexToDisk(indexToSave: BacklinksIndex): Promise<void> {
-    const noetectPath = getNoetectPath();
-    await mkdir(noetectPath, { recursive: true });
+    const nomendexPath = getNomendexPath();
+    await mkdir(nomendexPath, { recursive: true });
     const indexPath = getIndexPath();
     await Bun.write(indexPath, JSON.stringify(indexToSave, null, 2));
 }

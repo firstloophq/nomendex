@@ -236,7 +236,7 @@ export function WorkspaceSidebar() {
                     }}
                 >
                     <div className="text-xs" style={{ color: currentTheme.styles.contentSecondary }}>
-                        Noetect v{appVersion}
+                        Nomendex v{appVersion}
                     </div>
                 </div>
             </SidebarFooter>

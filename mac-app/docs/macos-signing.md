@@ -1,6 +1,6 @@
 # macOS App Signing & Notarization Guide
 
-This guide covers the complete process for signing and notarizing the Noetect macOS app for distribution.
+This guide covers the complete process for signing and notarizing the Nomendex macOS app for distribution.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ This will:
 
 # Custom paths
 ./scripts/sign_and_notarize.sh \
-  --app bundle/Noetect.app \
+  --app bundle/Nomendex.app \
   --identity "Developer ID Application: Caret AI, Inc (V655D7TG3T)" \
   --entitlements macos-host/entitlements.plist \
   --keychain-profile AC_NOTARY
@@ -101,8 +101,8 @@ Components must be signed from innermost to outermost:
 
 1. **Dylibs** — `Contents/Resources/sidecar/lib/*.dylib`
 2. **Sidecar binary** — `Contents/Resources/sidecar/sidecar`
-3. **Host binary** — `Contents/MacOS/Noetect`
-4. **App bundle** — `Noetect.app`
+3. **Host binary** — `Contents/MacOS/Nomendex`
+4. **App bundle** — `Nomendex.app`
 
 ## Entitlements
 
@@ -119,25 +119,25 @@ Located at `macos-host/entitlements.plist`:
 ### Check Signing Status
 ```bash
 # Basic verification
-codesign --verify --deep --strict --verbose=2 bundle/Noetect.app
+codesign --verify --deep --strict --verbose=2 bundle/Nomendex.app
 
 # Detailed signature info
-codesign -dvvv bundle/Noetect.app
+codesign -dvvv bundle/Nomendex.app
 
 # Gatekeeper check
-spctl -a -vvv -t install bundle/Noetect.app
+spctl -a -vvv -t install bundle/Nomendex.app
 ```
 
 **Expected output after notarization:**
 ```
-bundle/Noetect.app: accepted
+bundle/Nomendex.app: accepted
 source=Notarized Developer ID
 origin=Developer ID Application: Caret AI, Inc (V655D7TG3T)
 ```
 
 ### Check Notarization Ticket
 ```bash
-xcrun stapler validate bundle/Noetect.app
+xcrun stapler validate bundle/Nomendex.app
 ```
 
 ### Check Notarization History
@@ -212,6 +212,6 @@ xcrun notarytool info <submission-id> --keychain-profile AC_NOTARY
 
 After successful signing and notarization:
 
-- `bundle/Noetect.app` — Signed and notarized app bundle
-- `bundle/Noetect.zip` — Archive used for notarization submission
-- `bundle/Noetect.dmg` — (Optional) DMG for distribution
+- `bundle/Nomendex.app` — Signed and notarized app bundle
+- `bundle/Nomendex.zip` — Archive used for notarization submission
+- `bundle/Nomendex.dmg` — (Optional) DMG for distribution

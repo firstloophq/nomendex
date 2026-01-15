@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Remove Noetect Dev from Applications
+# Remove Nomendex Dev from Applications
 
-echo "Removing Noetect Dev from /Applications..."
-rm -rf "/Applications/Noetect Dev.app"
+echo "Removing Nomendex Dev from /Applications..."
+rm -rf "/Applications/Nomendex Dev.app"
 
-echo "Done! Noetect Dev has been removed."
+echo "Done! Nomendex Dev has been removed."

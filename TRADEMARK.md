@@ -6,7 +6,7 @@ This project’s source is available under the terms in `LICENSE`. Trademarks ar
 
 The following are trademarks of the Licensor (or used by the Licensor as marks), and are **not** granted under the software license:
 
-- Project name: Noetect
+- Project name: Nomendex
 - Logos, wordmarks, icons, and brand assets in:
   - `./assets/logo.png`
 

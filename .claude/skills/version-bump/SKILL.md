@@ -57,7 +57,7 @@ Follow semantic versioning with optional pre-release identifiers:
    - Build and sign the app
    - Notarize with Apple
    - Create GitHub release with tag `v{version}`
-   - Update the appcast at releases.noetect.com
+   - Update the appcast at releases.nomendex.com
 
 ## Where Version is Used
 

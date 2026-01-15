@@ -73,7 +73,7 @@ export function WorkspaceOnboarding() {
                 >
                     <FolderOpen className="size-12" style={{ color: currentTheme.styles.contentPrimary }} />
                 </div>
-                <h1 className="text-2xl font-semibold">Welcome to Noetect</h1>
+                <h1 className="text-2xl font-semibold">Welcome to Nomendex</h1>
                 <p style={{ color: currentTheme.styles.contentSecondary }}>
                     Choose a folder to use as your workspace. Your todos, notes, and settings will be stored there.
                 </p>

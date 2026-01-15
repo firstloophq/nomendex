@@ -3,7 +3,7 @@ import path from "path";
 
 interface PathCache {
     rootPath: string;
-    noetectPath: string;
+    nomendexPath: string;
     todosPath: string;
     notesPath: string;
     agentsPath: string;
@@ -26,7 +26,7 @@ export async function initializePaths(): Promise<void> {
 
     paths = {
         rootPath: workspace.path,
-        noetectPath: path.join(workspace.path, ".noetect"),
+        nomendexPath: path.join(workspace.path, ".nomendex"),
         todosPath: path.join(workspace.path, "todos"),
         notesPath: path.join(workspace.path, "notes"),
         agentsPath: path.join(workspace.path, "agents"),
@@ -52,12 +52,12 @@ export function getRootPath(): string {
 }
 
 /**
- * Get the .noetect path of the active workspace (for internal files like workspace.json, secrets.json).
+ * Get the .nomendex path of the active workspace (for internal files like workspace.json, secrets.json).
  * @throws Error if no workspace is active
  */
-export function getNoetectPath(): string {
+export function getNomendexPath(): string {
     if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
-    return paths.noetectPath;
+    return paths.nomendexPath;
 }
 
 /**

@@ -33,7 +33,7 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.center()
-        window.title = "Noetect"
+        window.title = "Nomendex"
         window.isReleasedWhenClosed = false
 
         // Obsidian-style title bar: transparent with content extending behind

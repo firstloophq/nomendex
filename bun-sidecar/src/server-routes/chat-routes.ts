@@ -2,7 +2,7 @@ import { query, type SDKMessage, type McpServerConfig } from "@anthropic-ai/clau
 import { existsSync, mkdirSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { getRootPath, getNoetectPath, getUploadsPath } from "@/storage/root-path";
+import { getRootPath, getNomendexPath, getUploadsPath } from "@/storage/root-path";
 import { getAgent, getPreferences, savePreferences, addAllowedTool, getAgentAllowedTools } from "@/features/agents/fx";
 import { DEFAULT_AGENT, MCP_REGISTRY } from "@/features/agents/index";
 import { listUserMcpServers, expandEnvVars } from "@/features/mcp-servers/fx";
@@ -238,7 +238,7 @@ setInterval(() => {
 
 // File paths - computed dynamically
 function getSessionsFile(): string {
-    return join(getNoetectPath(), "chat-sessions.jsonl");
+    return join(getNomendexPath(), "chat-sessions.jsonl");
 }
 // Claude sessions directory - computed from workspace path
 function getClaudeSessionsDir(): string {

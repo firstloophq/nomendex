@@ -406,7 +406,7 @@ export const gitCommitRoute: RouteHandler<GitSyncResponse> = {
             const hasStagedChanges = await git.hasStagedChanges();
 
             if (hasStagedChanges) {
-                const commitMessage = `Sync from Noetect - ${new Date().toISOString()}`;
+                const commitMessage = `Sync from Nomendex - ${new Date().toISOString()}`;
                 const sha = await git.commit(commitMessage);
                 logger.info("Changes committed", { sha: sha.slice(0, 7) });
 
@@ -473,7 +473,7 @@ export const gitPushRoute: RouteHandler<GitSyncResponse> = {
             let hasChanges = false;
 
             if (hasStagedChanges) {
-                const commitMessage = `Sync from Noetect - ${new Date().toISOString()}`;
+                const commitMessage = `Sync from Nomendex - ${new Date().toISOString()}`;
                 await git.commit(commitMessage);
                 logger.info("Changes committed");
                 hasChanges = true;

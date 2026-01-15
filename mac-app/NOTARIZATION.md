@@ -38,26 +38,26 @@ Once status changes from "In Progress" to "Accepted":
 1. **Staple the ticket to the app:**
 ```bash
 cd /Users/jacobcolling/mcp-client/mac-app
-xcrun stapler staple bundle/Noetect.app
+xcrun stapler staple bundle/Nomendex.app
 ```
 
 2. **Verify stapling:**
 ```bash
-xcrun stapler validate bundle/Noetect.app
+xcrun stapler validate bundle/Nomendex.app
 ```
 
 3. **Create notarized DMG:**
 ```bash
 create-dmg \
-  --volname "Noetect" \
+  --volname "Nomendex" \
   --window-pos 200 120 \
   --window-size 800 400 \
   --icon-size 100 \
-  --icon "Noetect.app" 200 190 \
-  --hide-extension "Noetect.app" \
+  --icon "Nomendex.app" 200 190 \
+  --hide-extension "Nomendex.app" \
   --app-drop-link 600 185 \
-  "Noetect-notarized.dmg" \
-  "bundle/Noetect.app"
+  "Nomendex-notarized.dmg" \
+  "bundle/Nomendex.app"
 ```
 
 Or simply re-run the script with DMG flag:
