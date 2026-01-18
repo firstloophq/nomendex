@@ -960,46 +960,6 @@ export const chatRoutes = {
         },
     },
 
-    "/api/chat/sessions/history/*": {
-        async GET(req: Request) {
-            try {
-                const url = new URL(req.url);
-                const pathParts = url.pathname.split("/");
-                // Session ID is at the end: /api/chat/sessions/history/{sessionId}
-                const sessionId = pathParts[pathParts.length - 1];
-                const claudeDir = getClaudeSessionsDir();
-                const sessionFile = join(claudeDir, `${sessionId}.jsonl`);
-
-                chatLogger.info("Loading session history", {
-                    sessionId,
-                    claudeDir,
-                    sessionFile,
-                    dirExists: existsSync(claudeDir),
-                    fileExists: existsSync(sessionFile)
-                });
-
-                if (!existsSync(sessionFile)) {
-                    chatLogger.warn("Session file not found", { sessionFile });
-                    return Response.json(
-                        { error: "Session not found", sessionFile },
-                        { status: 404 }
-                    );
-                }
-
-                const messages = await readJSONL<SDKMessage>(sessionFile);
-                console.log(`[API] Loaded ${messages.length} messages for session ${sessionId}`);
-
-                return Response.json({ messages });
-            } catch (error) {
-                console.error("[API] Error loading session history:", error);
-                return Response.json(
-                    { error: "Failed to load session history" },
-                    { status: 500 }
-                );
-            }
-        },
-    },
-
     "/api/chat/sessions/update": {
         async PUT(req: Request) {
             try {
@@ -1162,6 +1122,47 @@ export const chatRoutes = {
                 console.error("[API] Error searching sessions:", error);
                 return Response.json(
                     { error: "Failed to search sessions" },
+                    { status: 500 }
+                );
+            }
+        },
+    },
+
+    // Wildcard route MUST be last to avoid matching specific routes like /delete, /update, /search
+    "/api/chat/sessions/history/*": {
+        async GET(req: Request) {
+            try {
+                const url = new URL(req.url);
+                const pathParts = url.pathname.split("/");
+                // Session ID is at the end: /api/chat/sessions/history/{sessionId}
+                const sessionId = pathParts[pathParts.length - 1];
+                const claudeDir = getClaudeSessionsDir();
+                const sessionFile = join(claudeDir, `${sessionId}.jsonl`);
+
+                chatLogger.info("Loading session history", {
+                    sessionId,
+                    claudeDir,
+                    sessionFile,
+                    dirExists: existsSync(claudeDir),
+                    fileExists: existsSync(sessionFile)
+                });
+
+                if (!existsSync(sessionFile)) {
+                    chatLogger.warn("Session file not found", { sessionFile });
+                    return Response.json(
+                        { error: "Session not found", sessionFile },
+                        { status: 404 }
+                    );
+                }
+
+                const messages = await readJSONL<SDKMessage>(sessionFile);
+                console.log(`[API] Loaded ${messages.length} messages for session ${sessionId}`);
+
+                return Response.json({ messages });
+            } catch (error) {
+                console.error("[API] Error loading session history:", error);
+                return Response.json(
+                    { error: "Failed to load session history" },
                     { status: 500 }
                 );
             }

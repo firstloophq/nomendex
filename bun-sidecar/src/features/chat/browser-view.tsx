@@ -5,6 +5,16 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Search, MessageCircle, Plus, Trash2, Maximize2 } from "lucide-react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useTheme } from "@/hooks/useTheme";
 import { reconstructMessages, type SessionMetadata, type ChatMessage } from "./sessionUtils";
 
@@ -80,6 +90,7 @@ export default function ChatBrowserView({ tabId }: { tabId: string }) {
     const [selectedSession, setSelectedSession] = useState<SessionWithSnippet | null>(null);
     const [selectedMessages, setSelectedMessages] = useState<ChatMessage[]>([]);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+    const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
 
     const searchInputRef = useRef<HTMLInputElement>(null);
     const selectedRowRef = useRef<HTMLDivElement | null>(null);
@@ -236,7 +247,15 @@ export default function ChatBrowserView({ tabId }: { tabId: string }) {
 
     const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!confirm("Delete this chat session?")) return;
+        e.preventDefault();
+        // Show AlertDialog instead of native confirm()
+        setDeleteSessionId(sessionId);
+    };
+
+    const confirmDeleteSession = async () => {
+        if (!deleteSessionId) return;
+        const sessionId = deleteSessionId;
+        setDeleteSessionId(null);
 
         try {
             const response = await fetch("/api/chat/sessions/delete", {
@@ -532,6 +551,22 @@ export default function ChatBrowserView({ tabId }: { tabId: string }) {
                     ) : null}
                 </div>
             </div>
+
+            {/* Delete Confirmation Dialog - uses React dialog instead of native confirm() for WKWebView compatibility */}
+            <AlertDialog open={!!deleteSessionId} onOpenChange={(open) => !open && setDeleteSessionId(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this chat session?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. The session will be removed from your history.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteSession}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
