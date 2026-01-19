@@ -9,6 +9,7 @@ interface SyncStatus {
     aheadCount: number;
     hasMergeConflict: boolean;
     lastChecked: Date | null;
+    lastSynced: Date | null;
     error: string | null;
 }
 
@@ -34,11 +35,12 @@ interface GHSyncContextValue {
 
 const GHSyncContext = createContext<GHSyncContextValue | null>(null);
 
-const POLL_INTERVAL = 60 * 1000; // 1 minute
+const POLL_INTERVAL = 60 * 1000; // 1 minute (fallback, now configurable)
+const CHANGE_DEBOUNCE_MS = 5000; // 5 seconds
 
 export function GHSyncProvider(props: { children: React.ReactNode }) {
     const { children } = props;
-    const { gitAuthMode, setGitAuthMode } = useWorkspaceContext();
+    const { gitAuthMode, setGitAuthMode, autoSync } = useWorkspaceContext();
     const [isReady, setIsReady] = useState(false);
     const [status, setStatus] = useState<SyncStatus>({
         checking: false,
@@ -47,6 +49,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
         aheadCount: 0,
         hasMergeConflict: false,
         lastChecked: null,
+        lastSynced: null,
         error: null,
     });
     const [setupStatus, setSetupStatus] = useState<SetupStatus>({
@@ -57,6 +60,8 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
         hasPAT: false,
     });
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const changeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const changeWatchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const syncRef = useRef<(() => Promise<void>) | null>(null);
 
     // Check if GitHub PAT is set
@@ -226,6 +231,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 behindCount: 0,
                 aheadCount: 0,
                 lastChecked: new Date(),
+                lastSynced: new Date(),
             }));
         } catch (error) {
             setStatus(s => ({
@@ -255,9 +261,9 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
         }
     }, [isReady, setupStatus.hasPAT, checkForChanges]);
 
-    // Poll for changes every minute
+    // Scheduled polling for remote changes (configurable interval)
     useEffect(() => {
-        if (!isReady) {
+        if (!isReady || !autoSync.enabled) {
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
                 pollIntervalRef.current = null;
@@ -265,9 +271,10 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
             return;
         }
 
+        const pollInterval = autoSync.intervalSeconds * 1000;
         pollIntervalRef.current = setInterval(() => {
             checkForChanges();
-        }, POLL_INTERVAL);
+        }, pollInterval);
 
         return () => {
             if (pollIntervalRef.current) {
@@ -275,7 +282,77 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 pollIntervalRef.current = null;
             }
         };
-    }, [isReady, checkForChanges]);
+    }, [isReady, autoSync.enabled, autoSync.intervalSeconds, checkForChanges]);
+
+    // File watching with debounce (polls git status every 3 seconds, debounces sync by 5 seconds)
+    useEffect(() => {
+        if (!isReady || !autoSync.enabled || !autoSync.syncOnChanges) {
+            if (changeDebounceRef.current) {
+                clearTimeout(changeDebounceRef.current);
+                changeDebounceRef.current = null;
+            }
+            if (changeWatchRef.current) {
+                clearTimeout(changeWatchRef.current);
+                changeWatchRef.current = null;
+            }
+            return;
+        }
+
+        let lastChangeDetected: number | null = null;
+        let isWatching = true;
+
+        const watchForChanges = async () => {
+            if (!isWatching) return;
+
+            try {
+                const response = await fetch("/api/git/status");
+                if (response.ok) {
+                    const data = await response.json();
+
+                    if (data.hasUncommittedChanges) {
+                        const now = Date.now();
+                        // Only reset timer if it's a new change window
+                        if (lastChangeDetected === null || now - lastChangeDetected > CHANGE_DEBOUNCE_MS) {
+                            lastChangeDetected = now;
+
+                            // Clear any existing debounce
+                            if (changeDebounceRef.current) {
+                                clearTimeout(changeDebounceRef.current);
+                            }
+
+                            // Sync after 5 seconds of no new changes
+                            changeDebounceRef.current = setTimeout(() => {
+                                syncRef.current?.();
+                            }, CHANGE_DEBOUNCE_MS);
+                        }
+                    }
+                }
+            } catch (error) {
+                // Ignore errors during status polling
+                console.error("Error watching for changes:", error);
+            }
+
+            // Schedule next check
+            if (isWatching) {
+                changeWatchRef.current = setTimeout(watchForChanges, 3000);
+            }
+        };
+
+        // Start watching
+        watchForChanges();
+
+        return () => {
+            isWatching = false;
+            if (changeDebounceRef.current) {
+                clearTimeout(changeDebounceRef.current);
+                changeDebounceRef.current = null;
+            }
+            if (changeWatchRef.current) {
+                clearTimeout(changeWatchRef.current);
+                changeWatchRef.current = null;
+            }
+        };
+    }, [isReady, autoSync.enabled, autoSync.syncOnChanges]);
 
     // Re-check ready state when navigating (in case user sets up git)
     useEffect(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { PluginInstance, PluginBase, SerializablePlugin } from "@/types/Plugin";
-import { WorkspaceState, WorkspaceTab, WorkspaceStateSchema, ProjectPreferences, GitAuthMode, NotesLocation } from "@/types/Workspace";
+import { WorkspaceState, WorkspaceTab, WorkspaceStateSchema, ProjectPreferences, GitAuthMode, NotesLocation, AutoSyncConfig } from "@/types/Workspace";
 import { type RouteParams } from "./useRouting";
 import { emit } from "@/lib/events";
 
@@ -15,6 +15,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         projectPreferences: {},
         gitAuthMode: "local",
         notesLocation: "root",
+        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60 },
     });
     const [loading, setLoading] = useState(true);
     const initialRouteHandledRef = useRef(false);
@@ -447,6 +448,17 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         [updateWorkspace]
     );
 
+    // Auto-sync config
+    const setAutoSyncConfig = useCallback(
+        (config: Partial<AutoSyncConfig>) => {
+            updateWorkspace((prev) => ({
+                ...prev,
+                autoSync: { ...prev.autoSync, ...config },
+            }));
+        },
+        [updateWorkspace]
+    );
+
     return {
         // State
         workspace,
@@ -494,5 +506,9 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         // Notes location
         notesLocation: workspace.notesLocation,
         setNotesLocation,
+
+        // Auto-sync
+        autoSync: workspace.autoSync,
+        setAutoSyncConfig,
     };
 }
