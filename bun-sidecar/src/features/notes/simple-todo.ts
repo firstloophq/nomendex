@@ -21,7 +21,7 @@ const TODO_MARKER_LENGTH = TODO_MARKER_TEMPLATE.length;
 // Match empty todo: just "- [ ] " with nothing after (or only whitespace)
 const EMPTY_TODO_REGEX = /^(\s*)- \[([ xX])\]\s*$/;
 // Match empty list todo: just "[ ] " with nothing after (in list item)
-const _EMPTY_LIST_TODO_REGEX = /^\[([ xX])\]\s*$/;
+const EMPTY_LIST_TODO_REGEX = /^\[([ xX])\]\s*$/;
 
 interface ParagraphRange {
   lineStart: number;
@@ -245,7 +245,7 @@ export const handleTodoEnter: Command = (state, dispatch) => {
 
   const lineText = state.doc.textBetween(paragraphRange.lineStart, paragraphRange.lineEnd);
 
-  // Check if this is an empty todo line
+  // Check if this is an empty standalone todo line
   const emptyMatch = lineText.match(EMPTY_TODO_REGEX);
   if (emptyMatch) {
     // Empty todo - remove the checkbox marker, leave empty line
@@ -257,7 +257,19 @@ export const handleTodoEnter: Command = (state, dispatch) => {
     return true;
   }
 
-  // Check if this is a todo line with content
+  // Check if this is an empty list item todo line
+  const emptyListMatch = lineText.match(EMPTY_LIST_TODO_REGEX);
+  if (emptyListMatch) {
+    // Empty list todo - remove the checkbox marker, leave empty line
+    if (dispatch) {
+      // Delete all content in the paragraph, leaving it empty
+      const tr = state.tr.delete(paragraphRange.lineStart, paragraphRange.lineEnd);
+      dispatch(tr.setSelection(TextSelection.create(tr.doc, paragraphRange.lineStart)));
+    }
+    return true;
+  }
+
+  // Check if this is a standalone todo line with content (- [ ] text)
   const todoMatch = lineText.match(TODO_REGEX);
   if (todoMatch) {
     if (dispatch) {
@@ -295,6 +307,49 @@ export const handleTodoEnter: Command = (state, dispatch) => {
 
       // Position cursor at start of new todo content (after "- [ ] ")
       const newCursorPos = insertPos + 1 + indent.length + TODO_MARKER_LENGTH;
+      dispatch(tr.setSelection(TextSelection.create(tr.doc, newCursorPos)));
+    }
+    return true;
+  }
+
+  // Check if this is a list item todo with content ([ ] text)
+  const listTodoMatch = lineText.match(LIST_TODO_REGEX);
+  if (listTodoMatch) {
+    if (dispatch) {
+      const cursorOffsetInLine = selection.from - paragraphRange.lineStart;
+
+      // Get the content after the cursor position
+      const textAfterCursor = lineText.slice(cursorOffsetInLine);
+
+      // Build the new todo line content for list item
+      // Add a space after the marker if no content, so cursor isn't right against checkbox
+      const contentAfter = textAfterCursor || " ";
+      const newTodoContent = `[ ] ${contentAfter}`;
+
+      // Get the paragraph end position (one level up from text position)
+      const paragraphEndPos = $from.after($from.depth);
+
+      // Create the new paragraph with todo content
+      const newParagraph = state.schema.nodes.paragraph.create(
+        null,
+        newTodoContent ? state.schema.text(newTodoContent) : null
+      );
+
+      let tr = state.tr;
+
+      // First, delete text after cursor in current paragraph
+      if (selection.from < paragraphRange.lineEnd) {
+        tr = tr.delete(selection.from, paragraphRange.lineEnd);
+      }
+
+      // Insert new paragraph after current one
+      // After deletion, the paragraph end position might have shifted
+      const insertPos = tr.mapping.map(paragraphEndPos);
+      tr = tr.insert(insertPos, newParagraph);
+
+      // Position cursor at start of new todo content (after "[ ] ")
+      // For list item todos, the marker is "[ ] " which is 4 characters
+      const newCursorPos = insertPos + 1 + 4;
       dispatch(tr.setSelection(TextSelection.create(tr.doc, newCursorPos)));
     }
     return true;
