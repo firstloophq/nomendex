@@ -25,6 +25,7 @@ import { NotesCommandMenu } from "./components/NotesCommandMenu";
 import { TabSwitcherMenu } from "./components/TabSwitcherMenu";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
 import { WorkspaceOnboarding } from "./components/WorkspaceOnboarding";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Bridge component for native Mac app keyboard handling
 function NativeKeyboardBridge() {
@@ -66,49 +67,51 @@ function WorkspaceGuard({ children }: { children: React.ReactNode }) {
 
 export function App() {
     return (
-        <ThemeProvider>
-            <NativeKeyboardBridge />
-            <UpdateNotificationBridge />
-            <BrowserRouter>
-                <RoutingProvider>
-                    <WorkspaceGuard>
-                        <WorkspaceProvider>
-                            <SkillUpdatesBridge />
-                            <KeyboardShortcutsProvider>
-                                <GHSyncProvider>
-                                    <CommandDialogProvider>
-                                        <Routes>
-                                            {/* Main workspace - handles tabs for todos, notes */}
-                                            <Route path="/" element={<WorkspacePage />} />
+        <ErrorBoundary>
+            <ThemeProvider>
+                <NativeKeyboardBridge />
+                <UpdateNotificationBridge />
+                <BrowserRouter>
+                    <RoutingProvider>
+                        <WorkspaceGuard>
+                            <WorkspaceProvider>
+                                <SkillUpdatesBridge />
+                                <KeyboardShortcutsProvider>
+                                    <GHSyncProvider>
+                                        <CommandDialogProvider>
+                                            <Routes>
+                                                {/* Main workspace - handles tabs for todos, notes */}
+                                                <Route path="/" element={<WorkspacePage />} />
 
-                                            {/* Settings and utility pages */}
-                                            <Route path="/settings" element={<SettingsPage />} />
-                                            <Route path="/help" element={<HelpPage />} />
-                                            <Route path="/agents" element={<AgentsPage />} />
-                                            <Route path="/new-agent" element={<NewAgentPage />} />
-                                            <Route path="/mcp-servers" element={<McpServersPage />} />
-                                            <Route path="/mcp-servers/new" element={<McpServerFormPage />} />
-                                            <Route path="/mcp-servers/:serverId/edit" element={<McpServerFormPage />} />
-                                            <Route path="/sync" element={<SyncPage />} />
-                                            <Route path="/sync/resolve" element={<ConflictResolvePage />} />
-                                            <Route path="/test-editor" element={<TestEditorPage />} />
+                                                {/* Settings and utility pages */}
+                                                <Route path="/settings" element={<SettingsPage />} />
+                                                <Route path="/help" element={<HelpPage />} />
+                                                <Route path="/agents" element={<AgentsPage />} />
+                                                <Route path="/new-agent" element={<NewAgentPage />} />
+                                                <Route path="/mcp-servers" element={<McpServersPage />} />
+                                                <Route path="/mcp-servers/new" element={<McpServerFormPage />} />
+                                                <Route path="/mcp-servers/:serverId/edit" element={<McpServerFormPage />} />
+                                                <Route path="/sync" element={<SyncPage />} />
+                                                <Route path="/sync/resolve" element={<ConflictResolvePage />} />
+                                                <Route path="/test-editor" element={<TestEditorPage />} />
 
-                                            {/* Catch-all redirect to root */}
-                                            <Route path="*" element={<Navigate to="/" replace />} />
-                                        </Routes>
-                                        <CommandMenu />
-                                        <NotesCommandMenu />
-                                        <TabSwitcherMenu />
-                                        <GHSyncSetupPrompt />
-                                    </CommandDialogProvider>
-                                </GHSyncProvider>
-                            </KeyboardShortcutsProvider>
-                        </WorkspaceProvider>
-                    </WorkspaceGuard>
-                </RoutingProvider>
-            </BrowserRouter>
-            <Toaster position="top-right" richColors />
-        </ThemeProvider>
+                                                {/* Catch-all redirect to root */}
+                                                <Route path="*" element={<Navigate to="/" replace />} />
+                                            </Routes>
+                                            <CommandMenu />
+                                            <NotesCommandMenu />
+                                            <TabSwitcherMenu />
+                                            <GHSyncSetupPrompt />
+                                        </CommandDialogProvider>
+                                    </GHSyncProvider>
+                                </KeyboardShortcutsProvider>
+                            </WorkspaceProvider>
+                        </WorkspaceGuard>
+                    </RoutingProvider>
+                </BrowserRouter>
+                <Toaster position="top-right" richColors />
+            </ThemeProvider>
+        </ErrorBoundary>
     );
 }
 

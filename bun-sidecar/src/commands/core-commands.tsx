@@ -386,5 +386,18 @@ export function getCoreCommands(context: CoreCommandContext): Command[] {
                 await logsAPI.reset();
             },
         },
+        {
+            id: "dev.triggerError",
+            name: "dev: Trigger Error",
+            description: "Throw an error to test the error boundary",
+            icon: "AlertTriangle",
+            callback: () => {
+                context.closeCommandMenu();
+                // Give the menu time to close before throwing
+                setTimeout(() => {
+                    throw new Error("Test error triggered from dev command");
+                }, 100);
+            },
+        },
     ];
 }
