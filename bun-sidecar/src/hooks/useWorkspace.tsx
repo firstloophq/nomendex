@@ -14,6 +14,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         themeName: "Light",
         projectPreferences: {},
         gitAuthMode: "local",
+        chatInputEnterToSend: true,
     });
     const [loading, setLoading] = useState(true);
     const initialRouteHandledRef = useRef(false);
@@ -438,6 +439,14 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         [updateWorkspace]
     );
 
+    // Chat input preferences
+    const setChatInputEnterToSend = useCallback(
+        (enabled: boolean) => {
+            updateWorkspace((prev) => ({ ...prev, chatInputEnterToSend: enabled }));
+        },
+        [updateWorkspace]
+    );
+
     return {
         // State
         workspace,
@@ -481,5 +490,9 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         // Git auth mode
         gitAuthMode: workspace.gitAuthMode,
         setGitAuthMode,
+
+        // Chat input preferences
+        chatInputEnterToSend: workspace.chatInputEnterToSend,
+        setChatInputEnterToSend,
     };
 }

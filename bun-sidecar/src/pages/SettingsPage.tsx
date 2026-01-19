@@ -15,6 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 
 import { RotateCcw, Eye, EyeOff, Check, X, Key, RefreshCw, Info } from "lucide-react";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 type SecretInfo = {
     key: string;
@@ -31,6 +34,7 @@ function SettingsContent() {
     const [recordingKeys, setRecordingKeys] = useState<string[]>([]);
     const { setTheme, themes, currentTheme } = useTheme();
     const { shortcuts, updateShortcut, resetShortcut, resetAllShortcuts } = useKeyboardShortcuts();
+    const { chatInputEnterToSend, setChatInputEnterToSend } = useWorkspace();
 
     // Secrets state
     const [secrets, setSecrets] = useState<SecretInfo[]>([]);
@@ -202,6 +206,7 @@ function SettingsContent() {
             <Tabs defaultValue="keyboard" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="keyboard">Keyboard Shortcuts</TabsTrigger>
+                    <TabsTrigger value="preferences">Preferences</TabsTrigger>
                     <TabsTrigger value="theme">Theme</TabsTrigger>
                     <TabsTrigger value="secrets">API Keys</TabsTrigger>
                     <TabsTrigger value="about">About</TabsTrigger>
@@ -331,6 +336,33 @@ function SettingsContent() {
                                     </Table>
                                 </div>
                             ))}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="preferences">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Chat Input Preferences</CardTitle>
+                            <CardDescription>Customize how the chat input behaves</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="enter-to-send" className="text-base">
+                                        Enter sends message
+                                    </Label>
+                                    <p className="text-sm" style={{ color: currentTheme.styles.contentSecondary }}>
+                                        When enabled, pressing Enter sends the message. Use Shift+Enter to add a new line.
+                                        When disabled, Enter adds a new line.
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="enter-to-send"
+                                    checked={chatInputEnterToSend}
+                                    onCheckedChange={setChatInputEnterToSend}
+                                />
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>

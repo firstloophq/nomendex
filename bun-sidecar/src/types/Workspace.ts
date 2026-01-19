@@ -28,6 +28,7 @@ export const WorkspaceStateSchema = z.object({
     themeName: z.string().default("Light"),
     projectPreferences: z.record(z.string(), ProjectPreferencesSchema).default({}),
     gitAuthMode: GitAuthModeSchema.default("local"),
+    chatInputEnterToSend: z.boolean().default(true),
 });
 
 export type WorkspaceTab = z.infer<typeof WorkspaceTabSchema>;

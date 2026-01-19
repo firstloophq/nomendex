@@ -62,7 +62,7 @@ export type ChatViewProps = {
 
 export default function ChatView({ sessionId: initialSessionId, tabId, initialPrompt }: ChatViewProps) {
     const { currentTheme } = useTheme();
-    const { setTabName, activeTab, setActiveTabId } = useWorkspaceContext();
+    const { setTabName, activeTab, setActiveTabId, chatInputEnterToSend } = useWorkspaceContext();
 
     // Chat state
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -955,6 +955,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                         ref={inputRef}
                         placeholder={isLoading ? "Type to queue next message..." : "Message..."}
                         disabled={!!pendingPermission}
+                        enterToSend={chatInputEnterToSend}
                     />
                     <ProseMirrorPromptFooter className="justify-between">
                         <div className="flex items-center gap-1">

@@ -18,6 +18,7 @@ type ProseMirrorChatInputProps = {
     onChange?: (content: string) => void;
     className?: string;
     disabled?: boolean;
+    enterToSend?: boolean;
 };
 
 export type ProseMirrorChatInputHandle = {
@@ -28,7 +29,7 @@ export type ProseMirrorChatInputHandle = {
 };
 
 export const ProseMirrorChatInput = forwardRef<ProseMirrorChatInputHandle, ProseMirrorChatInputProps>(
-    ({ placeholder = "Message...", onSubmit, onChange, className, disabled = false }, ref) => {
+    ({ placeholder = "Message...", onSubmit, onChange, className, disabled = false, enterToSend = true }, ref) => {
         const editorRef = useRef<HTMLDivElement | null>(null);
         const viewRef = useRef<EditorView | null>(null);
         const [isEmpty, setIsEmpty] = useState(true);
@@ -229,24 +230,29 @@ export const ProseMirrorChatInput = forwardRef<ProseMirrorChatInputHandle, Prose
                     }
                     return false; // Let default handling proceed
                 },
-                // Handle Enter to submit, Shift+Enter to insert newline
+                // Handle Enter to submit, Shift+Enter to insert newline (based on enterToSend setting)
                 handleKeyDown(view, event) {
                     if (event.key === "Enter") {
                         // Don't handle Enter if file picker or skill picker is open
                         if (filePickerOpenRef.current || skillPickerOpenRef.current) return false;
 
-                        // Shift+Enter inserts a newline (default behavior)
-                        if (event.shiftKey) {
-                            return false; // Let default handler insert newline
-                        }
+                        if (enterToSend) {
+                            // New behavior: Enter sends, Shift+Enter inserts newline
+                            if (event.shiftKey) {
+                                return false; // Let default handler insert newline
+                            }
 
-                        // Plain Enter submits the message
-                        event.preventDefault();
-                        const content = defaultMarkdownSerializer.serialize(view.state.doc);
-                        if (content.trim() && onSubmitRef.current) {
-                            onSubmitRef.current({ text: content.trim() });
+                            // Plain Enter submits the message
+                            event.preventDefault();
+                            const content = defaultMarkdownSerializer.serialize(view.state.doc);
+                            if (content.trim() && onSubmitRef.current) {
+                                onSubmitRef.current({ text: content.trim() });
+                            }
+                            return true; // Handled
+                        } else {
+                            // Old behavior: Enter inserts newline (default)
+                            return false;
                         }
-                        return true; // Handled
                     }
                     return false; // Let other handlers process
                 },
