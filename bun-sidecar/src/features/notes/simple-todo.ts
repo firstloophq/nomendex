@@ -102,6 +102,69 @@ function toggleTodoWithinRange(
   selectionOffsets?: SelectionOffsets,
 ): boolean {
   const lineText = state.doc.textBetween(range.lineStart, range.lineEnd);
+
+  // Check if this is a todo toggle (checkbox state change)
+  const todoMatch = lineText.match(TODO_REGEX);
+  const listTodoMatch = lineText.match(LIST_TODO_REGEX);
+
+  if (todoMatch) {
+    // Standalone paragraph todo: "- [ ] text" -> "- [x] text"
+    // Preserve inline nodes by only replacing the checkbox character
+    const indent = todoMatch[1] ?? "";
+    const currentChecked = (todoMatch[2] ?? "").trim().toLowerCase();
+    const newChecked = currentChecked === "x" ? " " : "x";
+
+    // Find the checkbox character position (after "- [" or indentation + "- [")
+    const checkboxPos = range.lineStart + indent.length + 3; // Position of space/x in "- [ ]"
+
+    let transaction = state.tr.replaceWith(
+      checkboxPos,
+      checkboxPos + 1,
+      state.schema.text(newChecked),
+    );
+
+    if (selectionOffsets) {
+      const maxOffset = lineText.length;
+      const anchorPos = range.lineStart + clampOffset(selectionOffsets.anchor, maxOffset);
+      const headPos = range.lineStart + clampOffset(selectionOffsets.head, maxOffset);
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, anchorPos, headPos));
+    }
+
+    if (dispatch) {
+      dispatch(transaction);
+    }
+
+    return true;
+  } else if (listTodoMatch) {
+    // List item todo: "[ ] text" -> "[x] text"
+    // Preserve inline nodes by only replacing the checkbox character
+    const currentChecked = (listTodoMatch[1] ?? "").trim().toLowerCase();
+    const newChecked = currentChecked === "x" ? " " : "x";
+
+    // Find the checkbox character position (after "[")
+    const checkboxPos = range.lineStart + 1; // Position of space/x in "[ ]"
+
+    let transaction = state.tr.replaceWith(
+      checkboxPos,
+      checkboxPos + 1,
+      state.schema.text(newChecked),
+    );
+
+    if (selectionOffsets) {
+      const maxOffset = lineText.length;
+      const anchorPos = range.lineStart + clampOffset(selectionOffsets.anchor, maxOffset);
+      const headPos = range.lineStart + clampOffset(selectionOffsets.head, maxOffset);
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, anchorPos, headPos));
+    }
+
+    if (dispatch) {
+      dispatch(transaction);
+    }
+
+    return true;
+  }
+
+  // For non-todo lines (bullets, plain text), use the old logic with full text replacement
   const replacement = computeTodoReplacement(lineText);
 
   if (!replacement) {
