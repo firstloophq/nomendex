@@ -25,6 +25,7 @@ export const workspaceRoutes = {
                         projectPreferences: {},
                         gitAuthMode: "local",
                         notesLocation: "root",
+                        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60 },
                     };
                     await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
 
@@ -137,6 +138,7 @@ export const workspaceRoutes = {
                         projectPreferences: {},
                         gitAuthMode: "local",
                         notesLocation: "root",
+                        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60 },
                     };
                 }
 
