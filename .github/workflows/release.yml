@@ -2,6 +2,9 @@ name: Release macOS App
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 env:
   APP_NAME: Nomendex
@@ -12,6 +15,12 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-latest
+    # Run if manually triggered OR if a PR with 'trigger-release' label was merged
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       contains(github.event.pull_request.labels.*.name, 'trigger-release'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4
