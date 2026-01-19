@@ -8,6 +8,7 @@ import { useNotesAPI } from "@/hooks/useNotesAPI";
 import { useTheme } from "@/hooks/useTheme";
 import { todosPluginSerial } from "@/features/todos";
 import { notesPluginSerial } from "@/features/notes";
+import { TaskCardEditor } from "@/features/todos/TaskCardEditor";
 import type { Todo } from "@/features/todos/todo-types";
 import type { Note } from "@/features/notes";
 import type { ProjectDetailViewProps } from "./index";
@@ -23,6 +24,11 @@ export function ProjectDetailView({ tabId, projectName }: { tabId: string } & Pr
     const [todos, setTodos] = useState<Todo[]>([]);
     const [notes, setNotes] = useState<Note[]>([]);
     const [showAllNotes, setShowAllNotes] = useState(false);
+    const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [todoToEdit, setTodoToEdit] = useState<Todo | null>(null);
+    const [editSaving, setEditSaving] = useState(false);
+    const [availableTags, setAvailableTags] = useState<string[]>([]);
+    const [availableProjects, setAvailableProjects] = useState<string[]>([]);
     const { currentTheme } = useTheme();
     const placement = getViewSelfPlacement(tabId);
 
@@ -39,21 +45,25 @@ export function ProjectDetailView({ tabId, projectName }: { tabId: string } & Pr
         }
     }, [activeTab?.id, tabId, projectName, setTabName]);
 
-    // Load todos and notes for this project
+    // Load todos, notes, tags, and projects for this project
     useEffect(() => {
         const fetchData = async () => {
             try {
                 setLoading(true);
                 setError(null);
 
-                const [todosResult, notesResult] = await Promise.all([
+                const [todosResult, notesResult, tagsResult, projectsResult] = await Promise.all([
                     todosAPI.getTodos({ project: projectName }),
                     notesAPI.getNotesByProject({ project: projectName }),
+                    todosAPI.getTags(),
+                    todosAPI.getProjects(),
                 ]);
 
                 setTodos(todosResult);
                 notesResult.sort((a, b) => a.fileName.localeCompare(b.fileName));
                 setNotes(notesResult);
+                setAvailableTags(tagsResult);
+                setAvailableProjects(projectsResult);
             } catch (err) {
                 const errorMessage = err instanceof Error ? err.message : "Failed to fetch project data";
                 setError(errorMessage);
@@ -64,23 +74,47 @@ export function ProjectDetailView({ tabId, projectName }: { tabId: string } & Pr
         fetchData();
     }, [projectName, todosAPI, notesAPI, setLoading, setError]);
 
-    // Open todo
+    // Open todo in dialog
     const handleOpenTodo = useCallback(
-        async (todoId: string) => {
-            const newTab = await addNewTab({
-                pluginMeta: todosPluginSerial,
-                view: "editor",
-                props: { todoId },
-            });
-            if (newTab) {
-                if (placement === "sidebar") {
-                    setSidebarTabId(newTab.id);
-                } else {
-                    setActiveTabId(newTab.id);
-                }
+        (todoId: string) => {
+            const todo = todos.find((t) => t.id === todoId);
+            if (todo) {
+                setTodoToEdit(todo);
+                setEditDialogOpen(true);
             }
         },
-        [addNewTab, placement, setActiveTabId, setSidebarTabId]
+        [todos]
+    );
+
+    // Save todo from dialog
+    const handleSaveTodo = useCallback(
+        async (updatedTodo: Todo) => {
+            setEditSaving(true);
+            try {
+                await todosAPI.updateTodo({
+                    todoId: updatedTodo.id,
+                    updates: {
+                        title: updatedTodo.title,
+                        description: updatedTodo.description,
+                        status: updatedTodo.status,
+                        project: updatedTodo.project,
+                        tags: updatedTodo.tags,
+                        dueDate: updatedTodo.dueDate,
+                        attachments: updatedTodo.attachments,
+                    },
+                });
+                setEditDialogOpen(false);
+                setTodoToEdit(null);
+                // Refresh todos
+                const todosResult = await todosAPI.getTodos({ project: projectName });
+                setTodos(todosResult);
+            } catch (err) {
+                console.error("Failed to save todo:", err);
+            } finally {
+                setEditSaving(false);
+            }
+        },
+        [todosAPI, projectName]
     );
 
     // Open note
@@ -107,7 +141,7 @@ export function ProjectDetailView({ tabId, projectName }: { tabId: string } & Pr
         async () => {
             const newTab = await addNewTab({
                 pluginMeta: todosPluginSerial,
-                view: "kanban",
+                view: "browser",
                 props: { project: projectName },
             });
             if (newTab) {
@@ -460,6 +494,17 @@ export function ProjectDetailView({ tabId, projectName }: { tabId: string } & Pr
                     </>
                 )}
             </div>
+
+            {/* Edit Todo Dialog */}
+            <TaskCardEditor
+                todo={todoToEdit}
+                open={editDialogOpen}
+                onOpenChange={setEditDialogOpen}
+                onSave={handleSaveTodo}
+                saving={editSaving}
+                availableTags={availableTags}
+                availableProjects={availableProjects}
+            />
         </div >
     );
 }
