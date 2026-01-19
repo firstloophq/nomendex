@@ -2513,6 +2513,11 @@
       font-weight: var(--font-weight-normal);
     }
   }
+  .placeholder\:text-\[var\(--input-placeholder\)\] {
+    &::placeholder {
+      color: var(--input-placeholder);
+    }
+  }
   .after\:absolute {
     &::after {
       content: var(--tw-content);
