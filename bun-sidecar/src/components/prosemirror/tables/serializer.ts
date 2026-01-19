@@ -126,25 +126,29 @@ const nodeSerializers = {
             state.write(prefix);
 
             // Render remaining content after the prefix
-            let charsToSkip = prefix.length;
+            // We need to track position in the text content, not child nodes
+            let textOffset = 0;
+            const prefixLength = prefix.length;
+
             node.forEach((child) => {
-                if (charsToSkip > 0) {
-                    if (child.isText && child.text) {
-                        if (child.text.length <= charsToSkip) {
-                            // Skip this entire text node
-                            charsToSkip -= child.text.length;
-                        } else {
-                            // Partially skip this text node, render the rest
-                            const remaining = child.text.slice(charsToSkip);
-                            charsToSkip = 0;
+                if (child.isText && child.text) {
+                    const childTextLength = child.text.length;
+                    const childTextEnd = textOffset + childTextLength;
+
+                    // Check if this text node extends beyond the prefix
+                    if (childTextEnd > prefixLength) {
+                        // Calculate how much of this text node is part of the prefix
+                        const skipInThisNode = Math.max(0, prefixLength - textOffset);
+                        const remaining = child.text.slice(skipInThisNode);
+                        if (remaining) {
                             state.text(remaining);
                         }
                     }
-                } else {
-                    // Render the full child node
-                    if (child.isText) {
-                        state.text(child.text || "");
-                    } else if (child.type.name === "wiki_link") {
+
+                    textOffset = childTextEnd;
+                } else if (textOffset >= prefixLength) {
+                    // We've passed the prefix, render non-text nodes normally
+                    if (child.type.name === "wiki_link") {
                         const href = child.attrs.href || "";
                         const title = child.attrs.title || "";
                         if (title && title !== href) {
