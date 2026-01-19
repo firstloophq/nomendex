@@ -150,6 +150,12 @@ import { KeyboardIndicator } from "@/components/KeyboardIndicator";
 <Button><KeyboardIndicator keys={['cmd', 'n']} /> New</Button>
 ```
 
+### Application Design Principles
+- Reuse previously defined components over creating net new code. Especially when reusing dialogs and similar.
+- Try to hide buttons to keep visual complexity down. Reveal on hover is a good technique.
+- Always use `useTheme` for styling
+- Add commands for functionality over discrete buttons
+
 ## Critical Implementation Rules
 
 ### Type Safety
