@@ -10,6 +10,7 @@ import { useRouting } from "@/hooks/useRouting";
 import { notesAPI } from "@/hooks/useNotesAPI";
 import { notesPluginSerial } from "@/features/notes";
 import { KeyboardIndicator } from "@/components/KeyboardIndicator";
+import { useNativeSubmit } from "@/hooks/useNativeKeyboardBridge";
 import { getDailyNoteFileName, parseDateFromInput } from "./date-utils";
 
 interface DailyNoteDatePickerDialogProps {
@@ -82,18 +83,12 @@ export function DailyNoteDatePickerDialog({ onSuccess }: DailyNoteDatePickerDial
         }
     }, [selectedDate, addNewTab, setActiveTabId, closeDialog, onSuccess, currentPath, navigate]);
 
-    // Add CMD+Enter keyboard shortcut support
-    React.useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                e.preventDefault();
-                handleSubmit();
-            }
-        };
-
-        document.addEventListener("keydown", handleKeyDown);
-        return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [handleSubmit]);
+    // Add CMD+Enter keyboard shortcut support for Mac app
+    useNativeSubmit(() => {
+        if (selectedDate && !isOpening) {
+            handleSubmit();
+        }
+    });
 
     const formattedDate = React.useMemo(() => {
         return selectedDate.toLocaleDateString("en-US", {
