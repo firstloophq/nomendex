@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Search, MessageCircle, Plus, Trash2, Maximize2 } from "lucide-react";
+import { useCommandDialog } from "@/components/CommandDialogProvider";
 import { useTheme } from "@/hooks/useTheme";
+import { DeleteChatSessionDialog } from "./delete-chat-session-dialog";
 import { reconstructMessages, type SessionMetadata, type ChatMessage } from "./sessionUtils";
 
 type SessionWithSnippet = SessionMetadata & {
@@ -70,6 +72,7 @@ function highlightMatches(
 export default function ChatBrowserView({ tabId }: { tabId: string }) {
     const { setTabName, addNewTab, setActiveTabId, getViewSelfPlacement, setSidebarTabId, activeTab } = useWorkspaceContext();
     const { currentTheme } = useTheme();
+    const { openDialog } = useCommandDialog();
 
     const [sessions, setSessions] = useState<SessionMetadata[]>([]);
     const [filteredSessions, setFilteredSessions] = useState<SessionWithSnippet[]>([]);
@@ -234,21 +237,11 @@ export default function ChatBrowserView({ tabId }: { tabId: string }) {
         }
     }, [addNewTab, setActiveTabId, placement, setSidebarTabId]);
 
-    const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!confirm("Delete this chat session?")) return;
+        e.preventDefault();
 
-        try {
-            const response = await fetch("/api/chat/sessions/delete", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: sessionId }),
-            });
-
-            if (!response.ok) {
-                throw new Error("Failed to delete session");
-            }
-
+        const handleSuccess = () => {
             // Remove from local state
             setSessions(prev => prev.filter(s => s.id !== sessionId));
             setFilteredSessions(prev => prev.filter(s => s.id !== sessionId));
@@ -263,9 +256,16 @@ export default function ChatBrowserView({ tabId }: { tabId: string }) {
                     setSelectedSession(null);
                 }
             }
-        } catch (error) {
-            console.error("[ChatBrowser] Failed to delete session:", error);
-        }
+        };
+
+        openDialog({
+            content: (
+                <DeleteChatSessionDialog
+                    sessionId={sessionId}
+                    onSuccess={handleSuccess}
+                />
+            ),
+        });
     };
 
     // Keyboard navigation

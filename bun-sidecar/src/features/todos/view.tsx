@@ -18,11 +18,13 @@ const statusOptions = [
     { value: "later", label: "Later", color: "bg-purple-100 text-purple-800" },
 ];
 
+import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 
-export function TodosView({ todoId }: { todoId: string }) {
+export function TodosView({ todoId, tabId }: { todoId: string; tabId: string }) {
     // Debug logging to see what props we're receiving
-    console.log("TodosView received props:", { todoId });
+    console.log("TodosView received props:", { todoId, tabId });
 
+    const { closeTab } = useWorkspaceContext();
     const { loading, setLoading } = usePlugin();
 
     const todosAPI = useTodosAPI();
@@ -110,7 +112,7 @@ export function TodosView({ todoId }: { todoId: string }) {
                 <div className="text-center py-8">
                     <h2 className="text-xl font-semibold mb-2">Todo Not Found</h2>
                     <p className="text-muted-foreground mb-4">The todo "{todoId}" could not be loaded.</p>
-                    <Button onClick={() => {}}>
+                    <Button onClick={() => closeTab(tabId)}>
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         Back to Todos
                     </Button>
@@ -121,14 +123,13 @@ export function TodosView({ todoId }: { todoId: string }) {
 
     return (
         <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
+            <div className="flex items-start justify-between">
+                <div className="flex items-start space-x-4">
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                            console.log("IMPLEMENT BACK BUTTON");
-                        }}
+                        className="cursor-pointer"
+                        onClick={() => closeTab(tabId)}
                     >
                         <ArrowLeft className="w-4 h-4 mr-2" />
                         Back
@@ -139,7 +140,7 @@ export function TodosView({ todoId }: { todoId: string }) {
                     </div>
                 </div>
 
-                <Button onClick={saveTodo} disabled={saving}>
+                <Button onClick={saveTodo} disabled={saving} className="cursor-pointer">
                     <Save className="w-4 h-4 mr-2" />
                     {saving ? "Saving..." : "Save Changes"}
                 </Button>
@@ -148,7 +149,7 @@ export function TodosView({ todoId }: { todoId: string }) {
             <div className="grid gap-6">
                 {/* Basic Information */}
                 <Card>
-                    <CardHeader className="p-0">
+                    <CardHeader>
                         <CardTitle>Basic Information</CardTitle>
                         <CardDescription>Core task details and settings</CardDescription>
                     </CardHeader>
@@ -179,15 +180,17 @@ export function TodosView({ todoId }: { todoId: string }) {
                                 <Label htmlFor="status">Status</Label>
                                 <Select
                                     value={todo.status}
-                                    onValueChange={(value: "todo" | "in_progress" | "done") => setTodo({ ...todo, status: value })}
+                                    onValueChange={(value: "todo" | "in_progress" | "done" | "later") => setTodo({ ...todo, status: value })}
                                 >
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="todo">To Do</SelectItem>
-                                        <SelectItem value="in_progress">In Progress</SelectItem>
-                                        <SelectItem value="done">Done</SelectItem>
+                                        {statusOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
