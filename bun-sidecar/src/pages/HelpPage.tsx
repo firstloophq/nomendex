@@ -1,6 +1,4 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
-import { KeyboardShortcutsProvider } from "@/contexts/KeyboardShortcutsContext";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useTheme } from "@/hooks/useTheme";
@@ -229,17 +227,13 @@ function HelpContent() {
 
 export function HelpPage() {
     return (
-        <WorkspaceProvider>
-            <KeyboardShortcutsProvider>
-                <SidebarProvider>
-                    <div className="flex h-screen w-full overflow-hidden">
-                        <WorkspaceSidebar />
-                        <SidebarInset className="flex-1 overflow-hidden">
-                            <HelpContent />
-                        </SidebarInset>
-                    </div>
-                </SidebarProvider>
-            </KeyboardShortcutsProvider>
-        </WorkspaceProvider>
+        <SidebarProvider>
+            <div className="flex h-screen w-full overflow-hidden">
+                <WorkspaceSidebar />
+                <SidebarInset className="flex-1 overflow-hidden">
+                    <HelpContent />
+                </SidebarInset>
+            </div>
+        </SidebarProvider>
     );
 }

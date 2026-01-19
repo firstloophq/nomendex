@@ -22,8 +22,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
-import { KeyboardShortcutsProvider } from "@/contexts/KeyboardShortcutsContext";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useTheme } from "@/hooks/useTheme";
@@ -465,17 +463,13 @@ function AgentsContent() {
 
 export function AgentsPage() {
     return (
-        <WorkspaceProvider>
-            <KeyboardShortcutsProvider>
-                <SidebarProvider>
-                    <div className="flex h-screen w-full overflow-hidden">
-                        <WorkspaceSidebar />
-                        <SidebarInset className="flex-1 overflow-hidden">
-                            <AgentsContent />
-                        </SidebarInset>
-                    </div>
-                </SidebarProvider>
-            </KeyboardShortcutsProvider>
-        </WorkspaceProvider>
+        <SidebarProvider>
+            <div className="flex h-screen w-full overflow-hidden">
+                <WorkspaceSidebar />
+                <SidebarInset className="flex-1 overflow-hidden">
+                    <AgentsContent />
+                </SidebarInset>
+            </div>
+        </SidebarProvider>
     );
 }

@@ -290,12 +290,13 @@ export type ProseMirrorPromptTextareaProps = {
     placeholder?: string;
     disabled?: boolean;
     className?: string;
+    enterToSend?: boolean;
 };
 
 export type ProseMirrorPromptTextareaHandle = ProseMirrorChatInputHandle;
 
 export const ProseMirrorPromptTextarea = forwardRef<ProseMirrorPromptTextareaHandle, ProseMirrorPromptTextareaProps>(
-    ({ className, placeholder = "Message...", disabled }, ref) => {
+    ({ className, placeholder = "Message...", disabled, enterToSend = true }, ref) => {
         const context = useContext(ProseMirrorPromptContext);
         const localRef = useRef<ProseMirrorChatInputHandle | null>(null);
 
@@ -335,6 +336,7 @@ export const ProseMirrorPromptTextarea = forwardRef<ProseMirrorPromptTextareaHan
                 onSubmit={handleSubmit}
                 onChange={handleChange}
                 className={cn("min-h-[44px] text-sm", className)}
+                enterToSend={enterToSend}
             />
         );
     }

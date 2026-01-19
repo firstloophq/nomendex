@@ -39,6 +39,7 @@ export const WorkspaceStateSchema = z.object({
     gitAuthMode: GitAuthModeSchema.default("local"),
     notesLocation: NotesLocationSchema.default("root"),
     autoSync: AutoSyncConfigSchema.default({ enabled: true, syncOnChanges: true, intervalSeconds: 60 }),
+    chatInputEnterToSend: z.boolean().default(true),
 });
 
 export type WorkspaceTab = z.infer<typeof WorkspaceTabSchema>;
