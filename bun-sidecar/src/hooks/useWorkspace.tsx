@@ -11,7 +11,6 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         sidebarOpen: false,
         sidebarTabId: null,
         mcpServerConfigs: [],
-        themeName: "Light",
         projectPreferences: {},
         gitAuthMode: "local",
         notesLocation: "root",

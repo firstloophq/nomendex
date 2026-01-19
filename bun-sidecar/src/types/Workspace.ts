@@ -35,7 +35,6 @@ export const WorkspaceStateSchema = z.object({
     sidebarOpen: z.boolean().default(false),
     sidebarTabId: z.string().nullable(),
     mcpServerConfigs: z.array(McpServerStatusSchema).default([]),
-    themeName: z.string().default("Light"),
     projectPreferences: z.record(z.string(), ProjectPreferencesSchema).default({}),
     gitAuthMode: GitAuthModeSchema.default("local"),
     notesLocation: NotesLocationSchema.default("root"),
