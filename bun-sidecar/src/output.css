@@ -31,6 +31,7 @@
     --color-slate-600: oklch(44.6% 0.043 257.281);
     --color-slate-800: oklch(27.9% 0.041 260.031);
     --color-black: #000;
+    --color-white: #fff;
     --spacing: 0.25rem;
     --container-xs: 20rem;
     --container-sm: 24rem;
@@ -878,6 +879,9 @@
   .w-10 {
     width: calc(var(--spacing) * 10);
   }
+  .w-11 {
+    width: calc(var(--spacing) * 11);
+  }
   .w-12 {
     width: calc(var(--spacing) * 12);
   }
@@ -1115,6 +1119,14 @@
   }
   .-translate-x-px {
     --tw-translate-x: -1px;
+    translate: var(--tw-translate-x) var(--tw-translate-y);
+  }
+  .translate-x-1 {
+    --tw-translate-x: calc(var(--spacing) * 1);
+    translate: var(--tw-translate-x) var(--tw-translate-y);
+  }
+  .translate-x-6 {
+    --tw-translate-x: calc(var(--spacing) * 6);
     translate: var(--tw-translate-x) var(--tw-translate-y);
   }
   .translate-x-\[-50\%\] {
@@ -1635,6 +1647,9 @@
   }
   .bg-transparent {
     background-color: transparent;
+  }
+  .bg-white {
+    background-color: var(--color-white);
   }
   .fill-current {
     fill: currentcolor;

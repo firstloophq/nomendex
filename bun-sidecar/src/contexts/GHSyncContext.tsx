@@ -35,7 +35,6 @@ interface GHSyncContextValue {
 
 const GHSyncContext = createContext<GHSyncContextValue | null>(null);
 
-const POLL_INTERVAL = 60 * 1000; // 1 minute (fallback, now configurable)
 const CHANGE_DEBOUNCE_MS = 5000; // 5 seconds
 
 export function GHSyncProvider(props: { children: React.ReactNode }) {
