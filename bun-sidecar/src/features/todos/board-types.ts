@@ -1,11 +1,7 @@
 import { z } from "zod";
 
 /**
- * Sloupec na Kanban boardu.
- * - id: unikátní identifikátor sloupce
- * - title: zobrazovaný název (např. "Tento týden")
- * - order: pořadí zleva doprava (1, 2, 3...)
- * - status: volitelný status, který se nastaví při přetažení todo do sloupce
+ * Kanban board column.
  */
 export const BoardColumnSchema = z.object({
     id: z.string(),
@@ -16,11 +12,7 @@ export const BoardColumnSchema = z.object({
 export type BoardColumn = z.infer<typeof BoardColumnSchema>;
 
 /**
- * Konfigurace boardu pro jeden projekt.
- * - id: unikátní ID konfigurace (FileDatabase vyžaduje)
- * - projectId: název projektu (prázdný string = todos bez projektu)
- * - columns: seznam sloupců
- * - showDone: zda zobrazovat dokončené úkoly
+ * Board configuration for a project.
  */
 export const BoardConfigSchema = z.object({
     id: z.string(),
@@ -31,8 +23,7 @@ export const BoardConfigSchema = z.object({
 export type BoardConfig = z.infer<typeof BoardConfigSchema>;
 
 /**
- * Výchozí sloupce pro nový board.
- * Použij tuto funkci když projekt nemá uloženou konfiguraci.
+ * Default columns for a new board.
  */
 export function getDefaultColumns(): BoardColumn[] {
     return [

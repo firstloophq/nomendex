@@ -33,7 +33,6 @@ export function BoardSettingsDialog({
     const [newColumnTitle, setNewColumnTitle] = useState("");
     const [saving, setSaving] = useState(false);
 
-    // Sync state with prop when dialog opens
     const [prevOpen, setPrevOpen] = useState(open);
     if (open !== prevOpen) {
         setPrevOpen(open);
@@ -70,36 +69,19 @@ export function BoardSettingsDialog({
     const handleSave = async () => {
         setSaving(true);
         try {
-            // Only process deletions if this is an existing config (not a new one)
-            // We can tell if it's new by checking if config.id starts with a timestamp
-            // or we check if original columns match default columns exactly
-            // Simpler: check if any columns were actually saved before
-            const isExistingConfig = config.columns.some(c =>
-                !c.id.startsWith('col-') || // custom columns without default prefix
-                config.columns !== columns // or columns have been modified from original
-            );
+            const currentIds = new Set(columns.map(c => c.id));
+            const deletedIds = config.columns
+                .filter(c => !currentIds.has(c.id))
+                .map(c => c.id);
 
-            // Only delete columns if we have an existing config in the backend
-            if (isExistingConfig || config.columns.length > 0) {
-                const currentIds = new Set(columns.map(c => c.id));
-                const deletedIds = config.columns
-                    .filter(c => !currentIds.has(c.id))
-                    .map(c => c.id);
-
-                // Process deletions first (to migrate todos) - only if config actually exists
-                // Check if this is truly an existing config by seeing if any deleted columns
-                // have associated todos (the backend will handle gracefully if not)
-                for (const id of deletedIds) {
-                    try {
-                        await onDeleteColumn(id);
-                    } catch (error) {
-                        // If config doesn't exist yet, ignore deletion errors
-                        console.warn(`Skipping column deletion for ${id}:`, error);
-                    }
+            for (const id of deletedIds) {
+                try {
+                    await onDeleteColumn(id);
+                } catch {
+                    // Ignore if config doesn't exist yet
                 }
             }
 
-            // Save new config
             await onSave({ ...config, columns });
             onOpenChange(false);
         } catch (error) {
@@ -117,14 +99,12 @@ export function BoardSettingsDialog({
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
-                    {/* Header */}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
                         <span className="flex-1">Column Name</span>
                         <span className="w-32 text-center">Auto-set Status</span>
                         <span className="w-8"></span>
                     </div>
 
-                    {/* Seznam sloupců */}
                     <div className="space-y-2">
                         {columns.map((column) => (
                             <div key={column.id} className="flex items-center gap-2 bg-muted/40 p-2 rounded-md">
@@ -168,7 +148,6 @@ export function BoardSettingsDialog({
                         ))}
                     </div>
 
-                    {/* Přidat nový sloupec */}
                     <div className="flex gap-2 pt-2 border-t">
                         <Input
                             placeholder="New column name..."
@@ -182,9 +161,8 @@ export function BoardSettingsDialog({
                         </Button>
                     </div>
 
-                    {/* Hint */}
                     <p className="text-xs text-muted-foreground">
-                        When you move a todo to a column with a status set, the todo's status will automatically update.
+                        Moving a todo to a column with a status set will automatically update its status.
                     </p>
                 </div>
 

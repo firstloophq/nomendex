@@ -384,8 +384,7 @@ function getBoardConfigDb(): FileDatabase<BoardConfig> {
 }
 
 /**
- * Získá board config pro projekt. Vrací null pokud neexistuje.
- * @param projectId - název projektu nebo "" pro todos bez projektu
+ * Get board config for a project. Returns null if not found.
  */
 async function getBoardConfig(input: { projectId: string }): Promise<BoardConfig | null> {
     todosLogger.info(`Getting board config for project: ${input.projectId || "(no project)"}`);
@@ -401,7 +400,7 @@ async function getBoardConfig(input: { projectId: string }): Promise<BoardConfig
 }
 
 /**
- * Uloží board config (vytvoří nový nebo aktualizuje existující).
+ * Save board config (create new or update existing).
  */
 async function saveBoardConfig(input: { config: BoardConfig }): Promise<BoardConfig> {
     todosLogger.info(`Saving board config for project: ${input.config.projectId || "(no project)"}`);
@@ -426,7 +425,7 @@ async function saveBoardConfig(input: { config: BoardConfig }): Promise<BoardCon
 }
 
 /**
- * Smaže sloupec a přesune jeho úkoly do prvního sloupce.
+ * Delete a column and migrate its todos to the first remaining column.
  */
 async function deleteColumn(input: { projectId: string; columnId: string }): Promise<{ success: boolean }> {
     todosLogger.info(`Deleting column ${input.columnId} from project ${input.projectId}`);
@@ -435,25 +434,16 @@ async function deleteColumn(input: { projectId: string; columnId: string }): Pro
         const config = await getBoardConfig({ projectId: input.projectId });
         if (!config) throw new Error("Board config not found");
 
-        // Najdi první sloupec (fallback)
+        // Find fallback column
         const sortedColumns = [...config.columns].sort((a, b) => a.order - b.order);
         const fallbackColumn = sortedColumns.find(c => c.id !== input.columnId);
         if (!fallbackColumn) throw new Error("Cannot delete the only column");
 
-        // Přesuň todos z mazaného sloupce
+        // Migrate todos from deleted column
         const todos = await getDb().findAll();
-        // Since we don't have project filtering in memory easily without re-reading, 
-        // we'll filter the results. Note: In a larger DB this would be inefficient, 
-        // but FileDatabase loads all anyway.
-        // Also need to make sure we only migrate todos belonging to this project (or no project)
-        // Check if todo.project matches input.projectId
-        // Handling "no project": todo.project undefined or "" vs input.projectId ""
-        const _targetProject = input.projectId === "" ? undefined : input.projectId; // Simplification
-
         const orphanTodos = todos.filter(t => {
             const todoProject = t.project || "";
-            const isSameProject = todoProject === input.projectId;
-            return isSameProject && t.customColumnId === input.columnId;
+            return todoProject === input.projectId && t.customColumnId === input.columnId;
         });
 
         for (const todo of orphanTodos) {
@@ -463,7 +453,7 @@ async function deleteColumn(input: { projectId: string; columnId: string }): Pro
             });
         }
 
-        // Odstraň sloupec z configu
+        // Remove column from config
         const newColumns = config.columns.filter(c => c.id !== input.columnId);
         await saveBoardConfig({
             config: { ...config, columns: newColumns }
