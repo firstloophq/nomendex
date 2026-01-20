@@ -1,9 +1,10 @@
 import { globalConfig } from "./global-config";
 import path from "path";
+import { WorkspaceStateSchema, NotesLocation } from "@/types/Workspace";
 
 interface PathCache {
     rootPath: string;
-    noetectPath: string;
+    nomendexPath: string;
     todosPath: string;
     notesPath: string;
     agentsPath: string;
@@ -12,6 +13,24 @@ interface PathCache {
 }
 
 let paths: PathCache | null = null;
+
+/**
+ * Read the notes location setting from workspace.json
+ */
+async function getNotesLocationSetting(nomendexPath: string): Promise<NotesLocation> {
+    try {
+        const file = Bun.file(path.join(nomendexPath, "workspace.json"));
+        const exists = await file.exists();
+        if (!exists) {
+            return "root"; // default (Obsidian-compatible)
+        }
+        const workspaceRaw = await file.json();
+        const workspace = WorkspaceStateSchema.parse(workspaceRaw);
+        return workspace.notesLocation;
+    } catch {
+        return "root"; // default (Obsidian-compatible) on error
+    }
+}
 
 /**
  * Initialize paths from the active workspace in global config.
@@ -24,11 +43,17 @@ export async function initializePaths(): Promise<void> {
         return;
     }
 
+    const nomendexPath = path.join(workspace.path, ".nomendex");
+    const notesLocation = await getNotesLocationSetting(nomendexPath);
+    const notesPath = notesLocation === "root"
+        ? workspace.path
+        : path.join(workspace.path, "notes");
+
     paths = {
         rootPath: workspace.path,
-        noetectPath: path.join(workspace.path, ".noetect"),
+        nomendexPath,
         todosPath: path.join(workspace.path, "todos"),
-        notesPath: path.join(workspace.path, "notes"),
+        notesPath,
         agentsPath: path.join(workspace.path, "agents"),
         skillsPath: path.join(workspace.path, ".claude", "skills"),
         uploadsPath: path.join(workspace.path, "uploads"),
@@ -52,12 +77,12 @@ export function getRootPath(): string {
 }
 
 /**
- * Get the .noetect path of the active workspace (for internal files like workspace.json, secrets.json).
+ * Get the .nomendex path of the active workspace (for internal files like workspace.json, secrets.json).
  * @throws Error if no workspace is active
  */
-export function getNoetectPath(): string {
+export function getNomendexPath(): string {
     if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
-    return paths.noetectPath;
+    return paths.nomendexPath;
 }
 
 /**

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle } from "lucide-react";
+import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle, AlertTriangle } from "lucide-react";
 import { Command as CommandRoot, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
@@ -215,6 +215,7 @@ export function CommandMenu() {
                                             CalendarDays,
                                             Save,
                                             MessageCircle,
+                                            AlertTriangle,
                                         };
                                         const IconComponent = iconMap[command.icon as keyof typeof iconMap] || FileText;
 

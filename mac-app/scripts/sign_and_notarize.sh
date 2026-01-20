@@ -2,16 +2,16 @@
 set -euo pipefail
 
 # Sign innermost to outermost, zip, notarize, staple, verify
-# Defaults target app path to bundle/Noetect.app
+# Defaults target app path to bundle/Nomendex.app
 # Requires: Developer ID Application cert in keychain, and a saved notarytool keychain profile
 # Usage examples:
 #   ./scripts/sign_and_notarize.sh
 #   CODESIGN_IDENTITY="Developer ID Application: Your Org (TEAMID)" ./scripts/sign_and_notarize.sh
-#   ./scripts/sign_and_notarize.sh --app bundle/Noetect.app --keychain-profile AC_NOTARY
+#   ./scripts/sign_and_notarize.sh --app bundle/Nomendex.app --keychain-profile AC_NOTARY
 
 cd "$(dirname "$0")/.."
 
-APP_PATH="${APP_PATH:-bundle/Noetect.app}"
+APP_PATH="${APP_PATH:-bundle/Nomendex.app}"
 ENTITLEMENTS="${ENTITLEMENTS:-macos-host/entitlements.plist}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-AC_NOTARY}"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
@@ -26,7 +26,7 @@ Usage: $0 [--app <path .app>] [--identity <codesign id>] [--entitlements <path>]
           [--keychain-profile <profile>] [--sign-only | --notarize-only] [--zip <path.zip>] [--dmg]
 
 Environment vars:
-  APP_PATH           Path to .app (default: bundle/Noetect.app)
+  APP_PATH           Path to .app (default: bundle/Nomendex.app)
   ENTITLEMENTS       Path to entitlements.plist for host + sidecar (default: macos-host/entitlements.plist)
   CODESIGN_IDENTITY  Developer ID Application identity string (auto-detects if unset)
   NOTARY_PROFILE     notarytool keychain profile (default: AC_NOTARY)

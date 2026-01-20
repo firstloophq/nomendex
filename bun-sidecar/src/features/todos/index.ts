@@ -100,6 +100,7 @@ export type TodosViewProps = z.infer<typeof todosViewPropsSchema>;
 
 export const todosBrowserViewPropsSchema = z.object({
     project: z.string().optional(),
+    selectedTodoId: z.string().optional(),
 });
 export type TodosBrowserViewProps = z.infer<typeof todosBrowserViewPropsSchema>;
 

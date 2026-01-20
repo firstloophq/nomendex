@@ -1,5 +1,5 @@
 import { createServiceLogger } from "@/lib/logger";
-import { getNoetectPath, hasActiveWorkspace } from "@/storage/root-path";
+import { getNomendexPath, hasActiveWorkspace } from "@/storage/root-path";
 import { secrets } from "@/lib/secrets";
 import { mkdir } from "node:fs/promises";
 import path from "path";
@@ -18,17 +18,17 @@ const mcpLogger = createServiceLogger("MCP-SERVERS");
  * Get the path to the MCP servers configuration file
  */
 function getMcpServersPath(): string {
-    return path.join(getNoetectPath(), "mcp-servers.json");
+    return path.join(getNomendexPath(), "mcp-servers.json");
 }
 
 /**
- * Ensure the .noetect directory exists
+ * Ensure the .nomendex directory exists
  */
-async function ensureNoetectDir(): Promise<void> {
+async function ensureNomendexDir(): Promise<void> {
     if (!hasActiveWorkspace()) {
         throw new Error("No active workspace");
     }
-    await mkdir(getNoetectPath(), { recursive: true });
+    await mkdir(getNomendexPath(), { recursive: true });
 }
 
 /**
@@ -36,7 +36,7 @@ async function ensureNoetectDir(): Promise<void> {
  */
 async function loadMcpServersFile(): Promise<McpServersFile> {
     try {
-        await ensureNoetectDir();
+        await ensureNomendexDir();
         const file = Bun.file(getMcpServersPath());
         if (await file.exists()) {
             const data = await file.json();
@@ -53,7 +53,7 @@ async function loadMcpServersFile(): Promise<McpServersFile> {
  * Save the MCP servers file to disk
  */
 async function saveMcpServersFile(data: McpServersFile): Promise<void> {
-    await ensureNoetectDir();
+    await ensureNomendexDir();
     const fileData: McpServersFile = {
         _comment:
             "User-defined MCP servers. Environment variables like ${SECRET_NAME} or ${VAR:-default} are expanded at runtime.",

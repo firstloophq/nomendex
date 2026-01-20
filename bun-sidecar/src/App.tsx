@@ -1,3 +1,4 @@
+import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { RoutingProvider } from "./hooks/useRouting";
 import { ThemeProvider } from "./hooks/useTheme";
@@ -25,10 +26,34 @@ import { NotesCommandMenu } from "./components/NotesCommandMenu";
 import { TabSwitcherMenu } from "./components/TabSwitcherMenu";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
 import { WorkspaceOnboarding } from "./components/WorkspaceOnboarding";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Bridge component for native Mac app keyboard handling
 function NativeKeyboardBridge() {
     useNativeKeyboardBridge();
+    return null;
+}
+
+// Dev component that throws during render to test ErrorBoundary
+// Listens for 'dev:trigger-error' custom event
+function DevErrorTrigger() {
+    const [shouldThrow, setShouldThrow] = React.useState(false);
+
+    React.useEffect(() => {
+        const triggerHandler = () => setShouldThrow(true);
+        const resetHandler = () => setShouldThrow(false);
+        window.addEventListener("dev:trigger-error", triggerHandler);
+        window.addEventListener("error-boundary:reset", resetHandler);
+        return () => {
+            window.removeEventListener("dev:trigger-error", triggerHandler);
+            window.removeEventListener("error-boundary:reset", resetHandler);
+        };
+    }, []);
+
+    if (shouldThrow) {
+        throw new Error("Test error triggered from dev command");
+    }
+
     return null;
 }
 
@@ -67,47 +92,50 @@ function WorkspaceGuard({ children }: { children: React.ReactNode }) {
 export function App() {
     return (
         <ThemeProvider>
-            <NativeKeyboardBridge />
-            <UpdateNotificationBridge />
-            <BrowserRouter>
-                <RoutingProvider>
-                    <WorkspaceGuard>
-                        <WorkspaceProvider>
-                            <SkillUpdatesBridge />
-                            <KeyboardShortcutsProvider>
-                                <GHSyncProvider>
-                                    <CommandDialogProvider>
-                                        <Routes>
-                                            {/* Main workspace - handles tabs for todos, notes */}
-                                            <Route path="/" element={<WorkspacePage />} />
+            <ErrorBoundary>
+                <DevErrorTrigger />
+                <NativeKeyboardBridge />
+                <UpdateNotificationBridge />
+                <BrowserRouter>
+                    <RoutingProvider>
+                        <WorkspaceGuard>
+                            <WorkspaceProvider>
+                                <SkillUpdatesBridge />
+                                <KeyboardShortcutsProvider>
+                                    <GHSyncProvider>
+                                        <CommandDialogProvider>
+                                            <Routes>
+                                                {/* Main workspace - handles tabs for todos, notes */}
+                                                <Route path="/" element={<WorkspacePage />} />
 
-                                            {/* Settings and utility pages */}
-                                            <Route path="/settings" element={<SettingsPage />} />
-                                            <Route path="/help" element={<HelpPage />} />
-                                            <Route path="/agents" element={<AgentsPage />} />
-                                            <Route path="/new-agent" element={<NewAgentPage />} />
-                                            <Route path="/mcp-servers" element={<McpServersPage />} />
-                                            <Route path="/mcp-servers/new" element={<McpServerFormPage />} />
-                                            <Route path="/mcp-servers/:serverId/edit" element={<McpServerFormPage />} />
-                                            <Route path="/sync" element={<SyncPage />} />
-                                            <Route path="/sync/resolve" element={<ConflictResolvePage />} />
-                                            <Route path="/test-editor" element={<TestEditorPage />} />
+                                                {/* Settings and utility pages */}
+                                                <Route path="/settings" element={<SettingsPage />} />
+                                                <Route path="/help" element={<HelpPage />} />
+                                                <Route path="/agents" element={<AgentsPage />} />
+                                                <Route path="/new-agent" element={<NewAgentPage />} />
+                                                <Route path="/mcp-servers" element={<McpServersPage />} />
+                                                <Route path="/mcp-servers/new" element={<McpServerFormPage />} />
+                                                <Route path="/mcp-servers/:serverId/edit" element={<McpServerFormPage />} />
+                                                <Route path="/sync" element={<SyncPage />} />
+                                                <Route path="/sync/resolve" element={<ConflictResolvePage />} />
+                                                <Route path="/test-editor" element={<TestEditorPage />} />
 
-                                            {/* Catch-all redirect to root */}
-                                            <Route path="*" element={<Navigate to="/" replace />} />
-                                        </Routes>
-                                        <CommandMenu />
-                                        <NotesCommandMenu />
-                                        <TabSwitcherMenu />
-                                        <GHSyncSetupPrompt />
-                                    </CommandDialogProvider>
-                                </GHSyncProvider>
-                            </KeyboardShortcutsProvider>
-                        </WorkspaceProvider>
-                    </WorkspaceGuard>
-                </RoutingProvider>
-            </BrowserRouter>
-            <Toaster position="top-right" richColors />
+                                                {/* Catch-all redirect to root */}
+                                                <Route path="*" element={<Navigate to="/" replace />} />
+                                            </Routes>
+                                            <CommandMenu />
+                                            <NotesCommandMenu />
+                                            <TabSwitcherMenu />
+                                            <GHSyncSetupPrompt />
+                                        </CommandDialogProvider>
+                                    </GHSyncProvider>
+                                </KeyboardShortcutsProvider>
+                            </WorkspaceProvider>
+                        </WorkspaceGuard>
+                    </RoutingProvider>
+                </BrowserRouter>
+                <Toaster position="top-right" richColors />
+            </ErrorBoundary>
         </ThemeProvider>
     );
 }

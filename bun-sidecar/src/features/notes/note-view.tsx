@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { todosAPI } from "@/hooks/useTodosAPI";
 import { EditorState, Selection, NodeSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
@@ -116,7 +117,36 @@ export function NotesView(props: NotesViewProps) {
 
     // Subscribe to wiki link click events and navigate
     useEffect(() => {
-        return subscribe("wikilink:click", ({ target }) => {
+        return subscribe("wikilink:click", async ({ target }) => {
+            // Check if this is a todo link (e.g., todos/todo-1737036787-slug.md)
+            if (target.startsWith("todos/")) {
+                // Extract the todo ID from the path (remove "todos/" prefix and ".md" suffix)
+                let selectedTodoId = target.slice(6); // Remove "todos/" prefix
+                if (selectedTodoId.endsWith(".md")) {
+                    selectedTodoId = selectedTodoId.slice(0, -3); // Remove ".md" suffix
+                }
+
+                // Fetch the todo to get its project
+                try {
+                    const todo = await todosAPI.getTodoById({ todoId: selectedTodoId });
+                    openTab({
+                        pluginMeta: { id: "todos", name: "Todos", icon: "list-todo" },
+                        view: "browser",
+                        props: { project: todo.project, selectedTodoId },
+                    });
+                } catch (error) {
+                    console.error("Failed to fetch todo for wiki link:", error);
+                    // Fallback: open todos without project filter
+                    openTab({
+                        pluginMeta: { id: "todos", name: "Todos", icon: "list-todo" },
+                        view: "browser",
+                        props: { selectedTodoId },
+                    });
+                }
+                return;
+            }
+
+            // Default: open as a note
             openTab({
                 pluginMeta: { id: "notes", name: "Notes", icon: "file" },
                 view: "editor",

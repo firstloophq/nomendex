@@ -1,20 +1,35 @@
 import { z } from "zod";
 
-// Model options available for agent configuration
-export const ModelSchema = z.enum([
-    "claude-sonnet-4-5-20250929",
-    "claude-opus-4-20250514",
-    "claude-3-5-haiku-20241022",
-]);
+// Model schema - accepts any string for flexibility with new/preview models
+export const ModelSchema = z.string();
 
 export type AgentModel = z.infer<typeof ModelSchema>;
 
-// Display names for models
-export const MODEL_DISPLAY_NAMES: Record<AgentModel, string> = {
+// Predefined models available in the dropdown
+export const PREDEFINED_MODELS = [
+    "claude-sonnet-4-5-20250929",
+    "claude-opus-4-5-20251101",
+    "claude-opus-4-20250514",
+    "claude-3-5-haiku-20241022",
+] as const;
+
+export type PredefinedModel = (typeof PREDEFINED_MODELS)[number];
+
+// Display names for predefined models
+export const MODEL_DISPLAY_NAMES: Record<PredefinedModel, string> = {
     "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
+    "claude-opus-4-5-20251101": "Claude Opus 4.5",
     "claude-opus-4-20250514": "Claude Opus 4",
     "claude-3-5-haiku-20241022": "Claude Haiku 3.5",
 };
+
+// Helper to get display name for any model (predefined or custom)
+export function getModelDisplayName(model: string): string {
+    if (model in MODEL_DISPLAY_NAMES) {
+        return MODEL_DISPLAY_NAMES[model as PredefinedModel];
+    }
+    return model; // Return raw identifier for custom models
+}
 
 // Agent configuration schema
 export const AgentConfigSchema = z.object({

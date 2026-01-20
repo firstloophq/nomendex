@@ -2,12 +2,12 @@
  * Tags Service
  *
  * Manages the tags index for #hashtag autocomplete in notes.
- * Index is stored at {workspace}/.noetect/tags.json
+ * Index is stored at {workspace}/.nomendex/tags.json
  */
 
 import { mkdir } from "node:fs/promises";
 import { join } from "path";
-import { getNoetectPath, getNotesPath, getTodosPath, hasActiveWorkspace } from "@/storage/root-path";
+import { getNomendexPath, getNotesPath, getTodosPath, hasActiveWorkspace } from "@/storage/root-path";
 import { StringSet } from "./backlinks-types";
 import { TagsIndex, TagSuggestion, createEmptyTagsIndex } from "./tags-types";
 
@@ -49,7 +49,7 @@ export function extractTags(content: string): string[] {
  * Get the path to the tags index file
  */
 function getIndexPath(): string {
-    return join(getNoetectPath(), "tags.json");
+    return join(getNomendexPath(), "tags.json");
 }
 
 /**
@@ -73,8 +73,8 @@ async function loadIndexFromDisk(): Promise<TagsIndex | null> {
  * Save the index to disk
  */
 async function saveIndexToDisk(indexToSave: TagsIndex): Promise<void> {
-    const noetectPath = getNoetectPath();
-    await mkdir(noetectPath, { recursive: true });
+    const nomendexPath = getNomendexPath();
+    await mkdir(nomendexPath, { recursive: true });
     const indexPath = getIndexPath();
     await Bun.write(indexPath, JSON.stringify(indexToSave, null, 2));
 }

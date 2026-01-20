@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { PluginInstance, PluginBase, SerializablePlugin } from "@/types/Plugin";
-import { WorkspaceState, WorkspaceTab, WorkspaceStateSchema, ProjectPreferences, GitAuthMode } from "@/types/Workspace";
+import { WorkspaceState, WorkspaceTab, WorkspaceStateSchema, ProjectPreferences, GitAuthMode, NotesLocation, AutoSyncConfig } from "@/types/Workspace";
 import { type RouteParams } from "./useRouting";
 import { emit } from "@/lib/events";
 
@@ -11,9 +11,11 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         sidebarOpen: false,
         sidebarTabId: null,
         mcpServerConfigs: [],
-        themeName: "Light",
         projectPreferences: {},
         gitAuthMode: "local",
+        notesLocation: "root",
+        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
+        chatInputEnterToSend: true,
     });
     const [loading, setLoading] = useState(true);
     const initialRouteHandledRef = useRef(false);
@@ -45,6 +47,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
     }, [loading, _initialRoute]);
 
     const fetchWorkspace = async () => {
+        console.log("[useWorkspace] Fetching workspace...");
         const response = await fetch("/api/workspace");
 
         if (!response.ok) {
@@ -52,6 +55,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         }
 
         const result = await response.json();
+        console.log("[useWorkspace] Raw result from server:", result);
 
         // Handle Result<WorkspaceState> structure
         if (!result.success) {
@@ -59,22 +63,27 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         }
 
         const dataValidated = WorkspaceStateSchema.parse(result.data);
+        console.log("[useWorkspace] Parsed workspace, chatInputEnterToSend:", dataValidated.chatInputEnterToSend);
 
         setWorkspace(dataValidated);
         setLoading(false);
     };
 
     const saveWorkspace = useCallback(async (newWorkspace: WorkspaceState) => {
+        console.log("[useWorkspace] Saving workspace, chatInputEnterToSend:", newWorkspace.chatInputEnterToSend);
+        console.log("[useWorkspace] Full workspace to save:", newWorkspace);
         const response = await fetch("/api/workspace", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(newWorkspace),
         });
         if (!response.ok) {
+            console.error("[useWorkspace] Save failed with status:", response.status);
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
         const result = await response.json();
+        console.log("[useWorkspace] Save response:", result);
 
         // Handle Result structure
         if (!result.success) {
@@ -438,6 +447,33 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         [updateWorkspace]
     );
 
+    // Notes location
+    const setNotesLocation = useCallback(
+        (location: NotesLocation) => {
+            updateWorkspace((prev) => ({ ...prev, notesLocation: location }));
+        },
+        [updateWorkspace]
+    );
+
+    // Auto-sync config
+    const setAutoSyncConfig = useCallback(
+        (config: Partial<AutoSyncConfig>) => {
+            updateWorkspace((prev) => ({
+                ...prev,
+                autoSync: { ...prev.autoSync, ...config },
+            }));
+        },
+        [updateWorkspace]
+    );
+
+    // Chat input preferences
+    const setChatInputEnterToSend = useCallback(
+        (enabled: boolean) => {
+            updateWorkspace((prev) => ({ ...prev, chatInputEnterToSend: enabled }));
+        },
+        [updateWorkspace]
+    );
+
     return {
         // State
         workspace,
@@ -481,5 +517,17 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         // Git auth mode
         gitAuthMode: workspace.gitAuthMode,
         setGitAuthMode,
+
+        // Notes location
+        notesLocation: workspace.notesLocation,
+        setNotesLocation,
+
+        // Auto-sync
+        autoSync: workspace.autoSync,
+        setAutoSyncConfig,
+
+        // Chat input preferences
+        chatInputEnterToSend: workspace.chatInputEnterToSend,
+        setChatInputEnterToSend,
     };
 }

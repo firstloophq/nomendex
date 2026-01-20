@@ -1,20 +1,20 @@
 #!/bin/bash
 
-# Build and Install Noetect Dev
+# Build and Install Nomendex Dev
 
-echo "Building and installing Noetect Dev..."
+echo "Building and installing Nomendex Dev..."
 
 # Remove existing dev app from Applications
 echo "Removing existing dev app from /Applications..."
-rm -rf "/Applications/Noetect Dev.app"
+rm -rf "/Applications/Nomendex Dev.app"
 
 # Build the new bundle
 echo "Building new bundle..."
 cd mac-app && make && cd ..
 
 # Copy and rename to Dev
-echo "Installing to /Applications/Noetect Dev.app..."
-cp -R mac-app/bundle/Noetect.app "/Applications/Noetect Dev.app"
+echo "Installing to /Applications/Nomendex Dev.app..."
+cp -R mac-app/bundle/Nomendex.app "/Applications/Nomendex Dev.app"
 
-echo "Done! Noetect Dev has been installed to /Applications/"
-echo "Run: open '/Applications/Noetect Dev.app'"
+echo "Done! Nomendex Dev has been installed to /Applications/"
+echo "Run: open '/Applications/Nomendex Dev.app'"

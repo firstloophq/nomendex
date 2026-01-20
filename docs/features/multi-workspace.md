@@ -10,7 +10,7 @@ Each workspace is a folder on the filesystem that contains all user data for tha
 
 ### Global Config
 
-**Location:** `~/Library/Application Support/com.firstloop.noetect/config.json`
+**Location:** `~/Library/Application Support/com.firstloop.nomendex/config.json`
 
 ```typescript
 interface GlobalConfig {

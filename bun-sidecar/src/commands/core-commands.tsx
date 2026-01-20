@@ -386,5 +386,17 @@ export function getCoreCommands(context: CoreCommandContext): Command[] {
                 await logsAPI.reset();
             },
         },
+        {
+            id: "dev.triggerError",
+            name: "dev: Trigger Error",
+            description: "Throw an error to test the error boundary",
+            icon: "AlertTriangle",
+            callback: () => {
+                context.closeCommandMenu();
+                // Dispatch event that DevErrorTrigger listens to
+                // This triggers a render-time error that ErrorBoundary can catch
+                window.dispatchEvent(new CustomEvent("dev:trigger-error"));
+            },
+        },
     ];
 }

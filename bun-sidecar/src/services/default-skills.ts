@@ -21,7 +21,7 @@ const DEFAULT_SKILLS: DefaultSkill[] = [
         files: {
             "SKILL.md": `---
 name: todos
-description: Manages project todos via REST API. Use when the user asks to create, view, update, or delete todos, list tasks by project, check task status, or filter by due date. Requires the Noetect app to be running.
+description: Manages project todos via REST API. Use when the user asks to create, view, update, or delete todos, list tasks by project, check task status, or filter by due date. Requires the Nomendex app to be running.
 version: 1
 ---
 
@@ -29,14 +29,14 @@ version: 1
 
 ## Overview
 
-Manages todos via the Noetect REST API. The API handles all validation, ID generation, timestamps, and ordering automatically.
+Manages todos via the Nomendex REST API. The API handles all validation, ID generation, timestamps, and ordering automatically.
 
 ## Port Discovery
 
 The server writes its port to a discoverable location. Extract it with:
 
 \`\`\`bash
-PORT=$(cat ~/Library/Application\\ Support/com.firstloop.noetect/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
+PORT=$(cat ~/Library/Application\\ Support/com.firstloop.nomendex/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
 \`\`\`
 
 ## API Endpoints
@@ -348,7 +348,7 @@ Set a fixed \`height\` parameter to disable auto-resize.
         files: {
             "SKILL.md": `---
 name: daily-notes
-description: Manages daily notes with M-D-YYYY format (e.g., 1-1-2026.md). Use when the user asks to view recent notes, create daily notes, read today's notes, summarize the week, or references @notes/ or dates. Can fetch last 7 days of notes.
+description: Manages daily notes with M-D-YYYY format (e.g., 1-1-2026.md). Use when the user asks to view recent notes, create daily notes, read today's notes, summarize the week, or references @notes/ or dates. Can fetch last 7 days of notes. Notes location is configurable in Settings > Storage.
 version: 1
 ---
 
@@ -368,9 +368,23 @@ All daily notes follow this format:
   - December 31, 2025 -> \`12-31-2025.md\`
   - March 5, 2026 -> \`3-5-2026.md\`
 
+## Getting the Notes Directory
+
+The notes location is configurable in Settings > Storage. To get the correct path, query the workspace paths API:
+
+\`\`\`bash
+curl http://localhost:1234/api/workspace/paths
+# Returns: { "success": true, "data": { "notes": "/path/to/notes", ... } }
+\`\`\`
+
+Or use \`jq\` to extract just the notes path:
+\`\`\`bash
+NOTES_DIR=$(curl -s http://localhost:1234/api/workspace/paths | jq -r '.data.notes')
+\`\`\`
+
 ## CLI Usage
 
-The skill provides a shell script. Set the \`NOTES_DIR\` environment variable to the workspace's notes path.
+The skill provides a shell script. Set the \`NOTES_DIR\` environment variable to the workspace's notes path (obtained from the API above).
 
 \`\`\`bash
 NOTES_DIR=/path/to/workspace/notes .claude/skills/daily-notes/daily-note.sh <command> [arguments]

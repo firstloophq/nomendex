@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Result, ErrorCodes } from "../types/Result";
 import { WorkspaceState, WorkspaceStateSchema } from "../types/Workspace";
-import { getNoetectPath } from "../storage/root-path";
+import { getNomendexPath, getRootPath, getNotesPath, getTodosPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, initializePaths } from "../storage/root-path";
 
 const ThemeRequestSchema = z.object({
     themeName: z.string(),
@@ -11,7 +11,7 @@ export const workspaceRoutes = {
     "/api/workspace": {
         async GET() {
             try {
-                const file = Bun.file(`${getNoetectPath()}/workspace.json`);
+                const file = Bun.file(`${getNomendexPath()}/workspace.json`);
                 const exists = await file.exists();
 
                 if (!exists) {
@@ -21,11 +21,13 @@ export const workspaceRoutes = {
                         sidebarTabId: null,
                         sidebarOpen: false,
                         mcpServerConfigs: [],
-                        themeName: "Light",
                         projectPreferences: {},
                         gitAuthMode: "local",
+                        notesLocation: "root",
+                        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
+                        chatInputEnterToSend: true,
                     };
-                    await Bun.write(`${getNoetectPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
+                    await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
 
                     const response: Result<WorkspaceState> = {
                         success: true,
@@ -59,7 +61,7 @@ export const workspaceRoutes = {
             try {
                 const workspace = await req.json();
                 const workspaceValidated = WorkspaceStateSchema.parse(workspace);
-                await Bun.write(`${getNoetectPath()}/workspace.json`, JSON.stringify(workspaceValidated, null, 2));
+                await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(workspaceValidated, null, 2));
 
                 const response: Result<{ success: boolean }> = {
                     success: true,
@@ -82,7 +84,7 @@ export const workspaceRoutes = {
     "/api/theme": {
         async GET() {
             try {
-                const file = Bun.file(`${getNoetectPath()}/workspace.json`);
+                const file = Bun.file(`${getNomendexPath()}/theme.json`);
                 const exists = await file.exists();
 
                 if (!exists) {
@@ -93,12 +95,12 @@ export const workspaceRoutes = {
                     return Response.json(response);
                 }
 
-                const workspaceRaw = await file.json();
-                const workspaceValidated = WorkspaceStateSchema.parse(workspaceRaw);
+                const themeData = await file.json();
+                const themeName = ThemeRequestSchema.parse(themeData).themeName;
 
                 const response: Result<{ themeName: string }> = {
                     success: true,
-                    data: { themeName: workspaceValidated.themeName },
+                    data: { themeName },
                 };
                 return Response.json(response);
             } catch (error) {
@@ -118,28 +120,7 @@ export const workspaceRoutes = {
                 const body = await req.json();
                 const { themeName } = ThemeRequestSchema.parse(body);
 
-                const file = Bun.file(`${getNoetectPath()}/workspace.json`);
-                const exists = await file.exists();
-
-                let workspace: WorkspaceState;
-                if (exists) {
-                    const workspaceRaw = await file.json();
-                    workspace = WorkspaceStateSchema.parse(workspaceRaw);
-                } else {
-                    workspace = {
-                        tabs: [],
-                        activeTabId: null,
-                        sidebarTabId: null,
-                        sidebarOpen: false,
-                        mcpServerConfigs: [],
-                        themeName: "Light",
-                        projectPreferences: {},
-                        gitAuthMode: "local",
-                    };
-                }
-
-                workspace.themeName = themeName;
-                await Bun.write(`${getNoetectPath()}/workspace.json`, JSON.stringify(workspace, null, 2));
+                await Bun.write(`${getNomendexPath()}/theme.json`, JSON.stringify({ themeName }, null, 2));
 
                 const response: Result<{ themeName: string }> = {
                     success: true,
@@ -152,6 +133,66 @@ export const workspaceRoutes = {
                     success: false,
                     code: ErrorCodes.INTERNAL_SERVER_ERROR,
                     message: `Failed to save theme: ${message}`,
+                    error,
+                };
+                return Response.json(response, { status: 500 });
+            }
+        },
+    },
+
+    "/api/workspace/paths": {
+        async GET() {
+            try {
+                if (!hasActiveWorkspace()) {
+                    const response: Result = {
+                        success: false,
+                        code: ErrorCodes.NOT_FOUND,
+                        message: "No active workspace configured",
+                    };
+                    return Response.json(response, { status: 404 });
+                }
+
+                const paths = {
+                    root: getRootPath(),
+                    notes: getNotesPath(),
+                    todos: getTodosPath(),
+                    uploads: getUploadsPath(),
+                    skills: getSkillsPath(),
+                };
+
+                const response: Result<typeof paths> = {
+                    success: true,
+                    data: paths,
+                };
+                return Response.json(response);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                const response: Result = {
+                    success: false,
+                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message: `Failed to get workspace paths: ${message}`,
+                    error,
+                };
+                return Response.json(response, { status: 500 });
+            }
+        },
+    },
+
+    "/api/workspace/reinitialize": {
+        async POST() {
+            try {
+                await initializePaths();
+                const response: Result<{ success: boolean }> = {
+                    success: true,
+                    data: { success: true },
+                };
+                return Response.json(response);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                const response: Result = {
+                    success: false,
+                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message: `Failed to reinitialize paths: ${message}`,
                     error,
                 };
                 return Response.json(response, { status: 500 });

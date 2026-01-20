@@ -2,9 +2,12 @@ name: Release macOS App
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 env:
-  APP_NAME: Noetect
+  APP_NAME: Nomendex
 
 permissions:
   contents: write
@@ -12,6 +15,12 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-latest
+    # Run if manually triggered OR if a PR with 'trigger-release' label was merged
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       contains(github.event.pull_request.labels.*.name, 'trigger-release'))
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,7 +76,7 @@ jobs:
         run: |
           cd mac-app
 
-          APP_PATH="bundle/Noetect.app"
+          APP_PATH="bundle/Nomendex.app"
           ENTITLEMENTS="macos-host/entitlements.plist"
           SPARKLE="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
 
@@ -103,7 +112,7 @@ jobs:
           codesign --force --timestamp --options runtime \
             --entitlements "$ENTITLEMENTS" \
             --sign "$CODESIGN_IDENTITY" \
-            "$APP_PATH/Contents/MacOS/Noetect"
+            "$APP_PATH/Contents/MacOS/Nomendex"
 
           # Sign the app bundle
           codesign --force --timestamp --options runtime \
@@ -121,10 +130,10 @@ jobs:
         run: |
           cd mac-app
           VERSION="${{ steps.version.outputs.version }}"
-          ZIP_NAME="Noetect-${VERSION}.zip"
+          ZIP_NAME="Nomendex-${VERSION}.zip"
 
           # Create zip for notarization
-          ditto -c -k --keepParent "bundle/Noetect.app" "$ZIP_NAME"
+          ditto -c -k --keepParent "bundle/Nomendex.app" "$ZIP_NAME"
 
           # Submit for notarization
           xcrun notarytool submit "$ZIP_NAME" \
@@ -134,11 +143,11 @@ jobs:
             --wait
 
           # Staple the ticket
-          xcrun stapler staple "bundle/Noetect.app"
+          xcrun stapler staple "bundle/Nomendex.app"
 
           # Re-create zip with stapled app
           rm "$ZIP_NAME"
-          ditto -c -k --keepParent "bundle/Noetect.app" "$ZIP_NAME"
+          ditto -c -k --keepParent "bundle/Nomendex.app" "$ZIP_NAME"
 
       - name: Sign with Sparkle
         env:
@@ -146,7 +155,7 @@ jobs:
         run: |
           cd mac-app
           VERSION="${{ steps.version.outputs.version }}"
-          ZIP_NAME="Noetect-${VERSION}.zip"
+          ZIP_NAME="Nomendex-${VERSION}.zip"
 
           # Write key to temp file
           KEY_FILE=$(mktemp)
@@ -178,7 +187,7 @@ jobs:
           SPARKLE_SIGNATURE: ${{ env.SPARKLE_SIGNATURE }}
         run: |
           cd mac-app
-          ZIP_NAME="Noetect-${VERSION}.zip"
+          ZIP_NAME="Nomendex-${VERSION}.zip"
           export FILE_SIZE=$(stat -f%z "$ZIP_NAME")
           export DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ZIP_NAME}"
           bun run scripts/update-appcast.ts
@@ -187,16 +196,16 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          name: Noetect v${{ steps.version.outputs.version }}
+          name: Nomendex v${{ steps.version.outputs.version }}
           draft: false
           files: |
-            mac-app/Noetect-${{ steps.version.outputs.version }}.zip
+            mac-app/Nomendex-${{ steps.version.outputs.version }}.zip
           body: |
-            ## Noetect v${{ steps.version.outputs.version }}
+            ## Nomendex v${{ steps.version.outputs.version }}
 
             ### Installation
-            1. Download `Noetect-${{ steps.version.outputs.version }}.zip`
-            2. Unzip and drag Noetect.app to Applications
+            1. Download `Nomendex-${{ steps.version.outputs.version }}.zip`
+            2. Unzip and drag Nomendex.app to Applications
 
             ### Auto-Update
             Existing users will receive this update automatically.

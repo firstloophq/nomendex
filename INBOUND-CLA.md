@@ -7,7 +7,7 @@ By submitting a Contribution to the Project, you agree to the terms below.
 ## 1. Definitions
 
 - **“Licensor”** means Caret AI, Inc dba Firstloop.
-- **“Project”** means the software and materials in this repository identified as: Noetect.
+- **“Project”** means the software and materials in this repository identified as: Nomendex.
 - **“Contribution”** means any original work of authorship (including code, documentation, or other material) that you intentionally submit to Licensor for inclusion in the Project, whether submitted via pull request, issue, email, source control, or any other medium.
 - **“You”** means the individual or legal entity that submits a Contribution. If you submit on behalf of an employer or other entity, “You” means that entity.
 

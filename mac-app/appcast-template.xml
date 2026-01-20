@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>Noetect Updates</title>
-    <link>https://noetect.com/</link>
-    <description>Updates for Noetect</description>
+    <title>Nomendex Updates</title>
+    <link>https://nomendex.com/</link>
+    <description>Updates for Nomendex</description>
     <language>en</language>
 
     <!-- Latest release (add new releases at the top) -->
@@ -20,7 +20,7 @@
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/YOUR_ORG/noetect/releases/download/v0.1.0/Noetect-0.1.0.zip"
+        url="https://github.com/YOUR_ORG/nomendex/releases/download/v0.1.0/Nomendex-0.1.0.zip"
         length="0"
         type="application/octet-stream"
         sparkle:edSignature="YOUR_SIGNATURE_HERE"

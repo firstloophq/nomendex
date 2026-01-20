@@ -1,4 +1,4 @@
-import { getNoetectPath, hasActiveWorkspace } from "@/storage/root-path";
+import { getNomendexPath, hasActiveWorkspace } from "@/storage/root-path";
 
 /**
  * Simple secrets manager for the Bun sidecar.
@@ -14,9 +14,9 @@ export class SecretsManager {
   private getPath(): string {
     if (!hasActiveWorkspace()) {
       // Fallback to app support directory if no active workspace
-      return `${process.env.HOME}/Library/Application Support/com.firstloop.noetect/secrets.json`;
+      return `${process.env.HOME}/Library/Application Support/com.firstloop.nomendex/secrets.json`;
     }
-    return `${getNoetectPath()}/secrets.json`;
+    return `${getNomendexPath()}/secrets.json`;
   }
 
   async load(): Promise<void> {

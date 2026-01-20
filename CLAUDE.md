@@ -1,5 +1,5 @@
-# Noetect
-Noetect is a desktop application for working with notes, tasks, and AI agents.
+# Nomendex
+Nomendex is a desktop application for working with notes, tasks, and AI agents.
 
 It is NOT an Electron app. It is a desktop application built with Bun and React. Bun is used as a sidebar within a MacOS Swift container.
 
@@ -29,7 +29,7 @@ The application has two built-in features:
 Each user can create a workspace which is a folder on the filesystem that contains all user data for that workspace.
 
 **Global Config** (`src/storage/global-config.ts`):
-- Stored at `~/Library/Application Support/com.firstloop.noetect/config.json`
+- Stored at `~/Library/Application Support/com.firstloop.nomendex/config.json`
 - Tracks all workspaces and which one is active
 ```typescript
 interface GlobalConfig {
@@ -149,6 +149,12 @@ const { currentTheme } = useTheme();
 import { KeyboardIndicator } from "@/components/KeyboardIndicator";
 <Button><KeyboardIndicator keys={['cmd', 'n']} /> New</Button>
 ```
+
+### Application Design Principles
+- Reuse previously defined components over creating net new code. Especially when reusing dialogs and similar.
+- Try to hide buttons to keep visual complexity down. Reveal on hover is a good technique.
+- Always use `useTheme` for styling
+- Add commands for functionality over discrete buttons
 
 ## Critical Implementation Rules
 

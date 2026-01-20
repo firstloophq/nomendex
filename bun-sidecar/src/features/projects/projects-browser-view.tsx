@@ -9,6 +9,7 @@ import { useNotesAPI } from "@/hooks/useNotesAPI";
 import { useTheme } from "@/hooks/useTheme";
 import { projectsPluginSerial } from "./index";
 import type { ProjectInfo } from "./index";
+import { CreateProjectDialog } from "./CreateProjectDialog";
 import { cn } from "@/lib/utils";
 
 export function ProjectsBrowserView({ tabId }: { tabId: string }) {
@@ -19,6 +20,7 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
     const { loading, error, setLoading, setError } = usePlugin();
     const [projects, setProjects] = useState<ProjectInfo[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
+    const [createDialogOpen, setCreateDialogOpen] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const { currentTheme } = useTheme();
     const placement = getViewSelfPlacement(tabId);
@@ -93,6 +95,55 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
         };
         fetchProjects();
     }, [todosAPI, notesAPI, setLoading, setError]);
+
+    // Handle project creation
+    const handleCreateProject = async (projectName: string) => {
+        try {
+            setLoading(true);
+            await todosAPI.createTodo({
+                title: "Start Project",
+                project: projectName,
+                description: `Initial task for project ${projectName}`,
+                status: "todo",
+            });
+
+            // Refresh projects
+            const [projectNames, allTodos, allNotes] = await Promise.all([
+                todosAPI.getProjects(),
+                todosAPI.getTodos(),
+                notesAPI.getNotes(),
+            ]);
+
+            // Calculate stats per project
+            const projectInfos: ProjectInfo[] = projectNames.map((name) => {
+                const projectTodos = allTodos.filter((t) => t.project === name);
+                const projectNotes = allNotes.filter((n) => n.frontMatter?.project === name);
+
+                return {
+                    name,
+                    todoCount: projectTodos.filter((t) => t.status === "todo").length,
+                    inProgressCount: projectTodos.filter((t) => t.status === "in_progress").length,
+                    doneCount: projectTodos.filter((t) => t.status === "done").length,
+                    notesCount: projectNotes.length,
+                };
+            });
+
+            // Sort by in-progress + todo count (most active first), then alphabetically
+            projectInfos.sort((a, b) => {
+                const activeA = a.inProgressCount + a.todoCount;
+                const activeB = b.inProgressCount + b.todoCount;
+                if (activeB !== activeA) return activeB - activeA;
+                return a.name.localeCompare(b.name);
+            });
+
+            setProjects(projectInfos);
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "Failed to create project";
+            setError(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Filter projects based on search
     const filteredProjects = searchQuery
@@ -207,6 +258,15 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
                     >
                         ({projects.length})
                     </span>
+                    <div className="ml-auto">
+                        <CreateProjectDialog
+                            open={createDialogOpen}
+                            onOpenChange={setCreateDialogOpen}
+                            onCreateProject={handleCreateProject}
+                            loading={loading}
+                            existingProjects={projects.map(p => p.name)}
+                        />
+                    </div>
                 </div>
 
                 <div className="relative">

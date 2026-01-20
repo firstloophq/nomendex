@@ -77,6 +77,11 @@ async function getNotes() {
         // Get files from all folders recursively
         const folders = await getStorage().listAllFoldersRecursive();
         for (const folder of folders) {
+            // Skip system directories
+            if (folder.path.startsWith("todos") || folder.path.startsWith(".nomendex") || folder.path.startsWith(".git") || folder.path.includes("/.")) {
+                continue;
+            }
+
             const folderFiles = await getStorage().listFiles(folder.path);
             for (const file of folderFiles) {
                 if (!file.endsWith(".md")) continue;

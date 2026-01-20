@@ -139,8 +139,8 @@ function ChangedFilesList({ status }: { status: string }) {
 
 function SyncContent() {
     const navigate = useNavigate();
-    const { addNewTab, setActiveTabId } = useWorkspaceContext();
-    const { status: syncStatus, setupStatus, needsSetup, checkForChanges, sync, recheckSetup, gitAuthMode, setGitAuthMode } = useGHSync();
+    const { addNewTab, setActiveTabId, autoSync, setAutoSyncConfig } = useWorkspaceContext();
+    const { status: syncStatus, setupStatus, needsSetup, checkForChanges, sync, recheckSetup, clearMergeConflict, gitAuthMode, setGitAuthMode } = useGHSync();
     const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [repoUrl, setRepoUrl] = useState("");
@@ -151,6 +151,9 @@ function SyncContent() {
     const [historyOpen, setHistoryOpen] = useState(false);
     const [conflicts, setConflicts] = useState<ConflictFile[]>([]);
     const [resolvingFile, setResolvingFile] = useState<string | null>(null);
+
+    // Combine both sources of merge conflict detection
+    const hasMergeConflict = gitStatus?.hasMergeConflict || syncStatus.hasMergeConflict;
 
     // Check for remote changes when page opens
     useEffect(() => {
@@ -163,6 +166,11 @@ function SyncContent() {
             if (response.ok) {
                 const data: ConflictsResponse = await response.json();
                 setConflicts(data.conflictFiles);
+
+                // If API says no conflict but context thinks there is, clear the stale state
+                if (!data.hasMergeConflict && syncStatus.hasMergeConflict) {
+                    clearMergeConflict();
+                }
             }
         } catch (error) {
             console.error("Failed to load conflicts:", error);
@@ -176,6 +184,11 @@ function SyncContent() {
             if (response.ok) {
                 const data = await response.json();
                 setGitStatus(data);
+
+                // If git status says no conflict but context thinks there is, clear the stale state
+                if (!data.hasMergeConflict && syncStatus.hasMergeConflict) {
+                    clearMergeConflict();
+                }
             }
         } catch (error) {
             console.error("Failed to load git status:", error);
@@ -300,6 +313,7 @@ function SyncContent() {
             if (response.ok) {
                 setOperationMessage("Merge aborted");
                 setConflicts([]);
+                clearMergeConflict();
                 await loadGitStatus();
                 setTimeout(() => setOperationMessage(""), 3000);
             } else {
@@ -321,6 +335,7 @@ function SyncContent() {
             if (response.ok) {
                 setOperationMessage("Merge completed successfully");
                 setConflicts([]);
+                clearMergeConflict();
                 await loadGitStatus();
                 setTimeout(() => setOperationMessage(""), 3000);
             } else {
@@ -382,7 +397,7 @@ After you provide the merged content, I will manually update the file and mark t
 
     // Load conflicts when we detect a merge conflict, and poll for changes
     useEffect(() => {
-        if (gitStatus?.hasMergeConflict) {
+        if (hasMergeConflict) {
             loadConflicts();
             // Poll every 2 seconds to detect when files are manually resolved
             const interval = setInterval(loadConflicts, 2000);
@@ -390,7 +405,7 @@ After you provide the merged content, I will manually update the file and mark t
         } else {
             setConflicts([]);
         }
-    }, [gitStatus?.hasMergeConflict]);
+    }, [hasMergeConflict]);
 
     if (loading) {
         return (
@@ -449,6 +464,108 @@ After you provide the merged content, I will manually update the file and mark t
                         </button>
                     </div>
                 </div>
+            </div>
+
+            {/* Auto-Sync Settings */}
+            <div className="border rounded-lg p-4 space-y-4">
+                <div className="text-sm font-medium">Auto-Sync Settings</div>
+
+                {/* Pause Sync Toggle */}
+                {autoSync.enabled && (
+                    <div className={`flex items-center justify-between p-3 rounded-md ${autoSync.paused ? "bg-amber-500/10 border border-amber-500/30" : "bg-muted/30"}`}>
+                        <div>
+                            <div className={`text-sm font-medium ${autoSync.paused ? "text-amber-600" : ""}`}>
+                                {autoSync.paused ? "Sync Paused" : "Sync Active"}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {autoSync.paused ? "Auto-sync is temporarily paused" : "Pause to prevent automatic syncing"}
+                            </p>
+                        </div>
+                        <Button
+                            variant={autoSync.paused ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setAutoSyncConfig({ paused: !autoSync.paused })}
+                        >
+                            {autoSync.paused ? "Resume" : "Pause"}
+                        </Button>
+                    </div>
+                )}
+
+                {/* Enable Auto-Sync Toggle */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <div className="text-sm">Enable Auto-Sync</div>
+                        <p className="text-xs text-muted-foreground">
+                            Automatically sync on a schedule
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setAutoSyncConfig({ enabled: !autoSync.enabled })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                            autoSync.enabled ? "bg-primary" : "bg-muted"
+                        }`}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                autoSync.enabled ? "translate-x-6" : "translate-x-1"
+                            }`}
+                        />
+                    </button>
+                </div>
+
+                {/* Sync on Changes Toggle (only shown when enabled) */}
+                {autoSync.enabled && (
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-sm">Sync on Changes</div>
+                            <p className="text-xs text-muted-foreground">
+                                Automatically sync when files change (5s debounce)
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setAutoSyncConfig({ syncOnChanges: !autoSync.syncOnChanges })}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                                autoSync.syncOnChanges ? "bg-primary" : "bg-muted"
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    autoSync.syncOnChanges ? "translate-x-6" : "translate-x-1"
+                                }`}
+                            />
+                        </button>
+                    </div>
+                )}
+
+                {/* Interval Input */}
+                {autoSync.enabled && (
+                    <div>
+                        <Label className="text-xs text-muted-foreground">Sync Interval (seconds)</Label>
+                        <Input
+                            type="number"
+                            min="10"
+                            max="3600"
+                            value={autoSync.intervalSeconds}
+                            onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                if (value >= 10 && value <= 3600) {
+                                    setAutoSyncConfig({ intervalSeconds: value });
+                                }
+                            }}
+                            className="font-mono text-sm w-32 mt-1.5"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Range: 10-3600 seconds
+                        </p>
+                    </div>
+                )}
+
+                {/* Last Synced Timestamp */}
+                {autoSync.enabled && syncStatus.lastSynced && (
+                    <p className="text-xs text-muted-foreground">
+                        Last synced: {syncStatus.lastSynced.toLocaleTimeString()}
+                    </p>
+                )}
             </div>
 
             {/* Setup Required Card */}
@@ -528,7 +645,7 @@ After you provide the merged content, I will manually update the file and mark t
                                         </p>
                                         <div className="flex items-center gap-2">
                                             <a
-                                                href="https://github.com/settings/tokens/new?scopes=repo&description=Noetect%20Sync"
+                                                href="https://github.com/settings/tokens/new?scopes=repo&description=Nomendex%20Sync"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -687,7 +804,7 @@ After you provide the merged content, I will manually update the file and mark t
                     </div>
 
                     {/* Merge Conflict Section */}
-                    {gitStatus.hasMergeConflict && (
+                    {hasMergeConflict && (
                         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4 space-y-4">
                             <div className="flex items-center gap-2">
                                 <GitMerge className="h-4 w-4 text-amber-500" />
@@ -862,7 +979,7 @@ After you provide the merged content, I will manually update the file and mark t
                     )}
 
                     {/* Sync Status */}
-                    {!gitStatus.hasMergeConflict && (syncStatus.behindCount > 0 || syncStatus.aheadCount > 0) && (
+                    {!hasMergeConflict && (syncStatus.behindCount > 0 || syncStatus.aheadCount > 0) && (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             {syncStatus.behindCount > 0 && (
                                 <Badge variant="secondary">
@@ -896,7 +1013,7 @@ After you provide the merged content, I will manually update the file and mark t
                     )}
 
                     {/* Sync Button */}
-                    {!gitStatus.hasMergeConflict && (
+                    {!hasMergeConflict && (
                         <Button
                             onClick={handleSync}
                             disabled={operating || syncStatus.syncing}

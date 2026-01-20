@@ -25,7 +25,7 @@ export class GlobalConfigManager {
 
     constructor() {
         const home = process.env.HOME || "";
-        this.configDir = path.join(home, "Library/Application Support/com.firstloop.noetect");
+        this.configDir = path.join(home, "Library/Application Support/com.firstloop.nomendex");
         this.configPath = path.join(this.configDir, "config.json");
     }
 

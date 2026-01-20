@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="Noetect"
+APP_NAME="Nomendex"
 APP_DIR="bundle/${APP_NAME}.app"
 
 echo "[pkg] assembling ${APP_DIR}..."

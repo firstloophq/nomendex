@@ -40,7 +40,7 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
-export function TodosBrowserView({ project }: { project?: string | null } = {}) {
+export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoId }: { project?: string | null; selectedTodoId?: string | null } = {}) {
     // Support both 'project' and 'filterProject' prop names for backward compatibility
     const filterProject = project;
     const { loading, setLoading } = usePlugin();
@@ -85,7 +85,7 @@ export function TodosBrowserView({ project }: { project?: string | null } = {}) 
 
     // Search and keyboard navigation state
     const [searchQuery, setSearchQuery] = useState("");
-    const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
+    const [selectedTodoId, setSelectedTodoId] = useState<string | null>(initialSelectedTodoId ?? null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Helper to open create dialog with specific status

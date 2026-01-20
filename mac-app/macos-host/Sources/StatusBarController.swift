@@ -28,9 +28,9 @@ class StatusBarController {
         }
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "M - Open Noetect", action: #selector(toggleWindow), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "M - Open Nomendex", action: #selector(toggleWindow), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit Noetect", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit Nomendex", action: #selector(quitApp), keyEquivalent: "q"))
         for item in menu.items { item.target = self }
         statusItem.menu = menu
     }

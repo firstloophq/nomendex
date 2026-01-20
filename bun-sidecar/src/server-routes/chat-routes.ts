@@ -2,7 +2,7 @@ import { query, type SDKMessage, type McpServerConfig } from "@anthropic-ai/clau
 import { existsSync, mkdirSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { getRootPath, getNoetectPath, getUploadsPath } from "@/storage/root-path";
+import { getRootPath, getNomendexPath, getUploadsPath } from "@/storage/root-path";
 import { getAgent, getPreferences, savePreferences, addAllowedTool, getAgentAllowedTools } from "@/features/agents/fx";
 import { DEFAULT_AGENT, MCP_REGISTRY } from "@/features/agents/index";
 import { listUserMcpServers, expandEnvVars } from "@/features/mcp-servers/fx";
@@ -39,6 +39,23 @@ async function readImageAsBase64(imageUrl: string): Promise<{ data: string; medi
         chatLogger.error(`Failed to read image: ${imageUrl}`, { error });
         return null;
     }
+}
+
+// Build context information for the agent's system prompt
+function buildAgentContext(workspaceFolder: string): string {
+    const now = new Date();
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const dayOfWeek = dayNames[now.getDay()];
+    const dateStr = now.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+    });
+
+    return `<agent-context>
+Today is ${dayOfWeek}, ${dateStr}.
+You are working in the folder: ${workspaceFolder}
+</agent-context>`;
 }
 
 // Session management types
@@ -222,7 +239,7 @@ setInterval(() => {
 
 // File paths - computed dynamically
 function getSessionsFile(): string {
-    return join(getNoetectPath(), "chat-sessions.jsonl");
+    return join(getNomendexPath(), "chat-sessions.jsonl");
 }
 // Claude sessions directory - computed from workspace path
 function getClaudeSessionsDir(): string {
@@ -434,9 +451,15 @@ export const chatRoutes = {
                     settingSources: ["project"], // Load skills from project .claude/skills/, MCP servers come from mcpServers option
                 };
 
-                // Only add systemPrompt if it's not empty (empty = use SDK default)
+                // Build context-aware system prompt
+                // Always include agent context (date, workspace folder) for all agents
+                const agentContext = buildAgentContext(targetDir);
                 if (agentConfig.systemPrompt) {
-                    sdkOptions.systemPrompt = agentConfig.systemPrompt;
+                    // Custom agent: prepend context to their system prompt
+                    sdkOptions.systemPrompt = `${agentContext}\n\n${agentConfig.systemPrompt}`;
+                } else {
+                    // Default agent: just add context (SDK will use its default prompt)
+                    sdkOptions.systemPrompt = agentContext;
                 }
 
                 // Log MCP server names (can't stringify SDK servers due to cyclic refs)
@@ -444,7 +467,7 @@ export const chatRoutes = {
                 console.log("[API] SDK options:", {
                     ...sdkOptions,
                     resume: sessionId || "(new session)",
-                    systemPrompt: sdkOptions.systemPrompt ? "(custom)" : "(default)",
+                    systemPrompt: agentConfig.systemPrompt ? "(custom + context)" : "(context only)",
                     mcpServers: mcpServerNames,
                     pathToClaudeCodeExecutable: claudeCliPath,
                 });
@@ -943,46 +966,6 @@ export const chatRoutes = {
         },
     },
 
-    "/api/chat/sessions/history/*": {
-        async GET(req: Request) {
-            try {
-                const url = new URL(req.url);
-                const pathParts = url.pathname.split("/");
-                // Session ID is at the end: /api/chat/sessions/history/{sessionId}
-                const sessionId = pathParts[pathParts.length - 1];
-                const claudeDir = getClaudeSessionsDir();
-                const sessionFile = join(claudeDir, `${sessionId}.jsonl`);
-
-                chatLogger.info("Loading session history", {
-                    sessionId,
-                    claudeDir,
-                    sessionFile,
-                    dirExists: existsSync(claudeDir),
-                    fileExists: existsSync(sessionFile)
-                });
-
-                if (!existsSync(sessionFile)) {
-                    chatLogger.warn("Session file not found", { sessionFile });
-                    return Response.json(
-                        { error: "Session not found", sessionFile },
-                        { status: 404 }
-                    );
-                }
-
-                const messages = await readJSONL<SDKMessage>(sessionFile);
-                console.log(`[API] Loaded ${messages.length} messages for session ${sessionId}`);
-
-                return Response.json({ messages });
-            } catch (error) {
-                console.error("[API] Error loading session history:", error);
-                return Response.json(
-                    { error: "Failed to load session history" },
-                    { status: 500 }
-                );
-            }
-        },
-    },
-
     "/api/chat/sessions/update": {
         async PUT(req: Request) {
             try {
@@ -1145,6 +1128,47 @@ export const chatRoutes = {
                 console.error("[API] Error searching sessions:", error);
                 return Response.json(
                     { error: "Failed to search sessions" },
+                    { status: 500 }
+                );
+            }
+        },
+    },
+
+    // Wildcard route MUST be last to avoid matching specific routes like /delete, /update, /search
+    "/api/chat/sessions/history/*": {
+        async GET(req: Request) {
+            try {
+                const url = new URL(req.url);
+                const pathParts = url.pathname.split("/");
+                // Session ID is at the end: /api/chat/sessions/history/{sessionId}
+                const sessionId = pathParts[pathParts.length - 1];
+                const claudeDir = getClaudeSessionsDir();
+                const sessionFile = join(claudeDir, `${sessionId}.jsonl`);
+
+                chatLogger.info("Loading session history", {
+                    sessionId,
+                    claudeDir,
+                    sessionFile,
+                    dirExists: existsSync(claudeDir),
+                    fileExists: existsSync(sessionFile)
+                });
+
+                if (!existsSync(sessionFile)) {
+                    chatLogger.warn("Session file not found", { sessionFile });
+                    return Response.json(
+                        { error: "Session not found", sessionFile },
+                        { status: 404 }
+                    );
+                }
+
+                const messages = await readJSONL<SDKMessage>(sessionFile);
+                console.log(`[API] Loaded ${messages.length} messages for session ${sessionId}`);
+
+                return Response.json({ messages });
+            } catch (error) {
+                console.error("[API] Error loading session history:", error);
+                return Response.json(
+                    { error: "Failed to load session history" },
                     { status: 500 }
                 );
             }
