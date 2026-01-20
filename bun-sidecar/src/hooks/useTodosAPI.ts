@@ -1,5 +1,6 @@
 import { Todo } from "@/features/todos/todo-types";
 import type { Attachment } from "@/types/attachments";
+import type { BoardConfig } from "@/features/todos/board-types";
 
 interface CreateTodoInput {
     title: string;
@@ -9,6 +10,7 @@ interface CreateTodoInput {
     tags?: string[];
     dueDate?: string;
     attachments?: Attachment[];
+    customColumnId?: string;
 }
 
 interface UpdateTodoInput {
@@ -22,6 +24,7 @@ interface UpdateTodoInput {
         tags?: string[];
         dueDate?: string;
         attachments?: Attachment[];
+        customColumnId?: string;
     };
 }
 
@@ -54,6 +57,9 @@ export const todosAPI = {
     unarchiveTodo: (args: { todoId: string }) => fetchAPI<Todo>("unarchive", args),
     getArchivedTodos: (args: { project?: string } = {}) => fetchAPI<Todo[]>("archived", args),
     getTags: () => fetchAPI<string[]>("tags"),
+    getBoardConfig: (args: { projectId: string }) => fetchAPI<BoardConfig | null>("board-config/get", args),
+    saveBoardConfig: (args: { config: BoardConfig }) => fetchAPI<BoardConfig>("board-config/save", args),
+    deleteColumn: (args: { projectId: string; columnId: string }) => fetchAPI<{ success: boolean }>("column/delete", args),
 };
 
 // Hook wrapper for use in React components

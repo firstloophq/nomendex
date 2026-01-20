@@ -1,4 +1,4 @@
-import { Settings, Trash2, Archive, ArchiveRestore, Copy, CalendarDays } from "lucide-react";
+import { Settings, Trash2, Archive, ArchiveRestore, Copy, CalendarDays, CheckCircle2, Circle } from "lucide-react";
 import { Todo } from "./todo-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ export function TodoCard({
     onDelete,
     onArchive,
     hideProject,
+    onToggleDone,
 }: {
     todo: Todo;
     selected?: boolean;
@@ -19,6 +20,7 @@ export function TodoCard({
     onDelete?: (todo: Todo) => void;
     onArchive?: (todo: Todo) => void;
     hideProject?: boolean;
+    onToggleDone?: (todo: Todo) => void;
 }) {
     const handleCopy = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -36,11 +38,35 @@ export function TodoCard({
             toast("Failed to copy to clipboard");
         }
     };
+
+    const handleToggleDone = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onToggleDone?.(todo);
+    };
+
     return (
         <Card className={`mb-2 hover:shadow-md transition-shadow duration-150 ${todo.archived ? 'opacity-60 bg-muted/30' : ''}`}>
             <CardHeader className="pb-1 pt-2 px-3">
                 <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-sm font-medium leading-tight flex-1">{todo.title}</CardTitle>
+                    <div className="flex items-start gap-2 flex-1">
+                        <button
+                            type="button"
+                            onClick={handleToggleDone}
+                            className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                            title={todo.status === "done" ? "Mark as incomplete" : "Mark as done"}
+                        >
+                            {todo.status === "done" ? (
+                                <CheckCircle2 className="size-4 text-green-600" />
+                            ) : (
+                                <Circle className="size-4" />
+                            )}
+                        </button>
+                        <CardTitle className={`text-sm font-medium leading-tight ${todo.status === "done" ? "line-through text-muted-foreground" : ""
+                            }`}>
+                            {todo.title}
+                        </CardTitle>
+                    </div>
                     {todo.archived && <span className="text-[10px] text-muted-foreground bg-muted px-1 rounded shrink-0">Archived</span>}
                 </div>
                 {!hideProject && todo.project && <p className="text-[10px] text-blue-600">{todo.project}</p>}
