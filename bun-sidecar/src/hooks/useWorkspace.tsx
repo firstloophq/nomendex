@@ -14,7 +14,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         projectPreferences: {},
         gitAuthMode: "local",
         notesLocation: "root",
-        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60 },
+        autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
         chatInputEnterToSend: true,
     });
     const [loading, setLoading] = useState(true);

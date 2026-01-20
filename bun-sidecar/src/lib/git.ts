@@ -49,6 +49,21 @@ export interface ConflictFile {
     resolved: boolean;
 }
 
+/**
+ * Merge state tracked by Nomendex (since isomorphic-git doesn't create MERGE_HEAD)
+ */
+export interface MergeState {
+    inProgress: boolean;
+    oursRef: string;         // e.g., "main"
+    theirsRef: string;       // e.g., "origin/main"
+    theirsOid: string;       // The commit SHA we're merging in
+    oursOid: string;         // The commit SHA of our branch before merge
+    conflictFiles: string[]; // Files that had conflicts
+    startedAt: string;       // ISO timestamp
+}
+
+const MERGE_STATE_FILE = "NOMENDEX_MERGE_STATE";
+
 interface GitClientConfig {
     dir: string;
     author?: { name: string; email: string };
@@ -293,21 +308,112 @@ export function createGitClient(config: GitClientConfig) {
         },
 
         /**
-         * Pull from remote (fetch + merge)
+         * Pull from remote (fetch + merge) with proper conflict handling
+         *
+         * This uses fetch + merge instead of git.pull() to support abortOnConflict: false,
+         * which writes conflict markers to files instead of aborting completely.
          */
-        async pull(auth: AuthConfig, remote = "origin", ref?: string): Promise<void> {
+        async pull(auth: AuthConfig, remote = "origin", ref?: string): Promise<{ hadConflicts: boolean; conflictFiles: string[] }> {
             logger.info("Pulling from remote", { remote, ref });
-            await git.pull({
+
+            const branch = ref ?? await this.currentBranch();
+            if (!branch) {
+                throw new Error("Not on any branch");
+            }
+
+            // Step 1: Fetch from remote
+            await git.fetch({
                 fs,
                 http,
                 dir,
                 remote,
-                ref,
+                ref: branch,
                 singleBranch: true,
-                author,
                 onAuth: createOnAuth(auth),
             });
-            logger.info("Pull completed");
+            logger.info("Fetch completed");
+
+            // Get current HEAD oid before merge
+            const oursOid = await git.resolveRef({ fs, dir, ref: "HEAD" });
+
+            // Get the remote ref oid
+            let theirsOid: string;
+            try {
+                theirsOid = await git.resolveRef({ fs, dir, ref: `${remote}/${branch}` });
+            } catch {
+                // Remote branch doesn't exist yet
+                logger.info("Remote branch doesn't exist, nothing to merge");
+                return { hadConflicts: false, conflictFiles: [] };
+            }
+
+            // Check if we're already up to date
+            if (oursOid === theirsOid) {
+                logger.info("Already up to date");
+                return { hadConflicts: false, conflictFiles: [] };
+            }
+
+            // Step 2: Merge with abortOnConflict: false to get conflict markers
+            try {
+                await git.merge({
+                    fs,
+                    dir,
+                    ours: branch,
+                    theirs: `${remote}/${branch}`,
+                    abortOnConflict: false,
+                    author,
+                });
+                logger.info("Pull completed (fast-forward or clean merge)");
+                return { hadConflicts: false, conflictFiles: [] };
+            } catch (e) {
+                const error = e as Error;
+                logger.info("Merge error caught", {
+                    name: error.name,
+                    message: error.message,
+                    data: (e as { data?: unknown }).data
+                });
+
+                // Check if this is a merge conflict error
+                if (error.name === "MergeConflictError" || error.message?.includes("Merge conflict") || error.message?.includes("CONFLICT")) {
+                    // Extract conflict files from the error
+                    // isomorphic-git puts them in error.data as an array of file paths
+                    let conflictFiles: string[] = [];
+
+                    const errorData = (e as { data?: unknown }).data;
+                    if (Array.isArray(errorData)) {
+                        conflictFiles = errorData.filter((item): item is string => typeof item === "string");
+                    }
+
+                    // If no conflict files from error, scan the working directory for conflict markers
+                    if (conflictFiles.length === 0) {
+                        logger.info("No conflict files in error data, scanning for conflict markers");
+                        const index = await git.listFiles({ fs, dir });
+                        for (const filepath of index) {
+                            if (await this.hasConflictMarkers(filepath)) {
+                                conflictFiles.push(filepath);
+                            }
+                        }
+                    }
+
+                    logger.info("Merge conflict detected", { conflictFiles, errorName: error.name });
+
+                    // Save merge state so we can complete the merge later
+                    const mergeState: MergeState = {
+                        inProgress: true,
+                        oursRef: branch,
+                        theirsRef: `${remote}/${branch}`,
+                        oursOid,
+                        theirsOid,
+                        conflictFiles,
+                        startedAt: new Date().toISOString(),
+                    };
+                    await this.saveMergeState(mergeState);
+
+                    return { hadConflicts: true, conflictFiles };
+                }
+
+                // Re-throw other errors
+                throw e;
+            }
         },
 
         /**
@@ -428,33 +534,94 @@ export function createGitClient(config: GitClientConfig) {
 
         /**
          * Check if in merge conflict state
+         * Checks both our custom merge state and the standard MERGE_HEAD
          */
         async hasMergeConflict(): Promise<boolean> {
             try {
+                // Check our custom merge state first
+                const state = await this.getMergeState();
+                const hasCustomState = state?.inProgress ?? false;
+                logger.info("Checking merge conflict - custom state", { hasCustomState, state: state ? JSON.stringify(state).slice(0, 200) : null });
+
+                if (hasCustomState) {
+                    return true;
+                }
+
+                // Also check standard MERGE_HEAD for compatibility
                 const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
-                return await Bun.file(mergeHeadPath).exists();
-            } catch {
+                const hasMergeHead = await Bun.file(mergeHeadPath).exists();
+                logger.info("Checking merge conflict - MERGE_HEAD", { hasMergeHead, path: mergeHeadPath });
+
+                return hasMergeHead;
+            } catch (e) {
+                logger.error("Error checking merge conflict", { error: String(e) });
                 return false;
             }
         },
 
         /**
          * Get conflicting files
+         * Uses our stored merge state and scans for conflict markers
          */
         async getConflictFiles(): Promise<ConflictFile[]> {
             const conflicts: ConflictFile[] = [];
+            const seenPaths = new Set<string>();
+
+            logger.info("Getting conflict files - starting");
 
             try {
-                // Read the index to find conflicting entries
+                // First, check our merge state for known conflict files
+                const mergeState = await this.getMergeState();
+                logger.info("Getting conflict files - merge state", {
+                    hasState: !!mergeState,
+                    conflictFilesCount: mergeState?.conflictFiles?.length ?? 0
+                });
+
+                if (mergeState?.conflictFiles) {
+                    for (const filepath of mergeState.conflictFiles) {
+                        const hasMarkers = await this.hasConflictMarkers(filepath);
+                        logger.info("Checking file from merge state", { filepath, hasMarkers });
+                        conflicts.push({
+                            path: filepath,
+                            status: "both_modified",
+                            resolved: !hasMarkers,
+                        });
+                        seenPaths.add(filepath);
+                    }
+                }
+
+                // Also scan all tracked files for conflict markers
+                // This catches files that might have been missed or manually created
                 const index = await git.listFiles({ fs, dir });
+                logger.info("Scanning tracked files for markers", { fileCount: index.length });
+                let filesWithMarkers = 0;
+                for (const filepath of index) {
+                    if (!seenPaths.has(filepath)) {
+                        const hasMarkers = await this.hasConflictMarkers(filepath);
+                        if (hasMarkers) {
+                            filesWithMarkers++;
+                            logger.info("Found file with conflict markers", { filepath });
+                            conflicts.push({
+                                path: filepath,
+                                status: "both_modified",
+                                resolved: false,
+                            });
+                            seenPaths.add(filepath);
+                        }
+                    }
+                }
+                logger.info("Finished scanning for markers", { filesWithMarkers });
 
-                // Check status matrix for conflicts
+                // Check status matrix for staged files (considered resolved)
                 const matrix = await git.statusMatrix({ fs, dir });
-
+                logger.info("Checking status matrix", { matrixSize: matrix.length });
                 for (const [filepath, head, workdir, stage] of matrix) {
-                    // Check if file has conflict markers
+                    if (seenPaths.has(filepath)) continue;
+
+                    // File is staged and different from head - might be a resolved conflict
                     if (stage === 3 || (head === 1 && workdir === 2 && stage === 2)) {
                         const hasMarkers = await this.hasConflictMarkers(filepath);
+                        logger.info("Found file in status matrix", { filepath, head, workdir, stage, hasMarkers });
                         conflicts.push({
                             path: filepath,
                             status: "both_modified",
@@ -462,29 +629,18 @@ export function createGitClient(config: GitClientConfig) {
                         });
                     }
                 }
-
-                // Also check for files with conflict markers that might not be in a merge state
-                for (const filepath of index) {
-                    if (!conflicts.find((c) => c.path === filepath)) {
-                        const hasMarkers = await this.hasConflictMarkers(filepath);
-                        if (hasMarkers) {
-                            conflicts.push({
-                                path: filepath,
-                                status: "both_modified",
-                                resolved: false,
-                            });
-                        }
-                    }
-                }
             } catch (e) {
                 logger.error("Failed to get conflict files", { error: String(e) });
             }
 
+            logger.info("Getting conflict files - done", { totalConflicts: conflicts.length });
             return conflicts;
         },
 
         /**
          * Check if a file has conflict markers
+         * Requires ALL THREE markers to be present to avoid false positives
+         * (e.g., "=======" appears in Markdown Setext headings)
          */
         async hasConflictMarkers(filepath: string): Promise<boolean> {
             try {
@@ -493,7 +649,11 @@ export function createGitClient(config: GitClientConfig) {
                 if (!(await file.exists())) return false;
 
                 const content = await file.text();
-                return content.includes("<<<<<<<") || content.includes("=======") || content.includes(">>>>>>>");
+                // Must have all three markers to be a real conflict
+                const hasOurs = content.includes("<<<<<<<");
+                const hasSeparator = content.includes("=======");
+                const hasTheirs = content.includes(">>>>>>>");
+                return hasOurs && hasSeparator && hasTheirs;
             } catch {
                 return false;
             }
@@ -501,6 +661,7 @@ export function createGitClient(config: GitClientConfig) {
 
         /**
          * Resolve a conflict by choosing ours or theirs
+         * Uses our stored merge state to get the correct versions
          */
         async resolveConflict(filepath: string, resolution: "ours" | "theirs" | "mark-resolved"): Promise<void> {
             logger.info("Resolving conflict", { filepath, resolution });
@@ -511,24 +672,48 @@ export function createGitClient(config: GitClientConfig) {
                 return;
             }
 
-            // Get the oid for the version we want
-            // In a merge conflict, stage 2 is ours (HEAD), stage 3 is theirs (MERGE_HEAD)
+            // Get our merge state
+            const mergeState = await this.getMergeState();
+
             try {
+                let refToUse: string;
+
+                if (resolution === "ours") {
+                    // Use stored oursOid or fall back to HEAD
+                    refToUse = mergeState?.oursOid ?? "HEAD";
+                } else {
+                    // Use stored theirsOid or fall back to MERGE_HEAD
+                    refToUse = mergeState?.theirsOid ?? "MERGE_HEAD";
+
+                    // If we don't have theirsOid stored, try to read MERGE_HEAD
+                    if (!mergeState?.theirsOid) {
+                        try {
+                            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
+                            const mergeHeadFile = Bun.file(mergeHeadPath);
+                            if (await mergeHeadFile.exists()) {
+                                refToUse = (await mergeHeadFile.text()).trim();
+                            }
+                        } catch {
+                            // MERGE_HEAD doesn't exist, stick with default
+                        }
+                    }
+                }
+
                 // Read the blob from the appropriate ref
-                const index = await git.readBlob({
+                const blob = await git.readBlob({
                     fs,
                     dir,
-                    oid: resolution === "ours" ? "HEAD" : "MERGE_HEAD",
+                    oid: refToUse,
                     filepath,
                 });
 
                 // Write the content to the file
                 const fullPath = `${dir}/${filepath}`;
-                await fs.promises.writeFile(fullPath, Buffer.from(index.blob));
+                await fs.promises.writeFile(fullPath, Buffer.from(blob.blob));
 
                 // Stage the file
                 await git.add({ fs, dir, filepath });
-                logger.info("Conflict resolved", { filepath, resolution });
+                logger.info("Conflict resolved", { filepath, resolution, ref: refToUse });
             } catch (e) {
                 logger.error("Failed to resolve conflict", { filepath, resolution, error: String(e) });
                 throw new Error(`Failed to resolve conflict: ${String(e)}`);
@@ -537,6 +722,7 @@ export function createGitClient(config: GitClientConfig) {
 
         /**
          * Get conflict content (ours, theirs, merged)
+         * Uses our stored merge state to get the theirs version
          */
         async getConflictContent(filepath: string): Promise<{
             oursContent: string;
@@ -547,24 +733,58 @@ export function createGitClient(config: GitClientConfig) {
             let theirsContent = "";
             let mergedContent = "";
 
+            // Get our merge state to find theirs oid
+            const mergeState = await this.getMergeState();
+            logger.info("Getting conflict content", {
+                filepath,
+                hasState: !!mergeState,
+                oursOid: mergeState?.oursOid?.slice(0, 7),
+                theirsOid: mergeState?.theirsOid?.slice(0, 7)
+            });
+
             try {
-                // Get ours (HEAD)
+                // Get ours (from our stored oursOid or HEAD)
                 try {
-                    const ours = await git.readBlob({ fs, dir, oid: "HEAD", filepath });
+                    const oursRef = mergeState?.oursOid ?? "HEAD";
+                    logger.info("Reading ours blob", { oursRef: oursRef.slice(0, 7), filepath });
+                    const ours = await git.readBlob({ fs, dir, oid: oursRef, filepath });
                     oursContent = Buffer.from(ours.blob).toString("utf-8");
-                } catch {
+                    logger.info("Got ours content", { length: oursContent.length });
+                } catch (e) {
+                    logger.error("Failed to read ours blob", { filepath, error: String(e) });
                     oursContent = "";
                 }
 
-                // Get theirs (MERGE_HEAD)
+                // Get theirs (from stored theirsOid, or fall back to MERGE_HEAD for compatibility)
                 try {
-                    const theirs = await git.readBlob({ fs, dir, oid: "MERGE_HEAD", filepath });
-                    theirsContent = Buffer.from(theirs.blob).toString("utf-8");
-                } catch {
+                    let theirsRef = mergeState?.theirsOid;
+                    if (!theirsRef) {
+                        // Fall back to MERGE_HEAD for compatibility
+                        try {
+                            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
+                            const mergeHeadFile = Bun.file(mergeHeadPath);
+                            if (await mergeHeadFile.exists()) {
+                                theirsRef = (await mergeHeadFile.text()).trim();
+                            }
+                        } catch {
+                            // MERGE_HEAD doesn't exist
+                        }
+                    }
+
+                    if (theirsRef) {
+                        logger.info("Reading theirs blob", { theirsRef: theirsRef.slice(0, 7), filepath });
+                        const theirs = await git.readBlob({ fs, dir, oid: theirsRef, filepath });
+                        theirsContent = Buffer.from(theirs.blob).toString("utf-8");
+                        logger.info("Got theirs content", { length: theirsContent.length });
+                    } else {
+                        logger.warn("No theirs ref available", { filepath });
+                    }
+                } catch (e) {
+                    logger.error("Failed to read theirs blob", { filepath, error: String(e) });
                     theirsContent = "";
                 }
 
-                // Get current merged content (with conflict markers)
+                // Get current merged content (with conflict markers) from working directory
                 try {
                     const fullPath = `${dir}/${filepath}`;
                     const file = Bun.file(fullPath);
@@ -574,6 +794,19 @@ export function createGitClient(config: GitClientConfig) {
                 } catch {
                     mergedContent = "";
                 }
+
+                // If ours or theirs failed but we have merged content with markers,
+                // try to extract ours/theirs from the conflict markers
+                if ((oursContent === "" || theirsContent === "") && mergedContent.includes("<<<<<<<")) {
+                    logger.info("Extracting content from conflict markers");
+                    const extracted = this.extractFromConflictMarkers(mergedContent);
+                    if (oursContent === "" && extracted.ours) {
+                        oursContent = extracted.ours;
+                    }
+                    if (theirsContent === "" && extracted.theirs) {
+                        theirsContent = extracted.theirs;
+                    }
+                }
             } catch (e) {
                 logger.error("Failed to get conflict content", { filepath, error: String(e) });
             }
@@ -582,12 +815,61 @@ export function createGitClient(config: GitClientConfig) {
         },
 
         /**
+         * Extract ours/theirs content from a file with conflict markers
+         */
+        extractFromConflictMarkers(content: string): { ours: string; theirs: string } {
+            const lines = content.split("\n");
+            const oursLines: string[] = [];
+            const theirsLines: string[] = [];
+            const commonLines: string[] = [];
+
+            let inConflict = false;
+            let inOurs = false;
+            let inTheirs = false;
+
+            for (const line of lines) {
+                if (line.startsWith("<<<<<<<")) {
+                    inConflict = true;
+                    inOurs = true;
+                    inTheirs = false;
+                } else if (line.startsWith("=======")) {
+                    inOurs = false;
+                    inTheirs = true;
+                } else if (line.startsWith(">>>>>>>")) {
+                    inConflict = false;
+                    inOurs = false;
+                    inTheirs = false;
+                } else if (inConflict) {
+                    if (inOurs) {
+                        oursLines.push(line);
+                    } else if (inTheirs) {
+                        theirsLines.push(line);
+                    }
+                } else {
+                    // Common line - add to both
+                    commonLines.push(line);
+                    oursLines.push(line);
+                    theirsLines.push(line);
+                }
+            }
+
+            return {
+                ours: oursLines.join("\n"),
+                theirs: theirsLines.join("\n")
+            };
+        },
+
+        /**
          * Abort the current merge
          */
         async abortMerge(): Promise<void> {
             logger.info("Aborting merge");
 
-            // Remove MERGE_HEAD file
+            // Get merge state to know what to reset to
+            const mergeState = await this.getMergeState();
+            const resetRef = mergeState?.oursOid ?? "HEAD";
+
+            // Remove MERGE_HEAD file (for compatibility)
             const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
             try {
                 await fs.promises.unlink(mergeHeadPath);
@@ -595,9 +877,123 @@ export function createGitClient(config: GitClientConfig) {
                 // File might not exist
             }
 
-            // Reset to HEAD
-            await git.checkout({ fs, dir, ref: "HEAD", force: true });
-            logger.info("Merge aborted");
+            // Clear our custom merge state
+            await this.clearMergeState();
+
+            // Reset to HEAD (or stored oursOid)
+            await git.checkout({ fs, dir, ref: resetRef, force: true });
+            logger.info("Merge aborted", { resetRef });
+        },
+
+        /**
+         * Complete a merge after all conflicts have been resolved
+         * Creates a proper merge commit with both parents
+         */
+        async completeMerge(message?: string): Promise<string> {
+            logger.info("Completing merge");
+
+            // Get our merge state
+            const mergeState = await this.getMergeState();
+            if (!mergeState) {
+                throw new Error("No merge in progress");
+            }
+
+            // Check that all conflicts are resolved
+            const conflicts = await this.getConflictFiles();
+            const unresolvedConflicts = conflicts.filter((c) => !c.resolved);
+            if (unresolvedConflicts.length > 0) {
+                throw new Error(`There are still ${unresolvedConflicts.length} unresolved conflicts`);
+            }
+
+            // Stage any remaining changes
+            await this.addAll();
+
+            // Create merge commit with both parents
+            const commitMessage = message ?? `Merge ${mergeState.theirsRef} into ${mergeState.oursRef}`;
+            const sha = await git.commit({
+                fs,
+                dir,
+                message: commitMessage,
+                author,
+                parent: [mergeState.oursOid, mergeState.theirsOid],
+            });
+
+            logger.info("Merge commit created", { sha: sha.slice(0, 7), message: commitMessage });
+
+            // Clean up merge state
+            await this.clearMergeState();
+
+            // Also remove MERGE_HEAD if it exists (for compatibility)
+            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
+            try {
+                await fs.promises.unlink(mergeHeadPath);
+            } catch {
+                // File might not exist
+            }
+
+            logger.info("Merge completed");
+            return sha;
+        },
+
+        /**
+         * Get the merge state file path
+         */
+        getMergeStatePath(): string {
+            return `${dir}/.git/${MERGE_STATE_FILE}`;
+        },
+
+        /**
+         * Save merge state to file
+         */
+        async saveMergeState(state: MergeState): Promise<void> {
+            const statePath = this.getMergeStatePath();
+            await Bun.write(statePath, JSON.stringify(state, null, 2));
+            logger.info("Saved merge state", { oursRef: state.oursRef, theirsRef: state.theirsRef, conflictCount: state.conflictFiles.length });
+        },
+
+        /**
+         * Load merge state from file
+         */
+        async getMergeState(): Promise<MergeState | null> {
+            try {
+                const statePath = this.getMergeStatePath();
+                logger.info("Reading merge state file", { statePath });
+                const file = Bun.file(statePath);
+                const exists = await file.exists();
+                logger.info("Merge state file exists check", { exists, statePath });
+                if (!exists) return null;
+                const content = await file.text();
+                const state = JSON.parse(content) as MergeState;
+                logger.info("Loaded merge state from file", {
+                    inProgress: state.inProgress,
+                    conflictFilesCount: state.conflictFiles?.length,
+                    oursRef: state.oursRef,
+                    theirsRef: state.theirsRef,
+                    startedAt: state.startedAt
+                });
+                return state;
+            } catch (e) {
+                logger.error("Failed to load merge state", { error: String(e) });
+                return null;
+            }
+        },
+
+        /**
+         * Delete merge state file
+         */
+        async clearMergeState(): Promise<void> {
+            const statePath = this.getMergeStatePath();
+            try {
+                const exists = await Bun.file(statePath).exists();
+                if (exists) {
+                    await fs.promises.unlink(statePath);
+                    logger.info("Cleared merge state file", { statePath });
+                } else {
+                    logger.info("No merge state file to clear", { statePath });
+                }
+            } catch (e) {
+                logger.warn("Failed to clear merge state file", { statePath, error: String(e) });
+            }
         },
 
         /**

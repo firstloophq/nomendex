@@ -2,7 +2,6 @@ import { RouteHandler } from "../types/Routes";
 import { getRootPath } from "../storage/root-path";
 import { createServiceLogger } from "../lib/logger";
 import { createGitClient, CommitInfo, ConflictFile } from "../lib/git";
-import * as fs from "node:fs";
 
 const logger = createServiceLogger("GIT-SYNC");
 
@@ -168,11 +167,14 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
             const hasUncommittedChanges = statusResult.hasUncommittedChanges;
 
             // Check for merge conflicts
+            logger.info("=== /api/git/status: checking hasMergeConflict ===");
             const hasMergeConflict = await git.hasMergeConflict();
+            logger.info("=== /api/git/status: hasMergeConflict result ===", { hasMergeConflict });
             let conflictCount = 0;
             if (hasMergeConflict) {
                 const conflicts = await git.getConflictFiles();
                 conflictCount = conflicts.filter((c) => !c.resolved).length;
+                logger.info("Conflict count from getConflictFiles", { conflictCount, totalConflicts: conflicts.length });
             }
 
             // Get recent commits
@@ -349,7 +351,22 @@ export const gitPullRoute: RouteHandler<GitSyncResponse> = {
             }
 
             try {
-                await git.pull(auth, "origin", branch);
+                const result = await git.pull(auth, "origin", branch);
+
+                if (result.hadConflicts) {
+                    // Conflicts detected - files have conflict markers written
+                    logger.info("Pull completed with conflicts", { conflictFiles: result.conflictFiles });
+                    return Response.json(
+                        {
+                            success: false,
+                            error: "Merge conflict detected. Please resolve conflicts before syncing.",
+                            hadConflicts: true,
+                            conflictFiles: result.conflictFiles,
+                        },
+                        { status: 409 } // Conflict status code
+                    );
+                }
+
                 logger.info("Pulled successfully from remote");
                 return Response.json({
                     success: true,
@@ -361,9 +378,7 @@ export const gitPullRoute: RouteHandler<GitSyncResponse> = {
 
                 // Parse common errors
                 let friendlyError = errorMessage;
-                if (errorMessage.includes("CONFLICT") || errorMessage.includes("conflict")) {
-                    friendlyError = "Merge conflict detected. Please resolve conflicts manually before syncing.";
-                } else if (errorMessage.includes("Authentication") || errorMessage.includes("401")) {
+                if (errorMessage.includes("Authentication") || errorMessage.includes("401")) {
                     friendlyError = "Authentication failed. Check your GitHub PAT in Settings > Secrets.";
                 } else if (errorMessage.includes("404") || errorMessage.includes("not found")) {
                     friendlyError = "Repository not found. Check the remote URL.";
@@ -663,11 +678,30 @@ export const gitConflictsRoute: RouteHandler<GitConflictsResponse> = {
     GET: async (_req) => {
         try {
             const git = getGitClient();
-            logger.info("Checking for merge conflicts", { path: getRootPath() });
+            const rootPath = getRootPath();
+            logger.info("=== /api/git/conflicts called ===", { path: rootPath });
+
+            // Log the git directory being used
+            const gitDir = `${rootPath}/.git`;
+            const mergeStatePath = `${gitDir}/NOMENDEX_MERGE_STATE`;
+            const mergeHeadPath = `${gitDir}/MERGE_HEAD`;
+
+            // Check if files exist
+            const mergeStateExists = await Bun.file(mergeStatePath).exists();
+            const mergeHeadExists = await Bun.file(mergeHeadPath).exists();
+            logger.info("Conflict file check", {
+                gitDir,
+                mergeStateExists,
+                mergeStatePath,
+                mergeHeadExists,
+                mergeHeadPath
+            });
 
             const hasMergeConflict = await git.hasMergeConflict();
+            logger.info("hasMergeConflict result", { hasMergeConflict });
 
             if (!hasMergeConflict) {
+                logger.info("No merge conflict, returning empty list");
                 return Response.json({
                     success: true,
                     hasMergeConflict: false,
@@ -676,7 +710,7 @@ export const gitConflictsRoute: RouteHandler<GitConflictsResponse> = {
             }
 
             const conflictFiles = await git.getConflictFiles();
-            logger.info("Conflict check complete", { hasMergeConflict, conflictCount: conflictFiles.length });
+            logger.info("=== /api/git/conflicts complete ===", { hasMergeConflict, conflictCount: conflictFiles.length, files: conflictFiles.map(f => f.path) });
 
             return Response.json({
                 success: true,
@@ -793,43 +827,12 @@ export const gitContinueMergeRoute: RouteHandler<GitSyncResponse> = {
             const git = getGitClient();
             logger.info("Continuing merge", { path: getRootPath() });
 
-            // Check if there are still unresolved conflicts
-            const conflicts = await git.getConflictFiles();
-            const unresolvedConflicts = conflicts.filter((c) => !c.resolved);
-
-            if (unresolvedConflicts.length > 0) {
-                return Response.json(
-                    {
-                        success: false,
-                        error: "There are still unresolved conflicts. Resolve all conflicts before continuing.",
-                    },
-                    { status: 400 }
-                );
-            }
-
-            // Stage all resolved files and commit
-            await git.addAll();
-
-            const hasStagedChanges = await git.hasStagedChanges();
-            if (!hasStagedChanges) {
-                return Response.json({
-                    success: true,
-                    message: "Merge already completed",
-                });
-            }
-
-            const commitMessage = `Merge conflict resolved - ${new Date().toISOString()}`;
-            await git.commit(commitMessage);
-
-            // Clean up merge state
-            const mergeHeadPath = `${getRootPath()}/.git/MERGE_HEAD`;
-            try {
-                if (await Bun.file(mergeHeadPath).exists()) {
-                    await fs.promises.unlink(mergeHeadPath);
-                }
-            } catch {
-                // Ignore cleanup errors
-            }
+            // Use the new completeMerge function which handles everything:
+            // - Checks for unresolved conflicts
+            // - Stages all files
+            // - Creates proper merge commit with both parents
+            // - Cleans up merge state
+            await git.completeMerge();
 
             logger.info("Merge completed successfully");
 
@@ -839,6 +842,25 @@ export const gitContinueMergeRoute: RouteHandler<GitSyncResponse> = {
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
+
+            // Check for specific errors
+            if (errorMessage.includes("unresolved conflicts")) {
+                return Response.json(
+                    {
+                        success: false,
+                        error: errorMessage,
+                    },
+                    { status: 400 }
+                );
+            }
+
+            if (errorMessage.includes("No merge in progress")) {
+                return Response.json({
+                    success: true,
+                    message: "No merge in progress",
+                });
+            }
+
             logger.error("Failed to continue merge", { error: errorMessage });
             return Response.json(
                 {

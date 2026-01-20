@@ -27,6 +27,7 @@ interface GHSyncContextValue {
     checkForChanges: () => Promise<void>;
     sync: () => Promise<void>;
     recheckSetup: () => Promise<void>;
+    clearMergeConflict: () => void;
     isReady: boolean; // true if git is initialized and has remote
     needsSetup: boolean; // true if PAT is missing (when using PAT auth) or git not configured
     gitAuthMode: GitAuthMode;
@@ -169,8 +170,8 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                     lastChecked: new Date(),
                 }));
 
-                // Auto-sync if there are incoming changes
-                if (data.behindCount > 0) {
+                // Auto-sync if there are incoming changes (but not if there's an active merge conflict)
+                if (data.behindCount > 0 && !status.hasMergeConflict) {
                     syncRef.current?.();
                 }
             } else {
@@ -188,11 +189,16 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 error: error instanceof Error ? error.message : "Failed to check for changes",
             }));
         }
-    }, [isReady]);
+    }, [isReady, status.hasMergeConflict]);
 
     // Sync (commit, pull, then push)
     const sync = useCallback(async () => {
         if (!isReady) return;
+
+        // Don't sync if there's an active merge conflict
+        if (status.hasMergeConflict) {
+            return;
+        }
 
         setStatus(s => ({ ...s, syncing: true, error: null }));
 
@@ -206,14 +212,15 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
 
             // Then pull
             const pullResponse = await fetch("/api/git/pull", { method: "POST" });
+            const pullData = await pullResponse.json();
+
             if (!pullResponse.ok) {
-                const data = await pullResponse.json();
-                // Check for merge conflict
-                if (data.error?.includes("conflict")) {
+                // Check for actual merge conflict (indicated by hadConflicts flag from our pull implementation)
+                if (pullData.hadConflicts === true) {
                     setStatus(s => ({ ...s, syncing: false, hasMergeConflict: true, error: "Merge conflict detected. Please resolve conflicts before syncing." }));
                     return;
                 }
-                throw new Error(data.error || "Pull failed");
+                throw new Error(pullData.error || "Pull failed");
             }
 
             // Then push
@@ -239,7 +246,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 error: error instanceof Error ? error.message : "Sync failed",
             }));
         }
-    }, [isReady]);
+    }, [isReady, status.hasMergeConflict]);
 
     // Keep syncRef updated
     useEffect(() => {
@@ -261,8 +268,9 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
     }, [isReady, setupStatus.hasPAT, checkForChanges]);
 
     // Scheduled polling for remote changes (configurable interval)
+    // Also pauses when there's an active merge conflict
     useEffect(() => {
-        if (!isReady || !autoSync.enabled) {
+        if (!isReady || !autoSync.enabled || autoSync.paused || status.hasMergeConflict) {
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
                 pollIntervalRef.current = null;
@@ -281,11 +289,12 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 pollIntervalRef.current = null;
             }
         };
-    }, [isReady, autoSync.enabled, autoSync.intervalSeconds, checkForChanges]);
+    }, [isReady, autoSync.enabled, autoSync.paused, autoSync.intervalSeconds, status.hasMergeConflict, checkForChanges]);
 
     // File watching with debounce (polls git status every 3 seconds, debounces sync by 5 seconds)
+    // Also pauses when there's an active merge conflict
     useEffect(() => {
-        if (!isReady || !autoSync.enabled || !autoSync.syncOnChanges) {
+        if (!isReady || !autoSync.enabled || !autoSync.syncOnChanges || autoSync.paused || status.hasMergeConflict) {
             if (changeDebounceRef.current) {
                 clearTimeout(changeDebounceRef.current);
                 changeDebounceRef.current = null;
@@ -351,7 +360,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 changeWatchRef.current = null;
             }
         };
-    }, [isReady, autoSync.enabled, autoSync.syncOnChanges]);
+    }, [isReady, autoSync.enabled, autoSync.syncOnChanges, autoSync.paused, status.hasMergeConflict]);
 
     // Re-check ready state when navigating (in case user sets up git)
     useEffect(() => {
@@ -379,6 +388,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
             checkForChanges,
             sync,
             recheckSetup,
+            clearMergeConflict: () => setStatus(s => ({ ...s, hasMergeConflict: false, error: null })),
             isReady,
             needsSetup,
             gitAuthMode,

@@ -25,27 +25,73 @@ interface ConflictContent {
     error?: string;
 }
 
-// Simple diff computation - find lines that differ
-function computeLineDiffs(oursLines: string[], theirsLines: string[]): {
-    oursHighlights: Set<number>;
-    theirsHighlights: Set<number>;
-} {
-    const oursHighlights = new Set<number>();
-    const theirsHighlights = new Set<number>();
+// Compute Longest Common Subsequence for better diff
+function computeLCS(a: string[], b: string[]): Set<string> {
+    const m = a.length;
+    const n = b.length;
 
-    const maxLines = Math.max(oursLines.length, theirsLines.length);
+    // Create DP table
+    const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
 
-    for (let i = 0; i < maxLines; i++) {
-        const oursLine = oursLines[i] ?? "";
-        const theirsLine = theirsLines[i] ?? "";
-
-        if (oursLine !== theirsLine) {
-            if (i < oursLines.length) oursHighlights.add(i);
-            if (i < theirsLines.length) theirsHighlights.add(i);
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (a[i - 1] === b[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
         }
     }
 
-    return { oursHighlights, theirsHighlights };
+    // Backtrack to find LCS
+    const lcs = new Set<string>();
+    let i = m, j = n;
+    while (i > 0 && j > 0) {
+        if (a[i - 1] === b[j - 1]) {
+            lcs.add(a[i - 1]);
+            i--;
+            j--;
+        } else if (dp[i - 1][j] > dp[i][j - 1]) {
+            i--;
+        } else {
+            j--;
+        }
+    }
+
+    return lcs;
+}
+
+// Improved diff computation using LCS
+function computeLineDiffs(oursLines: string[], theirsLines: string[]): {
+    oursHighlights: Set<number>;
+    theirsHighlights: Set<number>;
+    oursOnly: Set<number>;
+    theirsOnly: Set<number>;
+} {
+    const oursHighlights = new Set<number>();
+    const theirsHighlights = new Set<number>();
+    const oursOnly = new Set<number>();
+    const theirsOnly = new Set<number>();
+
+    // Find common lines using LCS
+    const commonLines = computeLCS(oursLines, theirsLines);
+
+    // Mark lines that aren't in the common set
+    oursLines.forEach((line, i) => {
+        if (!commonLines.has(line)) {
+            oursHighlights.add(i);
+            oursOnly.add(i);
+        }
+    });
+
+    theirsLines.forEach((line, i) => {
+        if (!commonLines.has(line)) {
+            theirsHighlights.add(i);
+            theirsOnly.add(i);
+        }
+    });
+
+    return { oursHighlights, theirsHighlights, oursOnly, theirsOnly };
 }
 
 function CodePanel(props: {
@@ -53,13 +99,16 @@ function CodePanel(props: {
     subtitle: string;
     content: string;
     highlightedLines: Set<number>;
+    uniqueLines: Set<number>;
     variant: "ours" | "theirs";
+    diffCount: number;
 }) {
-    const { title, subtitle, content, highlightedLines, variant } = props;
+    const { title, subtitle, content, highlightedLines, uniqueLines, variant, diffCount } = props;
     const lines = content.split("\n");
 
     const bgColor = variant === "ours" ? "bg-blue-500/5" : "bg-green-500/5";
-    const highlightColor = variant === "ours" ? "bg-blue-500/20" : "bg-green-500/20";
+    const highlightColor = variant === "ours" ? "bg-red-500/15" : "bg-green-500/15";
+    const highlightBorder = variant === "ours" ? "border-l-2 border-l-red-500" : "border-l-2 border-l-green-500";
     const borderColor = variant === "ours" ? "border-blue-500/20" : "border-green-500/20";
 
     return (
@@ -67,9 +116,16 @@ function CodePanel(props: {
             <div className={`px-3 py-2 border-b ${bgColor} ${borderColor}`}>
                 <div className="flex items-center justify-between">
                     <span className="font-medium text-sm">{title}</span>
-                    <Badge variant="outline" className="text-xs">
-                        {lines.length} lines
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                        {diffCount > 0 && (
+                            <Badge variant={variant === "ours" ? "destructive" : "default"} className="text-xs">
+                                {diffCount} {variant === "ours" ? "removed" : "added"}
+                            </Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs">
+                            {lines.length} lines
+                        </Badge>
+                    </div>
                 </div>
                 <span className="text-xs text-muted-foreground">{subtitle}</span>
             </div>
@@ -81,19 +137,24 @@ function CodePanel(props: {
                 ) : (
                     <table className="w-full border-collapse">
                         <tbody>
-                            {lines.map((line, i) => (
-                                <tr
-                                    key={i}
-                                    className={highlightedLines.has(i) ? highlightColor : ""}
-                                >
-                                    <td className="px-2 py-0.5 text-right text-muted-foreground select-none border-r w-10 sticky left-0 bg-muted/50">
-                                        {i + 1}
-                                    </td>
-                                    <td className="px-2 py-0.5 whitespace-pre overflow-x-auto">
-                                        {line || " "}
-                                    </td>
-                                </tr>
-                            ))}
+                            {lines.map((line, i) => {
+                                const isHighlighted = highlightedLines.has(i);
+                                const isUnique = uniqueLines.has(i);
+                                return (
+                                    <tr
+                                        key={i}
+                                        className={isHighlighted ? `${highlightColor} ${highlightBorder}` : ""}
+                                    >
+                                        <td className={`px-2 py-0.5 text-right select-none border-r w-10 sticky left-0 ${isHighlighted ? (variant === "ours" ? "bg-red-500/10 text-red-600" : "bg-green-500/10 text-green-600") : "bg-muted/50 text-muted-foreground"}`}>
+                                            {isUnique && (variant === "ours" ? "-" : "+")}
+                                            {i + 1}
+                                        </td>
+                                        <td className={`px-2 py-0.5 whitespace-pre overflow-x-auto ${isHighlighted ? (variant === "ours" ? "text-red-700" : "text-green-700") : ""}`}>
+                                            {line || " "}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}
@@ -199,8 +260,13 @@ After you provide the merged content, I will manually update the file and mark t
     };
 
     // Compute line diffs
-    const { oursHighlights, theirsHighlights } = useMemo(() => {
-        if (!content) return { oursHighlights: new Set<number>(), theirsHighlights: new Set<number>() };
+    const { oursHighlights, theirsHighlights, oursOnly, theirsOnly } = useMemo(() => {
+        if (!content) return {
+            oursHighlights: new Set<number>(),
+            theirsHighlights: new Set<number>(),
+            oursOnly: new Set<number>(),
+            theirsOnly: new Set<number>()
+        };
 
         const oursLines = content.oursContent.split("\n");
         const theirsLines = content.theirsContent.split("\n");
@@ -305,6 +371,46 @@ After you provide the merged content, I will manually update the file and mark t
                 </div>
             )}
 
+            {/* Diff Summary */}
+            {content && (oursOnly.size > 0 || theirsOnly.size > 0) && (
+                <div className="mx-4 mt-4 px-3 py-2 text-sm bg-amber-500/10 border border-amber-500/20 rounded-md">
+                    <span className="font-medium">Differences found: </span>
+                    {oursOnly.size > 0 && (
+                        <span className="text-red-600">{oursOnly.size} line{oursOnly.size !== 1 ? "s" : ""} only in local</span>
+                    )}
+                    {oursOnly.size > 0 && theirsOnly.size > 0 && <span>, </span>}
+                    {theirsOnly.size > 0 && (
+                        <span className="text-green-600">{theirsOnly.size} line{theirsOnly.size !== 1 ? "s" : ""} only in remote</span>
+                    )}
+                </div>
+            )}
+
+            {/* No differences warning */}
+            {content && oursOnly.size === 0 && theirsOnly.size === 0 && (
+                <div className="mx-4 mt-4 px-3 py-2 text-sm bg-muted border rounded-md space-y-2">
+                    <span className="text-muted-foreground">No differences detected between extracted versions.</span>
+                    {content.mergedContent.includes("<<<<<<<") && (
+                        <div className="text-amber-600 text-xs">
+                            The file contains conflict markers. View the raw file below to see the conflict.
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Show merged content with markers if present */}
+            {content && content.mergedContent.includes("<<<<<<<") && (
+                <div className="mx-4 mt-2">
+                    <details className="border rounded-lg overflow-hidden">
+                        <summary className="px-3 py-2 bg-amber-500/10 border-b cursor-pointer text-sm font-medium hover:bg-amber-500/20">
+                            View file with conflict markers
+                        </summary>
+                        <div className="font-mono text-xs overflow-auto max-h-64 p-2 bg-muted/30">
+                            <pre className="whitespace-pre-wrap">{content.mergedContent}</pre>
+                        </div>
+                    </details>
+                </div>
+            )}
+
             {/* Diff View */}
             {content && (
                 <div className="flex-1 flex gap-4 p-4 overflow-hidden min-h-0">
@@ -313,14 +419,18 @@ After you provide the merged content, I will manually update the file and mark t
                         subtitle="Your local version"
                         content={content.oursContent}
                         highlightedLines={oursHighlights}
+                        uniqueLines={oursOnly}
                         variant="ours"
+                        diffCount={oursOnly.size}
                     />
                     <CodePanel
                         title="Theirs (Remote)"
                         subtitle="Incoming from remote"
                         content={content.theirsContent}
                         highlightedLines={theirsHighlights}
+                        uniqueLines={theirsOnly}
                         variant="theirs"
+                        diffCount={theirsOnly.size}
                     />
                 </div>
             )}

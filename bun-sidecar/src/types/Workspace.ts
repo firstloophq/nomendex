@@ -26,6 +26,7 @@ export const AutoSyncConfigSchema = z.object({
     enabled: z.boolean().default(true),
     syncOnChanges: z.boolean().default(true),
     intervalSeconds: z.number().default(60),
+    paused: z.boolean().default(false),
 });
 export type AutoSyncConfig = z.infer<typeof AutoSyncConfigSchema>;
 
@@ -38,7 +39,7 @@ export const WorkspaceStateSchema = z.object({
     projectPreferences: z.record(z.string(), ProjectPreferencesSchema).default({}),
     gitAuthMode: GitAuthModeSchema.default("local"),
     notesLocation: NotesLocationSchema.default("root"),
-    autoSync: AutoSyncConfigSchema.default({ enabled: true, syncOnChanges: true, intervalSeconds: 60 }),
+    autoSync: AutoSyncConfigSchema.default({ enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false }),
     chatInputEnterToSend: z.boolean().default(true),
 });
 
