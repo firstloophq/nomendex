@@ -28,7 +28,8 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAgentsAPI } from "@/hooks/useAgentsAPI";
 import { useMcpServersAPI } from "@/hooks/useMcpServersAPI";
 import type { AgentConfig } from "@/features/agents/index";
-import { MODEL_DISPLAY_NAMES } from "@/features/agents/index";
+import { PREDEFINED_MODELS, MODEL_DISPLAY_NAMES, getModelDisplayName } from "@/features/agents/index";
+import type { PredefinedModel } from "@/features/agents/index";
 import type { UserMcpServer } from "@/features/mcp-servers/mcp-server-types";
 import { Plus, Pencil, Trash2, Copy, Bot, Server } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -36,8 +37,6 @@ import { Badge } from "@/components/ui/badge";
 interface CombinedMcpServer extends UserMcpServer {
     isBuiltIn?: boolean;
 }
-
-type AgentModel = AgentConfig["model"];
 
 function AgentsContent() {
     const { currentTheme } = useTheme();
@@ -58,8 +57,9 @@ function AgentsContent() {
     const [formName, setFormName] = useState("");
     const [formDescription, setFormDescription] = useState("");
     const [formSystemPrompt, setFormSystemPrompt] = useState("");
-    const [formModel, setFormModel] = useState<AgentModel>("claude-sonnet-4-5-20250929");
+    const [formModel, setFormModel] = useState<string>("claude-sonnet-4-5-20250929");
     const [formMcpServers, setFormMcpServers] = useState<string[]>([]);
+    const [useCustomModel, setUseCustomModel] = useState(false);
 
     // Separate built-in and user-defined servers
     const builtInServers = allMcpServers.filter((s) => s.isBuiltIn);
@@ -98,6 +98,9 @@ function AgentsContent() {
         setFormSystemPrompt(agent.systemPrompt);
         setFormModel(agent.model);
         setFormMcpServers([...agent.mcpServers]);
+        // Check if the model is a predefined one or custom
+        const isPredefined = (PREDEFINED_MODELS as readonly string[]).includes(agent.model);
+        setUseCustomModel(!isPredefined);
         setIsDialogOpen(true);
     }
 
@@ -256,7 +259,7 @@ function AgentsContent() {
                                 <div>
                                     <span style={{ color: currentTheme.styles.contentSecondary }}>Model: </span>
                                     <span style={{ color: currentTheme.styles.contentPrimary }}>
-                                        {MODEL_DISPLAY_NAMES[agent.model]}
+                                        {getModelDisplayName(agent.model)}
                                     </span>
                                 </div>
                                 <div>
@@ -320,19 +323,47 @@ function AgentsContent() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="model">Model</Label>
-                            <Select value={formModel} onValueChange={(value) => setFormModel(value as AgentModel)}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(MODEL_DISPLAY_NAMES).map(([value, label]) => (
-                                        <SelectItem key={value} value={value}>
-                                            {label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="model">Model</Label>
+                                <button
+                                    type="button"
+                                    className="text-xs hover:underline"
+                                    style={{ color: currentTheme.styles.contentAccent }}
+                                    onClick={() => {
+                                        if (!useCustomModel) {
+                                            // Switching to custom: keep current value
+                                            setUseCustomModel(true);
+                                        } else {
+                                            // Switching to dropdown: reset to first predefined model
+                                            setFormModel(PREDEFINED_MODELS[0]);
+                                            setUseCustomModel(false);
+                                        }
+                                    }}
+                                >
+                                    {useCustomModel ? "Use predefined" : "Enter custom"}
+                                </button>
+                            </div>
+                            {useCustomModel ? (
+                                <Input
+                                    id="model"
+                                    value={formModel}
+                                    onChange={(e) => setFormModel(e.target.value)}
+                                    placeholder="e.g., claude-opus-4-5-20251101"
+                                />
+                            ) : (
+                                <Select value={formModel} onValueChange={(value) => setFormModel(value)}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {PREDEFINED_MODELS.map((model) => (
+                                            <SelectItem key={model} value={model}>
+                                                {MODEL_DISPLAY_NAMES[model as PredefinedModel]}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
                         </div>
 
                         <div className="space-y-2">
