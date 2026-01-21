@@ -14,6 +14,7 @@ import {
     StringSet,
     createEmptyIndex,
 } from "./backlinks-types";
+import type { FileIndexData } from "./notes-indexer";
 
 // In-memory index for fast queries
 let index: BacklinksIndex | null = null;
@@ -302,6 +303,7 @@ async function refreshIndex(currentIndex: BacklinksIndex): Promise<{
 
 /**
  * Initialize the backlinks service. Called on app startup.
+ * @deprecated Use initializeBacklinksWithData for unified scanning
  */
 export async function initializeBacklinksService(): Promise<void> {
     if (!hasActiveWorkspace()) {
@@ -324,6 +326,163 @@ export async function initializeBacklinksService(): Promise<void> {
         index = await buildFullIndex();
         await saveIndexToDisk(index);
         console.log(`[Backlinks] Built fresh index with ${Object.keys(index.mtimes).length} files`);
+    }
+}
+
+/**
+ * Initialize backlinks from pre-scanned file data.
+ * Used by unified indexer to avoid duplicate file scanning.
+ */
+export async function initializeBacklinksWithData(params: {
+    files: FileIndexData[];
+}): Promise<{ updated: number; total: number }> {
+    if (!hasActiveWorkspace()) {
+        return { updated: 0, total: 0 };
+    }
+
+    const { files } = params;
+
+    // Filter to notes only (backlinks doesn't use todos)
+    const notesFiles = files.filter((f) => f.source === "notes");
+
+    // Try to load existing index for incremental update
+    const existingIndex = await loadIndexFromDisk();
+    const existingFiles = StringSet.fromArray(notesFiles.map((f) => f.relativePath));
+
+    if (existingIndex) {
+        // Find what needs updating
+        const needsUpdate: FileIndexData[] = [];
+        const toRemove: string[] = [];
+
+        for (const file of notesFiles) {
+            if (!existingIndex.mtimes[file.relativePath] || existingIndex.mtimes[file.relativePath] !== file.mtime) {
+                needsUpdate.push(file);
+            }
+        }
+
+        // Find deleted files
+        for (const fileName of Object.keys(existingIndex.mtimes)) {
+            if (!StringSet.has(existingFiles, fileName)) {
+                toRemove.push(fileName);
+            }
+        }
+
+        // Apply removals
+        for (const fileName of toRemove) {
+            removeFileFromIndex({ indexRef: existingIndex, fileName });
+        }
+
+        // Apply updates using pre-extracted wiki links
+        for (const file of needsUpdate) {
+            existingIndex.mtimes[file.relativePath] = file.mtime;
+            updateFileInIndexWithLinks({
+                indexRef: existingIndex,
+                fileName: file.relativePath,
+                wikiLinks: file.wikiLinks,
+                existingFiles,
+            });
+        }
+
+        existingIndex.lastFullScan = new Date().toISOString();
+        index = existingIndex;
+
+        if (needsUpdate.length > 0 || toRemove.length > 0) {
+            await saveIndexToDisk(index);
+        }
+
+        return { updated: needsUpdate.length, total: notesFiles.length };
+    } else {
+        // Build fresh index from pre-scanned data
+        const newIndex = createEmptyIndex();
+
+        for (const file of notesFiles) {
+            newIndex.mtimes[file.relativePath] = file.mtime;
+            updateFileInIndexWithLinks({
+                indexRef: newIndex,
+                fileName: file.relativePath,
+                wikiLinks: file.wikiLinks,
+                existingFiles,
+            });
+        }
+
+        newIndex.lastFullScan = new Date().toISOString();
+        index = newIndex;
+        await saveIndexToDisk(index);
+
+        return { updated: notesFiles.length, total: notesFiles.length };
+    }
+}
+
+/**
+ * Update index for a file using pre-extracted wiki links.
+ */
+function updateFileInIndexWithLinks(params: {
+    indexRef: BacklinksIndex;
+    fileName: string;
+    wikiLinks: string[];
+    existingFiles: StringSet;
+}): void {
+    const { indexRef, fileName, wikiLinks, existingFiles } = params;
+    const fileNameWithoutExt = fileName.replace(/\.md$/, "");
+
+    // 1. Remove old outbound links for this file
+    const oldLinks = indexRef.outboundLinks[fileName];
+    if (oldLinks) {
+        for (const target of Object.keys(oldLinks)) {
+            if (indexRef.backlinks[target]) {
+                StringSet.remove(indexRef.backlinks[target], fileName);
+                if (StringSet.isEmpty(indexRef.backlinks[target])) {
+                    delete indexRef.backlinks[target];
+                }
+            }
+            if (indexRef.phantoms[target]) {
+                StringSet.remove(indexRef.phantoms[target], fileName);
+                if (StringSet.isEmpty(indexRef.phantoms[target])) {
+                    delete indexRef.phantoms[target];
+                }
+            }
+        }
+    }
+
+    // 2. Add new outbound links
+    if (wikiLinks.length > 0) {
+        indexRef.outboundLinks[fileName] = StringSet.fromArray(wikiLinks);
+    } else {
+        delete indexRef.outboundLinks[fileName];
+    }
+
+    // 3. Update backlinks and phantoms
+    for (const target of wikiLinks) {
+        if (!indexRef.backlinks[target]) {
+            indexRef.backlinks[target] = StringSet.create();
+        }
+        StringSet.add(indexRef.backlinks[target], fileName);
+
+        // Check if this is a phantom (target doesn't exist)
+        const targetFile = `${target}.md`;
+        const targetFileLower = targetFile.toLowerCase();
+
+        let targetExists = false;
+        for (const existing of Object.keys(existingFiles)) {
+            if (existing.toLowerCase() === targetFileLower) {
+                targetExists = true;
+                break;
+            }
+        }
+
+        if (!targetExists) {
+            if (!indexRef.phantoms[target]) {
+                indexRef.phantoms[target] = StringSet.create();
+            }
+            StringSet.add(indexRef.phantoms[target], fileName);
+        }
+    }
+
+    // 4. If this file was a phantom target, it's no longer phantom
+    for (const phantomKey of Object.keys(indexRef.phantoms)) {
+        if (phantomKey.toLowerCase() === fileNameWithoutExt.toLowerCase()) {
+            delete indexRef.phantoms[phantomKey];
+        }
     }
 }
 

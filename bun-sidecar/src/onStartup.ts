@@ -2,8 +2,9 @@ import { startupLog } from "./lib/logger";
 import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, getActiveWorkspacePath } from "./storage/root-path";
 import { mkdir, access } from "node:fs/promises";
 import { constants } from "node:fs";
-import { initializeBacklinksService } from "./features/notes/backlinks-service";
-import { initializeTagsService } from "./features/notes/tags-service";
+import { initializeBacklinksWithData } from "./features/notes/backlinks-service";
+import { initializeTagsWithData } from "./features/notes/tags-service";
+import { scanAndExtractAll } from "./features/notes/notes-indexer";
 import { initializeDefaultSkills } from "./services/default-skills";
 import type { SkillUpdateCheckResult } from "./services/skills-types";
 
@@ -106,25 +107,33 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
         // Non-fatal - continue startup
     }
 
-    // Initialize backlinks index
-    startupLog.info("Initializing backlinks index...");
+    // Unified file scanning and index initialization
+    // Scans files once, filters online-only files, extracts wiki links and tags in one pass
+    startupLog.info("Scanning and indexing files...");
     try {
-        await initializeBacklinksService();
-        startupLog.info("Backlinks index initialized");
-    } catch (error) {
-        startupLog.error("Failed to initialize backlinks index", {
-            error: error instanceof Error ? error.message : String(error),
-        });
-        // Non-fatal - continue startup
-    }
+        const scanResult = await scanAndExtractAll({ notesOnly: false });
 
-    // Initialize tags index
-    startupLog.info("Initializing tags index...");
-    try {
-        await initializeTagsService();
-        startupLog.info("Tags index initialized");
+        if (scanResult.skippedOnlineOnly > 0) {
+            startupLog.info(`Skipped ${scanResult.skippedOnlineOnly} online-only cloud files`);
+        }
+        if (scanResult.skippedErrors > 0) {
+            startupLog.warn(`Failed to access ${scanResult.skippedErrors} files`);
+        }
+
+        startupLog.info(`Scanned ${scanResult.files.length} files`);
+
+        // Initialize backlinks from scanned data
+        startupLog.info("Building backlinks index...");
+        const backlinksResult = await initializeBacklinksWithData({ files: scanResult.files });
+        startupLog.info(`Backlinks index: ${backlinksResult.updated} updated, ${backlinksResult.total} total files`);
+
+        // Initialize tags from scanned data
+        startupLog.info("Building tags index...");
+        const tagsResult = await initializeTagsWithData({ files: scanResult.files });
+        startupLog.info(`Tags index: ${tagsResult.updated} updated, ${tagsResult.tagCount} unique tags`);
+
     } catch (error) {
-        startupLog.error("Failed to initialize tags index", {
+        startupLog.error("Failed to initialize file indexes", {
             error: error instanceof Error ? error.message : String(error),
         });
         // Non-fatal - continue startup

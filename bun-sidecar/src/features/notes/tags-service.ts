@@ -10,6 +10,7 @@ import { join } from "path";
 import { getNomendexPath, getNotesPath, getTodosPath, hasActiveWorkspace } from "@/storage/root-path";
 import { StringSet } from "./backlinks-types";
 import { TagsIndex, TagSuggestion, createEmptyTagsIndex } from "./tags-types";
+import type { FileIndexData } from "./notes-indexer";
 
 // In-memory index for fast queries
 let index: TagsIndex | null = null;
@@ -295,6 +296,7 @@ async function refreshIndex(currentIndex: TagsIndex): Promise<{
 
 /**
  * Initialize the tags service. Called on app startup.
+ * @deprecated Use initializeTagsWithData for unified scanning
  */
 export async function initializeTagsService(): Promise<void> {
     if (!hasActiveWorkspace()) {
@@ -318,6 +320,138 @@ export async function initializeTagsService(): Promise<void> {
         await saveIndexToDisk(index);
         const tagCount = Object.keys(index.tags).length;
         console.log(`[Tags] Built fresh index with ${tagCount} unique tags`);
+    }
+}
+
+/**
+ * Initialize tags from pre-scanned file data.
+ * Used by unified indexer to avoid duplicate file scanning.
+ */
+export async function initializeTagsWithData(params: {
+    files: FileIndexData[];
+}): Promise<{ updated: number; total: number; tagCount: number }> {
+    if (!hasActiveWorkspace()) {
+        return { updated: 0, total: 0, tagCount: 0 };
+    }
+
+    const { files } = params;
+
+    // Build file refs (notes:path or todos:path)
+    const fileRefs = files.map((f) => `${f.source}:${f.relativePath}`);
+    const existingFileRefs = StringSet.fromArray(fileRefs);
+
+    // Try to load existing index for incremental update
+    const existingIndex = await loadIndexFromDisk();
+
+    if (existingIndex) {
+        // Find what needs updating
+        const needsUpdate: FileIndexData[] = [];
+        const toRemove: string[] = [];
+
+        for (const file of files) {
+            const fileRef = `${file.source}:${file.relativePath}`;
+            if (!existingIndex.mtimes[fileRef] || existingIndex.mtimes[fileRef] !== file.mtime) {
+                needsUpdate.push(file);
+            }
+        }
+
+        // Find deleted files
+        for (const fileRef of Object.keys(existingIndex.mtimes)) {
+            if (!StringSet.has(existingFileRefs, fileRef)) {
+                toRemove.push(fileRef);
+            }
+        }
+
+        // Apply removals
+        for (const fileRef of toRemove) {
+            removeFileFromIndex({ indexRef: existingIndex, fileName: fileRef });
+        }
+
+        // Apply updates using pre-extracted tags
+        for (const file of needsUpdate) {
+            const fileRef = `${file.source}:${file.relativePath}`;
+            existingIndex.mtimes[fileRef] = file.mtime;
+            updateFileInIndexWithTags({
+                indexRef: existingIndex,
+                fileName: fileRef,
+                tags: file.tags,
+            });
+        }
+
+        existingIndex.lastFullScan = new Date().toISOString();
+        index = existingIndex;
+
+        if (needsUpdate.length > 0 || toRemove.length > 0) {
+            await saveIndexToDisk(index);
+        }
+
+        return {
+            updated: needsUpdate.length,
+            total: files.length,
+            tagCount: Object.keys(index.tags).length,
+        };
+    } else {
+        // Build fresh index from pre-scanned data
+        const newIndex = createEmptyTagsIndex();
+
+        for (const file of files) {
+            const fileRef = `${file.source}:${file.relativePath}`;
+            newIndex.mtimes[fileRef] = file.mtime;
+            updateFileInIndexWithTags({
+                indexRef: newIndex,
+                fileName: fileRef,
+                tags: file.tags,
+            });
+        }
+
+        newIndex.lastFullScan = new Date().toISOString();
+        index = newIndex;
+        await saveIndexToDisk(index);
+
+        return {
+            updated: files.length,
+            total: files.length,
+            tagCount: Object.keys(index.tags).length,
+        };
+    }
+}
+
+/**
+ * Update index for a file using pre-extracted tags.
+ */
+function updateFileInIndexWithTags(params: {
+    indexRef: TagsIndex;
+    fileName: string;
+    tags: string[];
+}): void {
+    const { indexRef, fileName, tags } = params;
+
+    // 1. Remove old tags for this file
+    const oldTags = indexRef.fileTags[fileName];
+    if (oldTags) {
+        for (const tag of Object.keys(oldTags)) {
+            if (indexRef.tags[tag]) {
+                StringSet.remove(indexRef.tags[tag], fileName);
+                if (StringSet.isEmpty(indexRef.tags[tag])) {
+                    delete indexRef.tags[tag];
+                }
+            }
+        }
+    }
+
+    // 2. Update fileTags index
+    if (tags.length > 0) {
+        indexRef.fileTags[fileName] = StringSet.fromArray(tags);
+    } else {
+        delete indexRef.fileTags[fileName];
+    }
+
+    // 3. Update tags index
+    for (const tag of tags) {
+        if (!indexRef.tags[tag]) {
+            indexRef.tags[tag] = StringSet.create();
+        }
+        StringSet.add(indexRef.tags[tag], fileName);
     }
 }
 
