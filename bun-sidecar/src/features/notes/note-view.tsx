@@ -54,6 +54,9 @@ import { onRefresh, emit, subscribe } from "@/lib/events";
 import { BacklinksPanel, CollapsibleSection } from "./BacklinksPanel";
 import { toast } from "sonner";
 import { OverlayScrollbar } from "@/components/OverlayScrollbar";
+import { SearchPanel } from "@/components/prosemirror/SearchPanel";
+import { createSearchPlugin } from "@/components/prosemirror/search-plugin";
+import "@/components/prosemirror/search.css";
 
 interface NotesViewProps {
     noteFileName: string;
@@ -98,6 +101,7 @@ export function NotesView(props: NotesViewProps) {
         query: "",
         selectedIndex: 0,
     });
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
 
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -637,6 +641,9 @@ export function NotesView(props: NotesViewProps) {
         // Tag decoration plugin for styling completed tags and atomic deletion
         const tagDecorationPlugin = createTagDecorationPlugin();
 
+        // Search plugin for CMD+F functionality
+        const searchPlugin = createSearchPlugin();
+
         let state = EditorState.create({
             doc,
             plugins: [
@@ -648,6 +655,7 @@ export function NotesView(props: NotesViewProps) {
                 wikiLinkPlugin, // Wiki link suggestions
                 tagLinkPlugin, // Tag suggestions
                 tagDecorationPlugin, // Tag decorations and atomic deletion
+                searchPlugin, // Search highlighting
             ],
         });
 
@@ -881,6 +889,9 @@ export function NotesView(props: NotesViewProps) {
             // Tag decoration plugin for styling completed tags and atomic deletion
             const tagDecorationPlugin = createTagDecorationPlugin();
 
+            // Search plugin for CMD+F functionality
+            const searchPlugin = createSearchPlugin();
+
             let newState = EditorState.create({
                 doc,
                 plugins: [
@@ -892,6 +903,7 @@ export function NotesView(props: NotesViewProps) {
                     wikiLinkPlugin,
                     tagLinkPlugin,
                     tagDecorationPlugin,
+                    searchPlugin, // Search highlighting
                 ],
             });
 
@@ -1130,9 +1142,16 @@ export function NotesView(props: NotesViewProps) {
         };
     }, [isRichTextMode, updateActiveHeadingFromScroll, updateActiveHeadingFromCursor]);
 
-    // Keyboard navigation for mini-map
+    // Keyboard navigation for mini-map and search
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // CMD+F to open search
+            if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+                e.preventDefault();
+                setIsSearchOpen(true);
+                return;
+            }
+
             // CMD+/ to focus mini-map
             if ((e.metaKey || e.ctrlKey) && e.key === "/") {
                 e.preventDefault();
@@ -1273,7 +1292,16 @@ export function NotesView(props: NotesViewProps) {
             {/* Editor with inline TOC */}
             <div className="flex-1 overflow-hidden flex min-h-0">
                 {/* Main editor area - this is the scrollable content */}
-                <OverlayScrollbar
+                <div className="flex-1 h-full relative">
+                    {/* Search Panel - positioned relative to main editor area, not the sidebar */}
+                    {viewRef.current && (
+                        <SearchPanel
+                            view={viewRef.current}
+                            isOpen={isSearchOpen}
+                            onClose={() => setIsSearchOpen(false)}
+                        />
+                    )}
+                    <OverlayScrollbar
                     scrollRef={scrollRef}
                     className="flex-1 h-full"
                     style={{ backgroundColor: currentTheme.styles.surfacePrimary }}
@@ -1344,7 +1372,8 @@ export function NotesView(props: NotesViewProps) {
                             </div>
                         </div>
                     )}
-                </OverlayScrollbar>
+                    </OverlayScrollbar>
+                </div>
 
                 {/* Sidebar with TOC and Backlinks */}
                 {isRichTextMode && !compact && (
