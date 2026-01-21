@@ -1,118 +1,150 @@
-import { createServiceLogger } from "./lib/logger";
-import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace } from "./storage/root-path";
-import { mkdir } from "node:fs/promises";
+import { startupLog } from "./lib/logger";
+import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, getActiveWorkspacePath } from "./storage/root-path";
+import { mkdir, access } from "node:fs/promises";
+import { constants } from "node:fs";
 import { initializeBacklinksService } from "./features/notes/backlinks-service";
 import { initializeTagsService } from "./features/notes/tags-service";
 import { initializeDefaultSkills } from "./services/default-skills";
 import type { SkillUpdateCheckResult } from "./services/skills-types";
 
-const startupLogger = createServiceLogger("STARTUP");
+/**
+ * Safely create a directory with error logging.
+ * Returns true if successful, false if failed.
+ */
+async function ensureDirectory(params: { path: string; label: string }): Promise<boolean> {
+    const { path, label } = params;
+    try {
+        await mkdir(path, { recursive: true });
+        startupLog.info(`${label} directory verified: ${path}`);
+        return true;
+    } catch (error) {
+        startupLog.error(`Failed to create ${label} directory`, {
+            path,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+    }
+}
 
 export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
-    startupLogger.info("=== Server Startup Sequence ===");
-    startupLogger.info("Starting initialization...");
+    startupLog.info("=== Server Startup Sequence ===");
+    startupLog.info("Starting initialization...");
 
     // Add startup tasks here
-    startupLogger.info("Checking environment...");
-    startupLogger.info(`Node environment: ${process.env.NODE_ENV || "development"}`);
-    startupLogger.info(`Bun version: ${Bun.version}`);
-    startupLogger.info(`Platform: ${process.platform}`);
-    startupLogger.info(`Working directory: ${process.cwd()}`);
+    startupLog.info("Checking environment...");
+    startupLog.info(`Node environment: ${process.env.NODE_ENV || "development"}`);
+    startupLog.info(`Bun version: ${Bun.version}`);
+    startupLog.info(`Platform: ${process.platform}`);
+    startupLog.info(`Working directory: ${process.cwd()}`);
 
     // Only create directories if we have an active workspace
     if (!hasActiveWorkspace()) {
-        startupLogger.info("No active workspace configured - skipping directory creation");
-        startupLogger.info("=== Startup Sequence Complete ===");
+        startupLog.info("No active workspace configured - skipping directory creation");
+        startupLog.info("=== Startup Sequence Complete ===");
         return null;
     }
 
-    // Ensure root directory and feature folders exist
-    startupLogger.info("Ensuring directories exist...");
+    const workspacePath = getActiveWorkspacePath();
+    startupLog.info(`Active workspace path: ${workspacePath}`);
+
+    // Validate workspace path exists and is accessible
+    startupLog.info("Validating workspace path...");
     try {
-        const rootPath = getRootPath();
-        await mkdir(rootPath, { recursive: true });
-        startupLogger.info(`Root directory verified: ${rootPath}`);
+        await access(workspacePath!, constants.R_OK | constants.W_OK);
+        startupLog.info("Workspace path is accessible");
+    } catch (error) {
+        startupLog.error("Workspace path is not accessible", {
+            path: workspacePath,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        startupLog.error("Startup cannot continue - workspace path invalid or inaccessible");
+        startupLog.info("=== Startup Sequence Failed ===");
+        throw new Error(`Workspace path not accessible: ${workspacePath}`);
+    }
 
-        const todosPath = getTodosPath();
-        await mkdir(todosPath, { recursive: true });
-        startupLogger.info(`Todos directory verified: ${todosPath}`);
+    // Ensure root directory and feature folders exist (with granular error handling)
+    startupLog.info("Ensuring directories exist...");
 
-        const notesPath = getNotesPath();
-        await mkdir(notesPath, { recursive: true });
-        startupLogger.info(`Notes directory verified: ${notesPath}`);
+    const rootPath = getRootPath();
+    const rootOk = await ensureDirectory({ path: rootPath, label: "Root" });
+    if (!rootOk) {
+        startupLog.error("Cannot continue without root directory");
+        throw new Error(`Failed to create root directory: ${rootPath}`);
+    }
 
-        const uploadsPath = getUploadsPath();
-        await mkdir(uploadsPath, { recursive: true });
-        startupLogger.info(`Uploads directory verified: ${uploadsPath}`);
+    const todosOk = await ensureDirectory({ path: getTodosPath(), label: "Todos" });
+    const notesOk = await ensureDirectory({ path: getNotesPath(), label: "Notes" });
+    const uploadsOk = await ensureDirectory({ path: getUploadsPath(), label: "Uploads" });
+    const nomendexOk = await ensureDirectory({ path: getNomendexPath(), label: ".nomendex" });
+    const skillsOk = await ensureDirectory({ path: getSkillsPath(), label: ".claude/skills" });
 
-        const nomendexPath = getNomendexPath();
-        await mkdir(nomendexPath, { recursive: true });
-        startupLogger.info(`.nomendex directory verified: ${nomendexPath}`);
+    // Log summary of directory creation
+    const allDirsOk = todosOk && notesOk && uploadsOk && nomendexOk && skillsOk;
+    if (!allDirsOk) {
+        startupLog.warn("Some directories failed to create - app may have reduced functionality");
+    }
 
-        const skillsPath = getSkillsPath();
-        await mkdir(skillsPath, { recursive: true });
-        startupLogger.info(`.claude/skills directory verified: ${skillsPath}`);
-
-        // Create .gitignore if it doesn't exist
+    // Create .gitignore if it doesn't exist
+    try {
         const gitignorePath = `${rootPath}/.gitignore`;
         const gitignoreFile = Bun.file(gitignorePath);
         if (!(await gitignoreFile.exists())) {
             await Bun.write(gitignorePath, ".nomendex/\n");
-            startupLogger.info(`.gitignore created at: ${gitignorePath}`);
+            startupLog.info(`.gitignore created at: ${gitignorePath}`);
         } else {
             // Check if .nomendex/ is already in .gitignore
             const content = await gitignoreFile.text();
             if (!content.includes(".nomendex")) {
                 await Bun.write(gitignorePath, content.trimEnd() + "\n.nomendex/\n");
-                startupLogger.info(`.nomendex/ added to existing .gitignore`);
+                startupLog.info(`.nomendex/ added to existing .gitignore`);
             }
         }
     } catch (error) {
-        startupLogger.error("Failed to create directories", {
+        startupLog.warn("Failed to create/update .gitignore", {
             error: error instanceof Error ? error.message : String(error),
         });
-        throw error;
+        // Non-fatal - continue startup
     }
 
     // Initialize backlinks index
-    startupLogger.info("Initializing backlinks index...");
+    startupLog.info("Initializing backlinks index...");
     try {
         await initializeBacklinksService();
-        startupLogger.info("Backlinks index initialized");
+        startupLog.info("Backlinks index initialized");
     } catch (error) {
-        startupLogger.error("Failed to initialize backlinks index", {
+        startupLog.error("Failed to initialize backlinks index", {
             error: error instanceof Error ? error.message : String(error),
         });
         // Non-fatal - continue startup
     }
 
     // Initialize tags index
-    startupLogger.info("Initializing tags index...");
+    startupLog.info("Initializing tags index...");
     try {
         await initializeTagsService();
-        startupLogger.info("Tags index initialized");
+        startupLog.info("Tags index initialized");
     } catch (error) {
-        startupLogger.error("Failed to initialize tags index", {
+        startupLog.error("Failed to initialize tags index", {
             error: error instanceof Error ? error.message : String(error),
         });
         // Non-fatal - continue startup
     }
 
     // Initialize default skills
-    startupLogger.info("Initializing default skills...");
+    startupLog.info("Initializing default skills...");
     let skillUpdateResult: SkillUpdateCheckResult | null = null;
     try {
         skillUpdateResult = await initializeDefaultSkills();
-        startupLogger.info("Default skills initialized");
+        startupLog.info("Default skills initialized");
     } catch (error) {
-        startupLogger.error("Failed to initialize default skills", {
+        startupLog.error("Failed to initialize default skills", {
             error: error instanceof Error ? error.message : String(error),
         });
         // Non-fatal - continue startup
     }
 
-    startupLogger.info("Initialization complete");
-    startupLogger.info("=== Startup Sequence Complete ===");
+    startupLog.info("Initialization complete");
+    startupLog.info("=== Startup Sequence Complete ===");
 
     return skillUpdateResult;
 }
