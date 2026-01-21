@@ -1290,18 +1290,18 @@ export function NotesView(props: NotesViewProps) {
             </div>
 
             {/* Editor with inline TOC */}
-            <div className="flex-1 overflow-hidden flex min-h-0 relative">
-                {/* Search Panel */}
-                {viewRef.current && (
-                    <SearchPanel
-                        view={viewRef.current}
-                        isOpen={isSearchOpen}
-                        onClose={() => setIsSearchOpen(false)}
-                    />
-                )}
-
+            <div className="flex-1 overflow-hidden flex min-h-0">
                 {/* Main editor area - this is the scrollable content */}
-                <OverlayScrollbar
+                <div className="flex-1 h-full relative">
+                    {/* Search Panel - positioned relative to main editor area, not the sidebar */}
+                    {viewRef.current && (
+                        <SearchPanel
+                            view={viewRef.current}
+                            isOpen={isSearchOpen}
+                            onClose={() => setIsSearchOpen(false)}
+                        />
+                    )}
+                    <OverlayScrollbar
                     scrollRef={scrollRef}
                     className="flex-1 h-full"
                     style={{ backgroundColor: currentTheme.styles.surfacePrimary }}
@@ -1372,7 +1372,8 @@ export function NotesView(props: NotesViewProps) {
                             </div>
                         </div>
                     )}
-                </OverlayScrollbar>
+                    </OverlayScrollbar>
+                </div>
 
                 {/* Sidebar with TOC and Backlinks */}
                 {isRichTextMode && !compact && (
