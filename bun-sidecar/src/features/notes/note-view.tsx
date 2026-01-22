@@ -1225,15 +1225,27 @@ export function NotesView(props: NotesViewProps) {
     return (
         <div className="h-full overflow-hidden flex flex-col">
             {(loading || !note) ? (
-                // Loading placeholder
-                <div className="h-full" />
+                // Loading placeholder - keep OverlayScrollbar for consistent ref
+                <OverlayScrollbar
+                    scrollRef={scrollRef}
+                    className="flex-1 h-full"
+                    style={{ backgroundColor: currentTheme.styles.surfacePrimary }}
+                >
+                    <div className="h-full" />
+                </OverlayScrollbar>
             ) : error ? (
-                // Error state
-                <div className="p-4">
-                    <Alert variant="destructive">
-                        <AlertDescription>Error: {error}</AlertDescription>
-                    </Alert>
-                </div>
+                // Error state - keep OverlayScrollbar for consistent ref
+                <OverlayScrollbar
+                    scrollRef={scrollRef}
+                    className="flex-1 h-full"
+                    style={{ backgroundColor: currentTheme.styles.surfacePrimary }}
+                >
+                    <div className="p-4">
+                        <Alert variant="destructive">
+                            <AlertDescription>Error: {error}</AlertDescription>
+                        </Alert>
+                    </div>
+                </OverlayScrollbar>
             ) : (
                 // Content
                 <>
