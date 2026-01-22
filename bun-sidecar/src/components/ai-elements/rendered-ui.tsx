@@ -8,6 +8,7 @@ interface RenderedUIProps {
     html: string;
     title?: string;
     height?: number;
+    allowSameOrigin?: boolean;
     className?: string;
 }
 
@@ -35,7 +36,7 @@ function logRenderUI(message: string, data?: Record<string, unknown>) {
  * - Skills can use these variables in their CSS for consistent theming
  * - The iframe re-renders when the theme changes
  */
-export function RenderedUI({ html, title, height, className }: RenderedUIProps) {
+export function RenderedUI({ html, title, height, allowSameOrigin, className }: RenderedUIProps) {
     const { currentTheme } = useTheme();
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [iframeHeight, setIframeHeight] = useState(height || 200);
@@ -45,6 +46,7 @@ export function RenderedUI({ html, title, height, className }: RenderedUIProps) 
         htmlLength: html?.length ?? 0,
         title,
         height,
+        allowSameOrigin,
         hasHtml: !!html
     });
 
@@ -272,7 +274,7 @@ ${html}
                 <iframe
                     ref={iframeRef}
                     srcDoc={wrappedHtml}
-                    sandbox="allow-scripts allow-forms"
+                    sandbox={allowSameOrigin ? "allow-scripts allow-forms allow-same-origin" : "allow-scripts allow-forms"}
                     className="w-full border-0"
                     style={{
                         height: height || iframeHeight,
@@ -295,6 +297,7 @@ export interface NoetectUIData {
     html: string;
     title?: string;
     height?: number;
+    allowSameOrigin?: boolean;
 }
 
 // MCP content block format

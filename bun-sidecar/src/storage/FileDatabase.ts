@@ -14,12 +14,22 @@ export interface QueryOptions<T> {
     offset?: number;
 }
 
+export interface FileDatabaseOptions {
+    bodyKey?: string;
+    fileExtension?: string;
+}
+
 export class FileDatabase<T extends DatabaseRecord> {
     private basePath: string;
     private fileExtension: string = ".md";
+    private bodyKey: string;
 
-    constructor(basePath: string) {
+    constructor(basePath: string, options: FileDatabaseOptions = {}) {
         this.basePath = basePath;
+        this.bodyKey = options.bodyKey ?? "description";
+        if (options.fileExtension) {
+            this.fileExtension = options.fileExtension;
+        }
     }
 
     /**
@@ -33,7 +43,7 @@ export class FileDatabase<T extends DatabaseRecord> {
      * Convert a record to markdown with YAML frontmatter
      */
     private recordToFile(record: T): string {
-        const { description, ...metadata } = record as Record<string, unknown>;
+        const { [this.bodyKey]: bodyValue, ...metadata } = record as Record<string, unknown>;
 
         // Build YAML frontmatter
         const yamlContent = Object.entries(metadata)
@@ -60,8 +70,8 @@ export class FileDatabase<T extends DatabaseRecord> {
         // Build the full file content
         let content = `---\n${yamlContent}\n---\n`;
 
-        if (description) {
-            content += `\n${description}\n`;
+        if (typeof bodyValue === "string" && bodyValue.length > 0) {
+            content += `\n${bodyValue}\n`;
         }
 
         return content;
@@ -96,9 +106,9 @@ export class FileDatabase<T extends DatabaseRecord> {
             }
         }
 
-        // Add description from body if present
+        // Add body content if present
         if (bodyContent) {
-            metadata.description = bodyContent;
+            metadata[this.bodyKey] = bodyContent;
         }
 
         return metadata as T;

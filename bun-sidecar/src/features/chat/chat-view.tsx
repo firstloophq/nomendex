@@ -839,6 +839,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                                                         html={uiData.html}
                                                         title={uiData.title}
                                                         height={uiData.height}
+                                                        allowSameOrigin={uiData.allowSameOrigin}
                                                     />
                                                 </div>
                                             );
