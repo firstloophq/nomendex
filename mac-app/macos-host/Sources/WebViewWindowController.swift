@@ -188,6 +188,7 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
             panel.prompt = "Choose"
             panel.title = "Select Data Root Folder"
             if panel.runModal() == .OK, let url = panel.url {
