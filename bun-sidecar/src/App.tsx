@@ -19,7 +19,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { KeyboardShortcutsProvider } from "./contexts/KeyboardShortcutsContext";
 import { GHSyncProvider } from "./contexts/GHSyncContext";
-import { GHSyncSetupPrompt } from "./components/GHSyncSetupPrompt";
 import { CommandDialogProvider } from "./components/CommandDialogProvider";
 import { CommandMenu } from "./components/CommandMenu";
 import { NotesCommandMenu } from "./components/NotesCommandMenu";
@@ -126,7 +125,6 @@ export function App() {
                                             <CommandMenu />
                                             <NotesCommandMenu />
                                             <TabSwitcherMenu />
-                                            <GHSyncSetupPrompt />
                                         </CommandDialogProvider>
                                     </GHSyncProvider>
                                 </KeyboardShortcutsProvider>
