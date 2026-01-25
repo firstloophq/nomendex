@@ -42,6 +42,7 @@ import { AgentSelector } from "@/features/agents/agent-selector";
 import { agentsAPI } from "@/hooks/useAgentsAPI";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 import type { QueuedMessage } from "./index";
+import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
 
 type ToolCallState =
     | "input-streaming"
@@ -79,7 +80,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
     const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
     const [queuePaused, setQueuePaused] = useState(false);
 
-    const conversationRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useTabScrollPersistence(tabId);
     const inputRef = useRef<ProseMirrorPromptTextareaHandle>(null);
     const activeTabIdRef = useRef<string | null>(null);
     const isNearBottomRef = useRef(true);
@@ -93,7 +94,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
 
     // Track scroll position to know if user is near bottom
     useEffect(() => {
-        const container = conversationRef.current;
+        const container = scrollRef.current;
         if (!container) return;
 
         const handleScroll = () => {
@@ -104,14 +105,14 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
 
         container.addEventListener("scroll", handleScroll);
         return () => container.removeEventListener("scroll", handleScroll);
-    }, []);
+    }, [scrollRef]);
 
     // Auto-scroll to bottom when messages change, but only if user is near bottom
     useEffect(() => {
-        if (conversationRef.current && isNearBottomRef.current) {
-            conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+        if (scrollRef.current && isNearBottomRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [messages]);
+    }, [messages, scrollRef]);
 
     // Load session history if we have a sessionId, or load agent preferences for new sessions
     useEffect(() => {
@@ -785,7 +786,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
 
     return (
         <div className="flex h-full flex-col" style={{ backgroundColor: currentTheme.styles.surfacePrimary }}>
-            <Conversation className="flex-1" ref={conversationRef}>
+            <Conversation className="flex-1" ref={scrollRef}>
                 <ConversationContent>
                     {messages.map((message) => (
                         <Message key={message.id} from={message.role}>
