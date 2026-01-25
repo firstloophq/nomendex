@@ -340,5 +340,20 @@ export function getNotesCommands(context: CommandContext): Command[] {
                 await notesAPI.revealInFinder({ fileName: noteFileName });
             },
         },
+        {
+            id: "notes.toggleSpellcheck",
+            name: "Toggle Spellcheck",
+            description: "Enable or disable spellchecking in the editor",
+            icon: "SpellCheck",
+            // Only show when notes editor is active
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+                // Emit event for the note view to handle toggling spellcheck
+                emit("notes:toggleSpellcheck", {});
+            },
+        },
     ];
 }

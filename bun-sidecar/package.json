@@ -10,7 +10,8 @@
         "build:css:dev": "bunx tailwindcss -i ./src/input.css -o ./src/output.css --watch",
         "build:css:full": "bunx tailwindcss -i ./src/input.css -o ./src/output.css --content './src/**/*.{js,ts,jsx,tsx}' --safelist '*'",
         "logs": "bun tail-logs.ts",
-        "agent": "bun run scripts/run-agent.ts"
+        "agent": "bun run scripts/run-agent.ts",
+        "download-dictionaries": "bun run scripts/download-dictionaries.ts"
     },
     "dependencies": {
         "@ai-sdk/anthropic": "^2.0.56",
@@ -101,6 +102,7 @@
         "tailwindcss": "^4.1.18",
         "tailwindcss-animate": "^1.0.7",
         "tldraw": "^4.2.1",
+        "typo-js": "^1.2.4",
         "use-stick-to-bottom": "^1.1.1",
         "uuid": "^11.1.0",
         "vaul": "^1.1.2",
