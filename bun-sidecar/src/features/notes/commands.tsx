@@ -357,9 +357,9 @@ export function getNotesCommands(context: CommandContext): Command[] {
             },
         },
         {
-            id: "notes.toggleSpellcheck",
-            name: "Toggle Spellcheck",
-            description: "Enable or disable spellchecking in the editor",
+            id: "notes.runSpellcheck",
+            name: "Run Spellcheck",
+            description: "Check spelling and highlight misspelled words",
             icon: "SpellCheck",
             // Only show when notes editor is active
             when: {
@@ -367,8 +367,21 @@ export function getNotesCommands(context: CommandContext): Command[] {
             },
             callback: () => {
                 context.closeCommandMenu();
-                // Emit event for the note view to handle toggling spellcheck
-                emit("notes:toggleSpellcheck", {});
+                emit("notes:runSpellcheck", {});
+            },
+        },
+        {
+            id: "notes.clearSpellcheck",
+            name: "Clear Spellcheck",
+            description: "Remove all spellcheck highlighting",
+            icon: "SpellCheck2",
+            // Only show when notes editor is active
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+                emit("notes:clearSpellcheck", {});
             },
         },
     ];

@@ -1,47 +1,44 @@
 import { Plugin, PluginKey } from "prosemirror-state";
-import { Decoration, DecorationSet } from "prosemirror-view";
-import Typo from "typo-js";
+import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
+import { SpellcheckEngine } from "@/lib/spellcheck";
+import { toast } from "sonner";
 
 export interface SpellcheckPluginState {
     decorations: DecorationSet;
-    enabled: boolean;
-    dictionary: Typo | null;
+    dictionary: SpellcheckEngine | null;
+    isLoading: boolean;
 }
 
 export const spellcheckPluginKey = new PluginKey<SpellcheckPluginState>("spellcheck");
 
-// Function to create and initialize the dictionary
-async function loadDictionary(): Promise<Typo | null> {
-    try {
-        // Load dictionary files from public directory
-        const affPath = "/dictionaries/en_US.aff";
-        const dicPath = "/dictionaries/en_US.dic";
+// Singleton dictionary instance
+let dictionaryInstance: SpellcheckEngine | null = null;
+let dictionaryLoading: Promise<SpellcheckEngine | null> | null = null;
 
-        const [affResponse, dicResponse] = await Promise.all([
-            fetch(affPath),
-            fetch(dicPath)
-        ]);
+// Function to get or load the dictionary
+async function getDictionary(): Promise<SpellcheckEngine | null> {
+    if (dictionaryInstance) return dictionaryInstance;
 
-        if (!affResponse.ok || !dicResponse.ok) {
-            console.error("Failed to load dictionary files");
+    if (dictionaryLoading) return dictionaryLoading;
+
+    dictionaryLoading = (async () => {
+        try {
+            const engine = new SpellcheckEngine();
+            await engine.load("/api/dictionaries/en_US.json");
+            dictionaryInstance = engine;
+            return engine;
+        } catch (error) {
+            console.error("Error loading dictionary:", error);
             return null;
         }
+    })();
 
-        const affData = await affResponse.text();
-        const dicData = await dicResponse.text();
-
-        // Create Typo instance with loaded data
-        return new Typo("en_US", affData, dicData);
-    } catch (error) {
-        console.error("Error loading dictionary:", error);
-        return null;
-    }
+    return dictionaryLoading;
 }
 
 // Extract words from text
 function extractWords(text: string): { word: string; start: number; end: number }[] {
     const words: { word: string; start: number; end: number }[] = [];
-    // Match word characters (letters, numbers, apostrophes within words)
     const wordRegex = /\b[a-zA-Z]+(?:'[a-zA-Z]+)?\b/g;
     let match;
 
@@ -57,34 +54,35 @@ function extractWords(text: string): { word: string; start: number; end: number 
 }
 
 // Check if a word is misspelled
-function isWordMisspelled(word: string, dictionary: Typo | null): boolean {
+function isWordMisspelled(word: string, dictionary: SpellcheckEngine | null): boolean {
     if (!dictionary) return false;
-
-    // Skip single letters and numbers
     if (word.length <= 1 || /^\d+$/.test(word)) return false;
-
-    // Check if word is in dictionary
     return !dictionary.check(word);
 }
 
 // Get suggestions for a misspelled word
-export function getSuggestions(word: string, dictionary: Typo | null): string[] {
+export function getSuggestions(word: string, dictionary: SpellcheckEngine | null): string[] {
     if (!dictionary) return [];
     return dictionary.suggest(word) || [];
 }
 
 // Create decorations for misspelled words
-function createDecorations(doc: any, dictionary: Typo | null, enabled: boolean): DecorationSet {
-    if (!enabled || !dictionary) {
+function createDecorations(
+    doc: Parameters<typeof DecorationSet.create>[0],
+    dictionary: SpellcheckEngine | null
+): DecorationSet {
+    if (!dictionary) {
         return DecorationSet.empty;
     }
 
     const decorations: Decoration[] = [];
 
-    doc.descendants((node: any, pos: number) => {
+    doc.descendants((node, pos) => {
         if (!node.isText) return;
 
         const text = node.text;
+        if (!text) return;
+
         const words = extractWords(text);
 
         words.forEach(({ word, start, end }) => {
@@ -105,36 +103,56 @@ function createDecorations(doc: any, dictionary: Typo | null, enabled: boolean):
     return DecorationSet.create(doc, decorations);
 }
 
-// Toggle spellcheck command
-export function toggleSpellcheck(view: any): boolean {
-    const pluginState = spellcheckPluginKey.getState(view.state);
-    if (!pluginState) return false;
+// Run spellcheck command - loads dictionary and applies decorations
+export async function runSpellcheck(view: EditorView): Promise<{ misspelledCount: number }> {
+    // Show loading toast
+    const loadingToast = toast.loading("Running spellcheck...");
 
-    const { enabled, dictionary } = pluginState;
-    const newEnabled = !enabled;
+    try {
+        const dictionary = await getDictionary();
 
-    // If enabling and dictionary not loaded yet, load it
-    if (newEnabled && !dictionary) {
-        loadDictionary().then((dict) => {
-            const tr = view.state.tr;
-            tr.setMeta(spellcheckPluginKey, {
-                type: "setDictionary",
-                dictionary: dict,
-                enabled: newEnabled,
-            });
-            view.dispatch(tr);
+        if (!dictionary) {
+            toast.dismiss(loadingToast);
+            toast.error("Failed to load dictionary");
+            return { misspelledCount: 0 };
+        }
+
+        // Dispatch to update plugin state with dictionary and decorations
+        const tr = view.state.tr;
+        tr.setMeta(spellcheckPluginKey, {
+            type: "runSpellcheck",
+            dictionary,
         });
-        return true;
-    }
+        view.dispatch(tr);
 
-    // Toggle enabled state
+        // Count misspelled words
+        const pluginState = spellcheckPluginKey.getState(view.state);
+        const misspelledCount = pluginState?.decorations.find().length ?? 0;
+
+        toast.dismiss(loadingToast);
+
+        if (misspelledCount === 0) {
+            toast.success("No spelling errors found");
+        } else {
+            toast.success(`Found ${misspelledCount} misspelled word${misspelledCount === 1 ? "" : "s"}`);
+        }
+
+        return { misspelledCount };
+    } catch (error) {
+        toast.dismiss(loadingToast);
+        toast.error("Spellcheck failed");
+        console.error("Spellcheck error:", error);
+        return { misspelledCount: 0 };
+    }
+}
+
+// Clear spellcheck decorations
+export function clearSpellcheck(view: EditorView): void {
     const tr = view.state.tr;
     tr.setMeta(spellcheckPluginKey, {
-        type: "toggle",
-        enabled: newEnabled,
+        type: "clear",
     });
     view.dispatch(tr);
-    return true;
 }
 
 // Create the spellcheck plugin
@@ -145,40 +163,47 @@ export function createSpellcheckPlugin(): Plugin<SpellcheckPluginState> {
             init() {
                 return {
                     decorations: DecorationSet.empty,
-                    enabled: false, // Disabled by default
                     dictionary: null,
+                    isLoading: false,
                 };
             },
             apply(tr, value, _oldState, newState) {
-                const meta = tr.getMeta(spellcheckPluginKey);
+                const meta = tr.getMeta(spellcheckPluginKey) as
+                    | { type: "runSpellcheck"; dictionary: SpellcheckEngine }
+                    | { type: "clear" }
+                    | { type: "removeAt"; from: number; to: number }
+                    | undefined;
 
                 if (meta) {
-                    if (meta.type === "toggle") {
-                        return {
-                            ...value,
-                            enabled: meta.enabled,
-                            decorations: createDecorations(newState.doc, value.dictionary, meta.enabled),
-                        };
-                    }
-                    if (meta.type === "setDictionary") {
+                    if (meta.type === "runSpellcheck") {
                         return {
                             ...value,
                             dictionary: meta.dictionary,
-                            enabled: meta.enabled,
-                            decorations: createDecorations(newState.doc, meta.dictionary, meta.enabled),
+                            decorations: createDecorations(newState.doc, meta.dictionary),
+                        };
+                    }
+                    if (meta.type === "clear") {
+                        return {
+                            ...value,
+                            decorations: DecorationSet.empty,
+                        };
+                    }
+                    if (meta.type === "removeAt") {
+                        // Remove decorations that overlap with the specified range
+                        const filtered = value.decorations.find(meta.from, meta.to);
+                        let newDecorations = value.decorations;
+                        for (const deco of filtered) {
+                            newDecorations = newDecorations.remove([deco]);
+                        }
+                        return {
+                            ...value,
+                            decorations: newDecorations.map(tr.mapping, tr.doc),
                         };
                     }
                 }
 
-                // Update decorations on document change if enabled
-                if (tr.docChanged && value.enabled) {
-                    return {
-                        ...value,
-                        decorations: createDecorations(newState.doc, value.dictionary, value.enabled),
-                    };
-                }
-
-                // Map decorations through the transaction
+                // Map decorations through the transaction - this preserves decorations
+                // and automatically removes/adjusts ones in the edited region
                 return {
                     ...value,
                     decorations: value.decorations.map(tr.mapping, tr.doc),

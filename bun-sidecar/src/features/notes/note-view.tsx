@@ -57,7 +57,7 @@ import { OverlayScrollbar } from "@/components/OverlayScrollbar";
 import { SearchPanel } from "@/components/prosemirror/SearchPanel";
 import { createSearchPlugin } from "@/components/prosemirror/search-plugin";
 import "@/components/prosemirror/search.css";
-import { createSpellcheckPlugin, toggleSpellcheck } from "@/components/prosemirror/spellcheck";
+import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/components/prosemirror/spellcheck";
 import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
 import "@/components/prosemirror/spellcheck/spellcheck.css";
 
@@ -106,10 +106,6 @@ export function NotesView(props: NotesViewProps) {
         selectedIndex: 0,
     });
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [spellcheckPopup, setSpellcheckPopup] = useState<{
-        word: string;
-        position: { top: number; left: number };
-    } | null>(null);
 
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -197,11 +193,20 @@ export function NotesView(props: NotesViewProps) {
         });
     }, [noteFileName, content]);
 
-    // Subscribe to toggle spellcheck events
+    // Subscribe to run spellcheck events
     useEffect(() => {
-        return subscribe("notes:toggleSpellcheck", () => {
+        return subscribe("notes:runSpellcheck", () => {
             if (viewRef.current) {
-                toggleSpellcheck(viewRef.current);
+                runSpellcheck(viewRef.current);
+            }
+        });
+    }, []);
+
+    // Subscribe to clear spellcheck events
+    useEffect(() => {
+        return subscribe("notes:clearSpellcheck", () => {
+            if (viewRef.current) {
+                clearSpellcheck(viewRef.current);
             }
         });
     }, []);
@@ -711,28 +716,8 @@ export function NotesView(props: NotesViewProps) {
             },
             handleDOMEvents: {
                 mousedown: (_view, event) => {
-                    // Handle clicks on misspelled words
-                    const target = event.target as HTMLElement;
-                    const misspelledWord = target.classList.contains("misspelled-word")
-                        ? target
-                        : target.closest(".misspelled-word");
-                    if (misspelledWord) {
-                        event.preventDefault();
-                        const word = misspelledWord.getAttribute("data-word");
-                        if (word) {
-                            const rect = misspelledWord.getBoundingClientRect();
-                            setSpellcheckPopup({
-                                word,
-                                position: {
-                                    top: rect.bottom + window.scrollY,
-                                    left: rect.left + window.scrollX,
-                                },
-                            });
-                        }
-                        return true;
-                    }
-
                     // Prevent selection change when clicking on tag links
+                    const target = event.target as HTMLElement;
                     const tagLinkElement = target.classList.contains("tag-link")
                         ? target
                         : target.closest(".tag-link");
@@ -1448,42 +1433,9 @@ export function NotesView(props: NotesViewProps) {
                                             pluginState={tagLinkState}
                                         />
                                     )}
-                                    {/* Spellcheck popup */}
-                                    {viewRef.current && spellcheckPopup && (
-                                        <SpellcheckPopup
-                                            view={viewRef.current}
-                                            word={spellcheckPopup.word}
-                                            position={spellcheckPopup.position}
-                                            onClose={() => setSpellcheckPopup(null)}
-                                            onReplace={(replacement) => {
-                                                // Replace the misspelled word with the selected suggestion
-                                                const { state, dispatch } = viewRef.current!;
-                                                const { doc, selection } = state;
-                                                let wordPos = -1;
-                                                let wordEnd = -1;
-
-                                                // Find the position of the word in the document
-                                                doc.descendants((node, pos) => {
-                                                    if (!node.isText) return;
-                                                    const text = node.text || "";
-                                                    const wordIndex = text.indexOf(spellcheckPopup.word);
-                                                    if (wordIndex !== -1 && wordPos === -1) {
-                                                        wordPos = pos + wordIndex;
-                                                        wordEnd = wordPos + spellcheckPopup.word.length;
-                                                        return false;
-                                                    }
-                                                });
-
-                                                if (wordPos !== -1) {
-                                                    const tr = state.tr.replaceWith(
-                                                        wordPos,
-                                                        wordEnd,
-                                                        state.schema.text(replacement)
-                                                    );
-                                                    dispatch(tr);
-                                                }
-                                            }}
-                                        />
+                                    {/* Spellcheck popup - handles hover internally */}
+                                    {viewRef.current && (
+                                        <SpellcheckPopup view={viewRef.current} />
                                     )}
                                 </div>
                             </div>
