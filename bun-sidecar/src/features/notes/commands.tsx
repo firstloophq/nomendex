@@ -356,5 +356,33 @@ export function getNotesCommands(context: CommandContext): Command[] {
                 await notesAPI.revealInFinder({ fileName: noteFileName });
             },
         },
+        {
+            id: "notes.runSpellcheck",
+            name: "Run Spellcheck",
+            description: "Check spelling and highlight misspelled words",
+            icon: "SpellCheck",
+            // Only show when notes editor is active
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+                emit("notes:runSpellcheck", {});
+            },
+        },
+        {
+            id: "notes.clearSpellcheck",
+            name: "Clear Spellcheck",
+            description: "Remove all spellcheck highlighting",
+            icon: "SpellCheck2",
+            // Only show when notes editor is active
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+                emit("notes:clearSpellcheck", {});
+            },
+        },
     ];
 }

@@ -1,0 +1,66 @@
+/* Spellcheck misspelled word styling */
+.misspelled-word {
+    text-decoration: underline;
+    text-decoration-style: wavy;
+    text-decoration-color: #ef4444; /* red-500 */
+    text-decoration-thickness: 2px;
+    cursor: pointer;
+}
+
+.misspelled-word:hover {
+    background-color: rgba(239, 68, 68, 0.1); /* red-500 with low opacity */
+}
+
+/* Spellcheck suggestion popup */
+.spellcheck-popup {
+    position: absolute;
+    z-index: 1000;
+    min-width: 150px;
+    max-width: 250px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+}
+
+.spellcheck-popup-header {
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.spellcheck-popup-content {
+    padding: 4px 0;
+}
+
+.spellcheck-suggestion {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.1s ease;
+}
+
+.spellcheck-suggestion:hover {
+    opacity: 0.8;
+}
+
+.spellcheck-no-suggestions {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-style: italic;
+    opacity: 0.6;
+}
+
+.spellcheck-add-to-dict {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border-top: 1px solid;
+    transition: background-color 0.1s ease;
+}
+
+.spellcheck-add-to-dict:hover {
+    opacity: 0.8;
+}

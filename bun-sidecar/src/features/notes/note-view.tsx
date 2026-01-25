@@ -57,6 +57,9 @@ import { OverlayScrollbar } from "@/components/OverlayScrollbar";
 import { SearchPanel } from "@/components/prosemirror/SearchPanel";
 import { createSearchPlugin } from "@/components/prosemirror/search-plugin";
 import "@/components/prosemirror/search.css";
+import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/components/prosemirror/spellcheck";
+import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
+import "@/components/prosemirror/spellcheck/spellcheck.css";
 
 interface NotesViewProps {
     noteFileName: string;
@@ -189,6 +192,24 @@ export function NotesView(props: NotesViewProps) {
             });
         });
     }, [noteFileName, content]);
+
+    // Subscribe to run spellcheck events
+    useEffect(() => {
+        return subscribe("notes:runSpellcheck", () => {
+            if (viewRef.current) {
+                runSpellcheck(viewRef.current);
+            }
+        });
+    }, []);
+
+    // Subscribe to clear spellcheck events
+    useEffect(() => {
+        return subscribe("notes:clearSpellcheck", () => {
+            if (viewRef.current) {
+                clearSpellcheck(viewRef.current);
+            }
+        });
+    }, []);
 
     // Memoize API instance to prevent infinite rerenders
     const notesAPI = useNotesAPI();
@@ -645,6 +666,9 @@ export function NotesView(props: NotesViewProps) {
         // Search plugin for CMD+F functionality
         const searchPlugin = createSearchPlugin();
 
+        // Spellcheck plugin for spell checking
+        const spellcheckPlugin = createSpellcheckPlugin();
+
         let state = EditorState.create({
             doc,
             plugins: [
@@ -657,6 +681,7 @@ export function NotesView(props: NotesViewProps) {
                 tagLinkPlugin, // Tag suggestions
                 tagDecorationPlugin, // Tag decorations and atomic deletion
                 searchPlugin, // Search highlighting
+                spellcheckPlugin, // Spellcheck
             ],
         });
 
@@ -938,6 +963,9 @@ export function NotesView(props: NotesViewProps) {
             // Search plugin for CMD+F functionality
             const searchPlugin = createSearchPlugin();
 
+            // Spellcheck plugin for spell checking
+            const spellcheckPlugin = createSpellcheckPlugin();
+
             let newState = EditorState.create({
                 doc,
                 plugins: [
@@ -950,6 +978,7 @@ export function NotesView(props: NotesViewProps) {
                     tagLinkPlugin,
                     tagDecorationPlugin,
                     searchPlugin, // Search highlighting
+                    spellcheckPlugin, // Spellcheck
                 ],
             });
 
@@ -1403,6 +1432,10 @@ export function NotesView(props: NotesViewProps) {
                                             view={viewRef.current}
                                             pluginState={tagLinkState}
                                         />
+                                    )}
+                                    {/* Spellcheck popup - handles hover internally */}
+                                    {viewRef.current && (
+                                        <SpellcheckPopup view={viewRef.current} />
                                     )}
                                 </div>
                             </div>
