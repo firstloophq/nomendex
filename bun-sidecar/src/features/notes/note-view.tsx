@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { todosAPI } from "@/hooks/useTodosAPI";
-import { EditorState, Selection, NodeSelection } from "prosemirror-state";
+import { EditorState, Selection, NodeSelection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
 import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
@@ -60,6 +60,7 @@ interface NotesViewProps {
     tabId: string;
     autoFocus?: boolean;
     compact?: boolean; // Hides header toolbar when embedded
+    scrollToLine?: number; // Line number to scroll to on initial load
 }
 
 interface Heading {
@@ -69,7 +70,7 @@ interface Heading {
 }
 
 export function NotesView(props: NotesViewProps) {
-    const { noteFileName, tabId, autoFocus = true, compact = false } = props;
+    const { noteFileName, tabId, autoFocus = true, compact = false, scrollToLine } = props;
     if (!tabId) {
         throw new Error("tabId is required");
     }
@@ -808,22 +809,59 @@ export function NotesView(props: NotesViewProps) {
         initializedContentRef.current = contentToUse;
         currentNoteFileNameRef.current = noteFileName;
 
-        // Focus editor and restore cursor position (or place at start if no saved position)
+        // Helper to scroll to a specific line number
+        const scrollToLineNumber = (lineNum: number) => {
+            const doc = view.state.doc;
+            let currentLine = 1;
+            let targetPos = 0;
+
+            // Walk through document nodes to find the position at the target line
+            doc.descendants((node, pos) => {
+                if (currentLine >= lineNum) {
+                    return false; // Stop traversing
+                }
+                if (node.isBlock && node.type.name !== "doc") {
+                    currentLine++;
+                    if (currentLine === lineNum) {
+                        targetPos = pos;
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            // Set selection to the target position and scroll into view
+            const tr = view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, targetPos)
+            );
+            view.dispatch(tr.scrollIntoView());
+        };
+
+        // Focus editor and handle cursor/scroll position
         if (autoFocus) {
             requestAnimationFrame(() => {
                 try {
                     view.focus();
-                    // Try to restore saved cursor position, otherwise place at start
-                    restoreCursor(view);
+                    // If scrollToLine is specified, scroll to that line
+                    if (scrollToLine && scrollToLine > 0) {
+                        scrollToLineNumber(scrollToLine);
+                    } else {
+                        // Try to restore saved cursor position, otherwise place at start
+                        restoreCursor(view);
+                    }
                 } catch {
                     // no-op if focusing fails
                 }
             });
         } else {
-            // Even without autoFocus, try to restore cursor position
+            // Even without autoFocus, handle scroll position
             requestAnimationFrame(() => {
                 try {
-                    restoreCursor(view);
+                    if (scrollToLine && scrollToLine > 0) {
+                        scrollToLineNumber(scrollToLine);
+                    } else {
+                        restoreCursor(view);
+                    }
                 } catch {
                     // no-op
                 }

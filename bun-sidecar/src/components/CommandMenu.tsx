@@ -41,6 +41,7 @@ export function CommandMenu() {
                 title: "Search Notes",
                 description: "Search for text across all your notes",
                 content: <SearchNotesDialog />,
+                size: "jumbo",
             });
         });
     }, [openDialog]);

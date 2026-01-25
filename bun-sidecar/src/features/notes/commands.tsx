@@ -14,7 +14,7 @@ import { SerializablePlugin } from "@/types/Plugin";
 import { emit } from "@/lib/events";
 
 interface CommandContext {
-    openDialog: (config: { title?: string; description?: string; content?: React.ReactNode }) => void;
+    openDialog: (config: { title?: string; description?: string; content?: React.ReactNode; size?: "default" | "sm" | "md" | "lg" | "xl" | "2xl" | "full" | "jumbo" }) => void;
     closeDialog: () => void;
     closeCommandMenu: () => void;
     addNewTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
@@ -38,6 +38,7 @@ export function getNotesCommands(context: CommandContext): Command[] {
                     title: "Search Notes",
                     description: "Search for text across all your notes",
                     content: <SearchNotesDialog />,
+                    size: "jumbo",
                 });
             },
         },
