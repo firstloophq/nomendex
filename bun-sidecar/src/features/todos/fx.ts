@@ -7,12 +7,19 @@ import { FileDatabase } from "@/storage/FileDatabase";
 import path from "path";
 import { getTodosPath, hasActiveWorkspace } from "@/storage/root-path";
 import type { Attachment } from "@/types/attachments";
+import { BoardConfig } from "./board-types";
 
 // Create logger for todos plugin
 const todosLogger = createServiceLogger("TODOS");
 
 // Lazy-initialized FileDatabase for todos
 let todosDb: FileDatabase<Todo> | null = null;
+// Lazy-initialized FileDatabase for board configs
+let boardConfigDb: FileDatabase<BoardConfig> | null = null;
+
+function getBoardConfigPath(): string {
+    return path.join(getTodosPath(), "..", "board-configs");
+}
 
 /**
  * Initialize the todos service. Must be called after initializePaths().
@@ -24,6 +31,10 @@ export async function initializeTodosService(): Promise<void> {
     }
     todosDb = new FileDatabase<Todo>(getTodosPath());
     await todosDb.initialize();
+
+    // NEW: Initialize board config database
+    boardConfigDb = new FileDatabase<BoardConfig>(getBoardConfigPath());
+    await boardConfigDb.initialize();
     todosLogger.info("Todos service initialized");
 }
 
@@ -36,12 +47,12 @@ function getDb(): FileDatabase<Todo> {
 
 async function getTodos(input: { project?: string }) {
     todosLogger.info(`Getting todos${input.project !== undefined ? ` for project: ${input.project || 'No Project'}` : ''}`);
-    
+
     try {
         const todos = await getDb().findAll();
-        
+
         let activeTodos = todos.filter(t => !t.archived);
-        
+
         // Filter by project if specified
         if (input.project !== undefined) {
             if (input.project === "") {
@@ -70,15 +81,15 @@ async function getTodos(input: { project?: string }) {
 
 async function getTodoById(input: { todoId: string }) {
     todosLogger.info(`Getting todo by ID: ${input.todoId}`);
-    
+
     try {
         const todo = await getDb().findById(input.todoId);
-        
+
         if (!todo) {
             todosLogger.warn(`Todo not found: ${input.todoId}`);
             throw new Error(`Todo with ID ${input.todoId} not found`);
         }
-        
+
         todosLogger.info(`Retrieved todo: ${input.todoId}`);
         return todo;
     } catch (error) {
@@ -147,6 +158,7 @@ async function updateTodo(input: {
         tags?: string[];
         dueDate?: string;
         attachments?: Attachment[];
+        customColumnId?: string;
     };
 }) {
     todosLogger.info(`Updating todo: ${input.todoId}`);
@@ -176,12 +188,12 @@ async function updateTodo(input: {
         }
 
         const updated = await getDb().update(input.todoId, updates);
-        
+
         if (!updated) {
             todosLogger.warn(`Todo not found for update: ${input.todoId}`);
             throw new Error(`Todo with ID ${input.todoId} not found`);
         }
-        
+
         todosLogger.info(`Updated todo: ${input.todoId}`);
         return updated;
     } catch (error) {
@@ -192,15 +204,15 @@ async function updateTodo(input: {
 
 async function deleteTodo(input: { todoId: string }) {
     todosLogger.info(`Deleting todo: ${input.todoId}`);
-    
+
     try {
         const deleted = await getDb().delete(input.todoId);
-        
+
         if (!deleted) {
             todosLogger.warn(`Todo not found for deletion: ${input.todoId}`);
             throw new Error(`Todo with ID ${input.todoId} not found`);
         }
-        
+
         todosLogger.info(`Deleted todo: ${input.todoId}`);
         return { success: true };
     } catch (error) {
@@ -211,11 +223,11 @@ async function deleteTodo(input: { todoId: string }) {
 
 async function getProjects() {
     todosLogger.info(`Getting unique projects`);
-    
+
     try {
         const todos = await getDb().findAll();
         const activeTodos = todos.filter(t => !t.archived);
-        
+
         // Extract unique projects
         const projectSet = new Set<string>();
         for (const todo of activeTodos) {
@@ -223,7 +235,7 @@ async function getProjects() {
                 projectSet.add(todo.project);
             }
         }
-        
+
         const projects = Array.from(projectSet).sort();
         todosLogger.info(`Found ${projects.length} unique projects`);
         return projects;
@@ -364,6 +376,97 @@ async function getTags() {
     }
 }
 
+function getBoardConfigDb(): FileDatabase<BoardConfig> {
+    if (!boardConfigDb) {
+        throw new Error("Board config service not initialized.");
+    }
+    return boardConfigDb;
+}
+
+/**
+ * Get board config for a project. Returns null if not found.
+ */
+async function getBoardConfig(input: { projectId: string }): Promise<BoardConfig | null> {
+    todosLogger.info(`Getting board config for project: ${input.projectId || "(no project)"}`);
+
+    try {
+        const configs = await getBoardConfigDb().findAll();
+        const config = configs.find(c => c.projectId === input.projectId);
+        return config || null;
+    } catch (error) {
+        todosLogger.error(`Failed to get board config`, { error });
+        throw error;
+    }
+}
+
+/**
+ * Save board config (create new or update existing).
+ */
+async function saveBoardConfig(input: { config: BoardConfig }): Promise<BoardConfig> {
+    todosLogger.info(`Saving board config for project: ${input.config.projectId || "(no project)"}`);
+
+    try {
+        const existing = await getBoardConfig({ projectId: input.config.projectId });
+
+        if (existing) {
+            // Update existing
+            const updated = await getBoardConfigDb().update(existing.id, input.config);
+            if (!updated) throw new Error("Failed to update board config");
+            return updated;
+        } else {
+            // Create new
+            const created = await getBoardConfigDb().create(input.config);
+            return created;
+        }
+    } catch (error) {
+        todosLogger.error(`Failed to save board config`, { error });
+        throw error;
+    }
+}
+
+/**
+ * Delete a column and migrate its todos to the first remaining column.
+ */
+async function deleteColumn(input: { projectId: string; columnId: string }): Promise<{ success: boolean }> {
+    todosLogger.info(`Deleting column ${input.columnId} from project ${input.projectId}`);
+
+    try {
+        const config = await getBoardConfig({ projectId: input.projectId });
+        if (!config) throw new Error("Board config not found");
+
+        // Find fallback column
+        const sortedColumns = [...config.columns].sort((a, b) => a.order - b.order);
+        const fallbackColumn = sortedColumns.find(c => c.id !== input.columnId);
+        if (!fallbackColumn) throw new Error("Cannot delete the only column");
+
+        // Migrate todos from deleted column
+        const todos = await getDb().findAll();
+        const orphanTodos = todos.filter(t => {
+            const todoProject = t.project || "";
+            return todoProject === input.projectId && t.customColumnId === input.columnId;
+        });
+
+        for (const todo of orphanTodos) {
+            await getDb().update(todo.id, {
+                customColumnId: fallbackColumn.id,
+                updatedAt: new Date().toISOString()
+            });
+        }
+
+        // Remove column from config
+        const newColumns = config.columns.filter(c => c.id !== input.columnId);
+        await saveBoardConfig({
+            config: { ...config, columns: newColumns }
+        });
+
+        todosLogger.info(`Deleted column, moved ${orphanTodos.length} todos to ${fallbackColumn.title}`);
+        return { success: true };
+    } catch (error) {
+        todosLogger.error(`Failed to delete column`, { error });
+        throw error;
+    }
+}
+
 
 const functions: FunctionsFromStubs<typeof functionStubs> = {
     getTodos: { ...functionStubs.getTodos, fx: getTodos },
@@ -377,6 +480,9 @@ const functions: FunctionsFromStubs<typeof functionStubs> = {
     unarchiveTodo: { ...functionStubs.unarchiveTodo, fx: unarchiveTodo },
     getArchivedTodos: { ...functionStubs.getArchivedTodos, fx: getArchivedTodos },
     getTags: { ...functionStubs.getTags, fx: getTags },
+    getBoardConfig: { ...functionStubs.getBoardConfig, fx: getBoardConfig },
+    saveBoardConfig: { ...functionStubs.saveBoardConfig, fx: saveBoardConfig },
+    deleteColumn: { ...functionStubs.deleteColumn, fx: deleteColumn },
 };
 
 // MCP Server configuration (backend only)
@@ -399,4 +505,8 @@ export default TodosPlugin;
 export const TodosPluginWithFunctions = TodosPlugin;
 
 // Export individual functions for MCP
-export { getTodos, createTodo, updateTodo, deleteTodo, getTodoById, getProjects, reorderTodos, archiveTodo, unarchiveTodo, getArchivedTodos, getTags };
+export {
+    getTodos, createTodo, updateTodo, deleteTodo, getTodoById,
+    getProjects, reorderTodos, archiveTodo, unarchiveTodo, getArchivedTodos, getTags,
+    getBoardConfig, saveBoardConfig, deleteColumn
+};

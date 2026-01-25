@@ -173,6 +173,53 @@ For rendering interactive HTML interfaces in chat, use the **create-interface** 
         },
     },
     {
+        name: "projects",
+        files: {
+            "SKILL.md": `---
+name: projects
+description: Working with projects and Kanban boards. Use when the user mentions a project name, wants to move an item to a column, or asks about the project structure.
+version: 1
+---
+
+# Projects Skill
+
+## Workflow
+
+1. Get the server port
+2. Load the project using /api/projects/get
+3. Use customColumnId to move items
+
+## Loading a project
+
+\`\`\`bash
+PORT=$(cat ~/Library/Application\\ Support/com.firstloop.nomendex/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
+
+curl -s -X POST "http://localhost:$PORT/api/projects/get" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "PROJECT_NAME"}'
+\`\`\`
+
+## Moving a task to a column
+
+After loading the project, find the correct column by name and use its ID:
+
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
+  -H "Content-Type: application/json" \\
+  -d '{"todoId": "TODO_ID", "updates": {"customColumnId": "COLUMN_ID"}}'
+\`\`\`
+
+## Workflow Example
+
+User: "Move the Fix bug task to Code Review in the Nomendex project"
+
+1. Load the Nomendex project → you get the columns
+2. Find the "Code Review" column → id is "col-review"
+3. Call update with customColumnId: "col-review"
+`,
+        },
+    },
+    {
         name: "create-interface",
         files: {
             "SKILL.md": `---

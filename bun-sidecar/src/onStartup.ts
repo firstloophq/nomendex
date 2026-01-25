@@ -93,11 +93,33 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
             await Bun.write(gitignorePath, ".nomendex/\n");
             startupLog.info(`.gitignore created at: ${gitignorePath}`);
         } else {
-            // Check if .nomendex/ is already in .gitignore
-            const content = await gitignoreFile.text();
-            if (!content.includes(".nomendex")) {
-                await Bun.write(gitignorePath, content.trimEnd() + "\n.nomendex/\n");
-                startupLog.info(`.nomendex/ added to existing .gitignore`);
+            // Check if specific files are in .gitignore
+            let content = await gitignoreFile.text();
+
+            const ignoreLines = [
+                ".nomendex/secrets.json",
+                ".nomendex/workspace.json",
+                ".nomendex/backlinks.json",
+                ".nomendex/tags.json",
+            ];
+
+            let changed = false;
+            for (const line of ignoreLines) {
+                if (!content.includes(line)) {
+                    content = content.trimEnd() + "\n" + line;
+                    changed = true;
+                }
+            }
+
+            // Remove old .nomendex/ if it exists to allow projects.json to be committed
+            if (content.includes(".nomendex/\n") || content.endsWith(".nomendex/")) {
+                content = content.replace(/^\.nomendex\/\n?/m, "");
+                changed = true;
+            }
+
+            if (changed) {
+                await Bun.write(gitignorePath, content.trimEnd() + "\n");
+                startupLog.info("Updated .gitignore to allow projects.json");
             }
         }
     } catch (error) {
@@ -150,6 +172,17 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
             error: error instanceof Error ? error.message : String(error),
         });
         // Non-fatal - continue startup
+    }
+
+    // Initialize projects (migration)
+    startupLog.info("Checking project migration status...");
+    try {
+        const { migrateProjects } = await import("./features/projects/projects-migration");
+        await migrateProjects();
+    } catch (error) {
+        startupLog.error("Failed to run project migration", {
+            error: error instanceof Error ? error.message : String(error),
+        });
     }
 
     startupLog.info("Initialization complete");

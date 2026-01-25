@@ -3440,6 +3440,11 @@
       max-width: var(--container-6xl);
     }
   }
+  .sm\:max-w-\[500px\] {
+    @media (width >= 40rem) {
+      max-width: 500px;
+    }
+  }
   .sm\:max-w-\[calc\(100\%-4rem\)\] {
     @media (width >= 40rem) {
       max-width: calc(100% - 4rem);

@@ -35,10 +35,12 @@ export function ProjectBrowserView() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [projectList, todos] = await Promise.all([
-                todosAPI.getProjects(),
+            const [projectConfigs, todos] = await Promise.all([
+                todosAPI.getProjectsList(),
                 todosAPI.getTodos()
             ]);
+            // Map project configs to names for compatibility
+            const projectList = projectConfigs.map((p: any) => p.name);
             setProjects(projectList);
             setAllTodos(todos.filter(t => !t.archived));
         } catch (error) {
@@ -237,137 +239,137 @@ export function ProjectBrowserView() {
                     Projects
                 </h3>
                 <Table ref={tableRef} tabIndex={0} onKeyDown={handleKeyDown} className="outline-none">
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-12"></TableHead>
-                        <TableHead>Project</TableHead>
-                        <TableHead className="text-center w-24">Tasks</TableHead>
-                        <TableHead className="text-right w-36">Status</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {projectStats.map((stats, index) => {
-                        const isSelected = index === selectedIndex;
-                        return (
-                            <TableRow
-                                key={stats.id}
-                                data-selected={isSelected}
-                                className="cursor-pointer transition-all"
-                                style={{
-                                    backgroundColor: isSelected
-                                        ? currentTheme.styles.surfaceSecondary
-                                        : "transparent",
-                                    borderLeft: isSelected
-                                        ? `3px solid ${currentTheme.styles.contentAccent}`
-                                        : "3px solid transparent",
-                                }}
-                                onClick={() => {
-                                    setSelectedIndex(index);
-                                    openProject(stats);
-                                }}
-                                onMouseEnter={() => setSelectedIndex(index)}
-                            >
-                                {/* Icon */}
-                                <TableCell>
-                                    <Folder
-                                        className="w-4 h-4"
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-12"></TableHead>
+                            <TableHead>Project</TableHead>
+                            <TableHead className="text-center w-24">Tasks</TableHead>
+                            <TableHead className="text-right w-36">Status</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {projectStats.map((stats, index) => {
+                            const isSelected = index === selectedIndex;
+                            return (
+                                <TableRow
+                                    key={stats.id}
+                                    data-selected={isSelected}
+                                    className="cursor-pointer transition-all"
+                                    style={{
+                                        backgroundColor: isSelected
+                                            ? currentTheme.styles.surfaceSecondary
+                                            : "transparent",
+                                        borderLeft: isSelected
+                                            ? `3px solid ${currentTheme.styles.contentAccent}`
+                                            : "3px solid transparent",
+                                    }}
+                                    onClick={() => {
+                                        setSelectedIndex(index);
+                                        openProject(stats);
+                                    }}
+                                    onMouseEnter={() => setSelectedIndex(index)}
+                                >
+                                    {/* Icon */}
+                                    <TableCell>
+                                        <Folder
+                                            className="w-4 h-4"
+                                            style={{
+                                                color: stats.isNoProject
+                                                    ? currentTheme.styles.contentTertiary
+                                                    : currentTheme.styles.contentAccent,
+                                            }}
+                                        />
+                                    </TableCell>
+
+                                    {/* Project name */}
+                                    <TableCell
+                                        className="font-medium"
                                         style={{
                                             color: stats.isNoProject
                                                 ? currentTheme.styles.contentTertiary
-                                                : currentTheme.styles.contentAccent,
+                                                : currentTheme.styles.contentPrimary,
                                         }}
-                                    />
-                                </TableCell>
-
-                                {/* Project name */}
-                                <TableCell
-                                    className="font-medium"
-                                    style={{
-                                        color: stats.isNoProject
-                                            ? currentTheme.styles.contentTertiary
-                                            : currentTheme.styles.contentPrimary,
-                                    }}
-                                >
-                                    {stats.name}
-                                </TableCell>
-
-                                {/* Total count */}
-                                <TableCell className="text-center">
-                                    <span
-                                        className="text-sm tabular-nums"
-                                        style={{ color: currentTheme.styles.contentSecondary }}
                                     >
-                                        {stats.totalCount || "—"}
-                                    </span>
-                                </TableCell>
+                                        {stats.name}
+                                    </TableCell>
 
-                                {/* Status breakdown */}
-                                <TableCell>
-                                    <div className="flex items-center justify-end gap-3">
-                                        {stats.todoCount > 0 && (
-                                            <div className="flex items-center gap-1" title="To do">
-                                                <AlertCircle
-                                                    className="w-3.5 h-3.5"
+                                    {/* Total count */}
+                                    <TableCell className="text-center">
+                                        <span
+                                            className="text-sm tabular-nums"
+                                            style={{ color: currentTheme.styles.contentSecondary }}
+                                        >
+                                            {stats.totalCount || "—"}
+                                        </span>
+                                    </TableCell>
+
+                                    {/* Status breakdown */}
+                                    <TableCell>
+                                        <div className="flex items-center justify-end gap-3">
+                                            {stats.todoCount > 0 && (
+                                                <div className="flex items-center gap-1" title="To do">
+                                                    <AlertCircle
+                                                        className="w-3.5 h-3.5"
+                                                        style={{ color: currentTheme.styles.contentTertiary }}
+                                                    />
+                                                    <span
+                                                        className="text-xs tabular-nums"
+                                                        style={{ color: currentTheme.styles.contentSecondary }}
+                                                    >
+                                                        {stats.todoCount}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {stats.inProgressCount > 0 && (
+                                                <div className="flex items-center gap-1" title="In progress">
+                                                    <Clock
+                                                        className="w-3.5 h-3.5"
+                                                        style={{ color: currentTheme.styles.contentAccent }}
+                                                    />
+                                                    <span
+                                                        className="text-xs tabular-nums"
+                                                        style={{ color: currentTheme.styles.contentSecondary }}
+                                                    >
+                                                        {stats.inProgressCount}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {stats.doneCount > 0 && (
+                                                <div className="flex items-center gap-1" title="Done">
+                                                    <CheckCircle2
+                                                        className="w-3.5 h-3.5"
+                                                        style={{ color: currentTheme.styles.semanticSuccess }}
+                                                    />
+                                                    <span
+                                                        className="text-xs tabular-nums"
+                                                        style={{ color: currentTheme.styles.contentSecondary }}
+                                                    >
+                                                        {stats.doneCount}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {stats.totalCount === 0 && (
+                                                <span
+                                                    className="text-xs"
                                                     style={{ color: currentTheme.styles.contentTertiary }}
-                                                />
-                                                <span
-                                                    className="text-xs tabular-nums"
-                                                    style={{ color: currentTheme.styles.contentSecondary }}
                                                 >
-                                                    {stats.todoCount}
+                                                    —
                                                 </span>
-                                            </div>
-                                        )}
-                                        {stats.inProgressCount > 0 && (
-                                            <div className="flex items-center gap-1" title="In progress">
-                                                <Clock
-                                                    className="w-3.5 h-3.5"
-                                                    style={{ color: currentTheme.styles.contentAccent }}
-                                                />
-                                                <span
-                                                    className="text-xs tabular-nums"
-                                                    style={{ color: currentTheme.styles.contentSecondary }}
-                                                >
-                                                    {stats.inProgressCount}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {stats.doneCount > 0 && (
-                                            <div className="flex items-center gap-1" title="Done">
-                                                <CheckCircle2
-                                                    className="w-3.5 h-3.5"
-                                                    style={{ color: currentTheme.styles.semanticSuccess }}
-                                                />
-                                                <span
-                                                    className="text-xs tabular-nums"
-                                                    style={{ color: currentTheme.styles.contentSecondary }}
-                                                >
-                                                    {stats.doneCount}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {stats.totalCount === 0 && (
-                                            <span
-                                                className="text-xs"
-                                                style={{ color: currentTheme.styles.contentTertiary }}
-                                            >
-                                                —
-                                            </span>
-                                        )}
-                                    </div>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                        {projects.length === 0 && !loading && (
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                                    No projects found. Create todos with project names to see them here.
                                 </TableCell>
                             </TableRow>
-                        );
-                    })}
-                    {projects.length === 0 && !loading && (
-                        <TableRow>
-                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                                No projects found. Create todos with project names to see them here.
-                            </TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
+                        )}
+                    </TableBody>
+                </Table>
             </div>
         </div>
     );
