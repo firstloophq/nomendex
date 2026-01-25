@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { todosAPI } from "@/hooks/useTodosAPI";
-import { EditorState, Selection, NodeSelection } from "prosemirror-state";
+import { EditorState, Selection, NodeSelection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
 import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
@@ -66,6 +66,7 @@ interface NotesViewProps {
     tabId: string;
     autoFocus?: boolean;
     compact?: boolean; // Hides header toolbar when embedded
+    scrollToLine?: number; // Line number to scroll to on initial load
 }
 
 interface Heading {
@@ -75,7 +76,7 @@ interface Heading {
 }
 
 export function NotesView(props: NotesViewProps) {
-    const { noteFileName, tabId, autoFocus = true, compact = false } = props;
+    const { noteFileName, tabId, autoFocus = true, compact = false, scrollToLine } = props;
     if (!tabId) {
         throw new Error("tabId is required");
     }
@@ -856,22 +857,67 @@ export function NotesView(props: NotesViewProps) {
         initializedContentRef.current = contentToUse;
         currentNoteFileNameRef.current = noteFileName;
 
-        // Focus editor and restore cursor position (or place at start if no saved position)
+        // Helper to scroll to a specific line number with context above
+        const scrollToLineNumber = (lineNum: number) => {
+            const doc = view.state.doc;
+            const linePositions: number[] = [0]; // Position of each line start (1-indexed, so [0] is unused)
+
+            // Build array of line start positions
+            doc.descendants((node, pos) => {
+                if (node.isBlock && node.type.name !== "doc") {
+                    linePositions.push(pos);
+                }
+                return true;
+            });
+
+            // Calculate scroll target (a few lines before the match for context)
+            const contextLines = 5;
+            const scrollTargetLine = Math.max(1, lineNum - contextLines);
+            const scrollTargetPos = linePositions[scrollTargetLine] ?? 0;
+
+            // Get the actual target position for cursor placement
+            const targetPos = linePositions[lineNum] ?? linePositions[linePositions.length - 1] ?? 0;
+
+            // First scroll the context line into view at the top
+            const scrollTr = view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, scrollTargetPos)
+            );
+            view.dispatch(scrollTr.scrollIntoView());
+
+            // Then set cursor at the actual target line (without scrolling again)
+            requestAnimationFrame(() => {
+                const cursorTr = view.state.tr.setSelection(
+                    TextSelection.create(view.state.doc, targetPos)
+                );
+                view.dispatch(cursorTr);
+            });
+        };
+
+        // Focus editor and handle cursor/scroll position
         if (autoFocus) {
             requestAnimationFrame(() => {
                 try {
                     view.focus();
-                    // Try to restore saved cursor position, otherwise place at start
-                    restoreCursor(view);
+                    // If scrollToLine is specified, scroll to that line
+                    if (scrollToLine && scrollToLine > 0) {
+                        scrollToLineNumber(scrollToLine);
+                    } else {
+                        // Try to restore saved cursor position, otherwise place at start
+                        restoreCursor(view);
+                    }
                 } catch {
                     // no-op if focusing fails
                 }
             });
         } else {
-            // Even without autoFocus, try to restore cursor position
+            // Even without autoFocus, handle scroll position
             requestAnimationFrame(() => {
                 try {
-                    restoreCursor(view);
+                    if (scrollToLine && scrollToLine > 0) {
+                        scrollToLineNumber(scrollToLine);
+                    } else {
+                        restoreCursor(view);
+                    }
                 } catch {
                     // no-op
                 }

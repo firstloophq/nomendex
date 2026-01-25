@@ -100,6 +100,88 @@ async function getNotes() {
     }
 }
 
+async function searchNotes(args: { query: string }) {
+    try {
+        const query = args.query.toLowerCase().trim();
+        if (!query) return [];
+
+        const allNotes = await getNotes();
+        const results: Array<{
+            fileName: string;
+            content: string;
+            frontMatter?: Record<string, unknown>;
+            folderPath?: string;
+            matches: Array<{
+                line: number;
+                text: string;
+                startIndex: number;
+                endIndex: number;
+            }>;
+        }> = [];
+
+        for (const note of allNotes) {
+            const matches: Array<{
+                line: number;
+                text: string;
+                startIndex: number;
+                endIndex: number;
+            }> = [];
+
+            // Search in content
+            const lines = note.content.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line) continue;
+
+                const lowerLine = line.toLowerCase();
+                let startPos = 0;
+
+                while (true) {
+                    const index = lowerLine.indexOf(query, startPos);
+                    if (index === -1) break;
+
+                    matches.push({
+                        line: i + 1,
+                        text: line,
+                        startIndex: index,
+                        endIndex: index + query.length,
+                    });
+
+                    startPos = index + 1;
+                }
+            }
+
+            // Also search in file name
+            const lowerFileName = note.fileName.toLowerCase();
+            if (lowerFileName.includes(query)) {
+                matches.push({
+                    line: 0, // 0 indicates filename match
+                    text: note.fileName,
+                    startIndex: lowerFileName.indexOf(query),
+                    endIndex: lowerFileName.indexOf(query) + query.length,
+                });
+            }
+
+            if (matches.length > 0) {
+                results.push({
+                    fileName: note.fileName,
+                    content: note.content,
+                    frontMatter: note.frontMatter,
+                    folderPath: note.folderPath,
+                    matches,
+                });
+            }
+        }
+
+        // Sort by number of matches (descending)
+        results.sort((a, b) => b.matches.length - a.matches.length);
+
+        return results;
+    } catch {
+        return [];
+    }
+}
+
 async function getNoteByFileName(args: { fileName: string }) {
     const rawContent = await getStorage().readFile(args.fileName);
     const mtime = await getStorage().getFileMtime(args.fileName);
@@ -422,6 +504,7 @@ async function moveNoteToFolder(args: { fileName: string; targetFolder: string |
 
 export const functions: FunctionsFromStubs<typeof functionStubs> = {
     getNotes: { ...functionStubs.getNotes, fx: getNotes },
+    searchNotes: { ...functionStubs.searchNotes, fx: searchNotes },
     getNoteByFileName: { ...functionStubs.getNoteByFileName, fx: getNoteByFileName },
     createNote: { ...functionStubs.createNote, fx: createNote },
     saveNote: { ...functionStubs.saveNote, fx: saveNote },

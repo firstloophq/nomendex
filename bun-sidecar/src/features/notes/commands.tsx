@@ -6,6 +6,7 @@ import { RenameNoteDialog } from "./rename-note-dialog";
 import { MoveToFolderDialog } from "./move-to-folder-dialog";
 import { getTodayDailyNoteFileName, getYesterdayDailyNoteFileName, getTomorrowDailyNoteFileName } from "./date-utils";
 import { DailyNoteDatePickerDialog } from "./daily-note-date-picker-dialog";
+import { SearchNotesDialog } from "./search-notes-dialog";
 import { notesAPI } from "@/hooks/useNotesAPI";
 import { notesPluginSerial } from "./index";
 import { WorkspaceTab } from "@/types/Workspace";
@@ -13,7 +14,7 @@ import { SerializablePlugin } from "@/types/Plugin";
 import { emit } from "@/lib/events";
 
 interface CommandContext {
-    openDialog: (config: { title?: string; description?: string; content?: React.ReactNode }) => void;
+    openDialog: (config: { title?: string; description?: string; content?: React.ReactNode; size?: "default" | "sm" | "md" | "lg" | "xl" | "2xl" | "full" | "jumbo" }) => void;
     closeDialog: () => void;
     closeCommandMenu: () => void;
     addNewTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
@@ -26,6 +27,21 @@ interface CommandContext {
 
 export function getNotesCommands(context: CommandContext): Command[] {
     return [
+        {
+            id: "notes.search",
+            name: "Search Notes",
+            description: "Search across all notes (Cmd+Shift+F)",
+            icon: "Search",
+            callback: () => {
+                context.closeCommandMenu();
+                context.openDialog({
+                    title: "Search Notes",
+                    description: "Search for text across all your notes",
+                    content: <SearchNotesDialog />,
+                    size: "jumbo",
+                });
+            },
+        },
         {
             id: "notes.create",
             name: "Create New Note",

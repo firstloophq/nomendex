@@ -10,6 +10,8 @@ import { getTodosCommands } from "@/features/todos";
 import { getChatCommands } from "@/features/chat/commands";
 import { getCoreCommands } from "@/commands/core-commands";
 import type { Command } from "@/types/Commands";
+import { subscribe } from "@/lib/events";
+import { SearchNotesDialog } from "@/features/notes/search-notes-dialog";
 
 export function CommandMenu() {
     const [open, setOpen] = React.useState(false);
@@ -31,6 +33,18 @@ export function CommandMenu() {
         document.addEventListener("keydown", down);
         return () => document.removeEventListener("keydown", down);
     }, []);
+
+    // Listen for search dialog event
+    React.useEffect(() => {
+        return subscribe("notes:openSearch", () => {
+            openDialog({
+                title: "Search Notes",
+                description: "Search for text across all your notes",
+                content: <SearchNotesDialog />,
+                size: "jumbo",
+            });
+        });
+    }, [openDialog]);
 
     // Focus input when dialog opens
     React.useEffect(() => {

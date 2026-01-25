@@ -23,10 +23,29 @@ export const NoteFolderSchema = z.object({
 
 export type NoteFolder = z.infer<typeof NoteFolderSchema>;
 
+export const SearchResultSchema = z.object({
+    fileName: z.string(),
+    content: z.string(),
+    frontMatter: z.record(z.string(), z.unknown()).optional(),
+    folderPath: z.string().optional(),
+    matches: z.array(z.object({
+        line: z.number(),
+        text: z.string(),
+        startIndex: z.number(),
+        endIndex: z.number(),
+    })),
+});
+
+export type SearchResult = z.infer<typeof SearchResultSchema>;
+
 export const functionStubs = {
     getNotes: {
         input: z.object({}),
         output: z.array(NoteSchema),
+    },
+    searchNotes: {
+        input: z.object({ query: z.string() }),
+        output: z.array(SearchResultSchema),
     },
     getNoteByFileName: {
         input: z.object({ fileName: z.string() }),
@@ -131,6 +150,7 @@ export const functionStubs = {
 } satisfies FunctionStubs;
 export const notesViewPropsSchema = z.object({
     noteFileName: z.string(),
+    scrollToLine: z.number().optional(),
 });
 export type NotesViewProps = z.infer<typeof notesViewPropsSchema>;
 

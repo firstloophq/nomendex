@@ -64,18 +64,18 @@ function DialogOverlay({
 }
 
 const dialogContentVariants = cva(
-  "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[60] grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border duration-200",
+  "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[60] w-full translate-x-[-50%] translate-y-[-50%] border duration-200",
   {
     variants: {
       size: {
-        default: "max-w-[calc(100%-2rem)] p-6 sm:max-w-lg",
-        sm: "max-w-[calc(100%-2rem)] p-4 sm:max-w-sm",
-        md: "max-w-[calc(100%-2rem)] p-6 sm:max-w-md",
-        lg: "max-w-[calc(100%-2rem)] p-6 sm:max-w-2xl",
-        xl: "max-w-[calc(100%-2rem)] p-6 sm:max-w-4xl",
-        "2xl": "max-w-[calc(100%-2rem)] p-6 sm:max-w-6xl",
-        full: "max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] p-6 sm:max-w-[calc(100%-4rem)] sm:max-h-[calc(100%-4rem)]",
-        jumbo: "w-[90vw] h-[90vh] max-w-[90vw] max-h-[90vh] p-8",
+        default: "grid gap-4 max-w-[calc(100%-2rem)] p-6 sm:max-w-lg",
+        sm: "grid gap-4 max-w-[calc(100%-2rem)] p-4 sm:max-w-sm",
+        md: "grid gap-4 max-w-[calc(100%-2rem)] p-6 sm:max-w-md",
+        lg: "grid gap-4 max-w-[calc(100%-2rem)] p-6 sm:max-w-2xl",
+        xl: "grid gap-4 max-w-[calc(100%-2rem)] p-6 sm:max-w-4xl",
+        "2xl": "grid gap-4 max-w-[calc(100%-2rem)] p-6 sm:max-w-6xl",
+        full: "grid gap-4 max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] p-6 sm:max-w-[calc(100%-4rem)] sm:max-h-[calc(100%-4rem)]",
+        jumbo: "flex flex-col w-[90vw] h-[90vh] max-w-[90vw] max-h-[90vh] p-6",
       },
     },
     defaultVariants: {
