@@ -43,6 +43,7 @@ import { agentsAPI } from "@/hooks/useAgentsAPI";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 import type { QueuedMessage } from "./index";
 import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
+import { OverlayScrollbar } from "@/components/OverlayScrollbar";
 
 type ToolCallState =
     | "input-streaming"
@@ -83,7 +84,6 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
     const scrollRef = useTabScrollPersistence(tabId);
     const inputRef = useRef<ProseMirrorPromptTextareaHandle>(null);
     const activeTabIdRef = useRef<string | null>(null);
-    const isNearBottomRef = useRef(true);
     const isProcessingQueueRef = useRef(false);
     const handleSubmitRef = useRef<((params: { text: string; attachments: Attachment[] }) => Promise<void>) | null>(null);
 
@@ -91,28 +91,6 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
     useEffect(() => {
         activeTabIdRef.current = activeTab?.id ?? null;
     }, [activeTab?.id]);
-
-    // Track scroll position to know if user is near bottom
-    useEffect(() => {
-        const container = scrollRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            const threshold = 100; // pixels from bottom
-            const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-            isNearBottomRef.current = distanceFromBottom < threshold;
-        };
-
-        container.addEventListener("scroll", handleScroll);
-        return () => container.removeEventListener("scroll", handleScroll);
-    }, [scrollRef]);
-
-    // Auto-scroll to bottom when messages change, but only if user is near bottom
-    useEffect(() => {
-        if (scrollRef.current && isNearBottomRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [messages, scrollRef]);
 
     // Load session history if we have a sessionId, or load agent preferences for new sessions
     useEffect(() => {
@@ -775,19 +753,17 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
         }
     }, [isLoading, messageQueue, queuePaused]);
 
-    if (isLoadingHistory) {
-        return (
-            <div className="flex h-full flex-col items-center justify-center">
-                <Loader />
-                <p className="mt-4" style={{ color: currentTheme.styles.contentSecondary }}>Loading session...</p>
-            </div>
-        );
-    }
-
     return (
         <div className="flex h-full flex-col" style={{ backgroundColor: currentTheme.styles.surfacePrimary }}>
-            <Conversation className="flex-1" ref={scrollRef}>
-                <ConversationContent>
+            <OverlayScrollbar scrollRef={scrollRef} className="flex-1">
+                {isLoadingHistory ? (
+                    <div className="flex h-full flex-col items-center justify-center">
+                        <Loader />
+                        <p className="mt-4" style={{ color: currentTheme.styles.contentSecondary }}>Loading session...</p>
+                    </div>
+                ) : (
+                <Conversation>
+                    <ConversationContent>
                     {messages.map((message) => (
                         <Message key={message.id} from={message.role}>
                             <MessageContent isUser={message.role === "user"}>
@@ -879,8 +855,10 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                             </Message>
                         );
                     })()}
-                </ConversationContent>
-            </Conversation>
+                    </ConversationContent>
+                </Conversation>
+                )}
+            </OverlayScrollbar>
 
             {/* Permission Request Banner */}
             {pendingPermission && (
