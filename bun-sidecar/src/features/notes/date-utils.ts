@@ -87,9 +87,41 @@ export function toLocalDateString(date: Date): string {
  * Parses a YYYY-MM-DD string as a local date (not UTC).
  * Use this instead of new Date("YYYY-MM-DD") which interprets the string as UTC.
  */
-export function parseLocalDateString(dateString: string): Date {
-    const [year, month, day] = dateString.split('-').map(Number);
-    return new Date(year, month - 1, day);
+export function parseLocalDateString(dateString: string | Date): Date {
+    // Handle when YAML parser returns a Date object directly
+    if (dateString instanceof Date) {
+        if (!isNaN(dateString.getTime())) {
+            return dateString;
+        }
+        console.warn("[parseLocalDateString] Invalid Date object received, returning current date");
+        return new Date();
+    }
+
+    if (!dateString) {
+        console.warn("[parseLocalDateString] Empty date string, returning current date");
+        return new Date();
+    }
+
+    // Handle ISO strings (e.g. 2023-01-01T10:00:00Z) by taking just the date part
+    let normalizedString = dateString;
+    if (dateString.includes("T")) {
+        normalizedString = dateString.split("T")[0];
+    }
+
+    const parts = normalizedString.split('-').map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+        const [year, month, day] = parts;
+        return new Date(year, month - 1, day);
+    }
+
+    // Fallback
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+        return date;
+    }
+
+    console.warn(`[parseLocalDateString] Invalid date string: "${dateString}", returning current date`);
+    return new Date();
 }
 
 export function parseDateFromInput(input: string): Date | null {

@@ -13,6 +13,7 @@ import { chatRoutes } from "./server-routes/chat-routes";
 import { agentsRoutes } from "./server-routes/agents-routes";
 import { secretsRoutes } from "./server-routes/secrets-routes";
 import { skillsRoutes } from "./server-routes/skills-routes";
+import { projectsRoutes } from "./server-routes/projects-routes";
 import { workspacesRoutes } from "./server-routes/workspaces-routes";
 import { mcpServersRoutes } from "./server-routes/mcp-servers-routes";
 import { filesystemRoutes } from "./server-routes/filesystem-routes";
@@ -89,6 +90,7 @@ const server = serve<WSData>({
         ...versionRoutes,
         ...logsRoutes,
         ...dictionariesRoutes,
+        ...projectsRoutes,
         // WebSocket route handler
         "/ws": {
             GET: (req, server) => {
