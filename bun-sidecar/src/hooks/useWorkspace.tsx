@@ -188,6 +188,16 @@ export function useWorkspace(_initialRoute?: RouteParams) {
                             return existingProps.tagName === props.tagName;
                         }
 
+                        // For chat: match on sessionId
+                        if (pluginMeta.id === "chat" && view === "chat") {
+                            // If opening an existing chat (has sessionId), match on sessionId
+                            if (props.sessionId) {
+                                return existingProps.sessionId === props.sessionId;
+                            }
+                            // If opening a new chat (no sessionId), don't match - allow multiple new chats
+                            return false;
+                        }
+
                         // For other plugins, match if view is the same and props are empty or match
                         if (Object.keys(props).length === 0 && Object.keys(existingProps).length === 0) {
                             return true;
@@ -348,6 +358,33 @@ export function useWorkspace(_initialRoute?: RouteParams) {
                 return {
                     ...prev,
                     tabs: prev.tabs.map((tab) => (tab.id === tabId ? { ...tab, title } : tab)),
+                };
+            });
+        },
+        [updateWorkspace]
+    );
+
+    const updateTabProps = useCallback(
+        (tabId: string, props: Record<string, unknown>) => {
+            updateWorkspace((prev) => {
+                const currentTab = prev.tabs.find((tab) => tab.id === tabId);
+                if (!currentTab) return prev;
+                return {
+                    ...prev,
+                    tabs: prev.tabs.map((tab) =>
+                        tab.id === tabId
+                            ? {
+                                ...tab,
+                                pluginInstance: {
+                                    ...tab.pluginInstance,
+                                    instanceProps: {
+                                        ...tab.pluginInstance.instanceProps,
+                                        ...props,
+                                    },
+                                },
+                            }
+                            : tab
+                    ),
                 };
             });
         },
@@ -545,6 +582,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         closeTabsWithNote,
         renameNoteTabs,
         setTabName,
+        updateTabProps,
         reorderTabs,
         updateWorkspace,
 

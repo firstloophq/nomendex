@@ -65,7 +65,7 @@ export type ChatViewProps = {
 
 export default function ChatView({ sessionId: initialSessionId, tabId, initialPrompt }: ChatViewProps) {
     const { currentTheme } = useTheme();
-    const { setTabName, activeTab, setActiveTabId, chatInputEnterToSend } = useWorkspaceContext();
+    const { setTabName, updateTabProps, activeTab, setActiveTabId, chatInputEnterToSend } = useWorkspaceContext();
 
     // Chat state
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -391,6 +391,9 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
 
                             if (data.sessionId && !sessionId) {
                                 setSessionId(data.sessionId);
+
+                                // Update tab props with the new sessionId so the tab persists across switches
+                                updateTabProps(tabId, { sessionId: data.sessionId });
 
                                 // Save session immediately when we get the ID (not waiting for done)
                                 if (!sessionSaved) {
