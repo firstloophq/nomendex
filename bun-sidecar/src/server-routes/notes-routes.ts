@@ -29,6 +29,13 @@ export const notesRoutes = {
             return Response.json(result);
         },
     },
+    "/api/notes/search": {
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.searchNotes.fx(args);
+            return Response.json(result);
+        },
+    },
     "/api/notes/get": {
         async POST(req: Request) {
             const args = await req.json();

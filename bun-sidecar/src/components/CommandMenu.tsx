@@ -10,10 +10,12 @@ import { getTodosCommands } from "@/features/todos";
 import { getChatCommands } from "@/features/chat/commands";
 import { getCoreCommands } from "@/commands/core-commands";
 import type { Command } from "@/types/Commands";
+import { subscribe } from "@/lib/events";
+import { SearchNotesDialog } from "@/features/notes/search-notes-dialog";
 
 export function CommandMenu() {
     const [open, setOpen] = React.useState(false);
-    const { addNewTab, setActiveTabId, workspace, closeTab, closeAllTabs, setSidebarTabId, sidebarTabId, setSidebarOpen, sidebarOpen, activeTab } =
+    const { addNewTab, openTab, setActiveTabId, workspace, closeTab, closeAllTabs, setSidebarTabId, sidebarTabId, setSidebarOpen, sidebarOpen, activeTab } =
         useWorkspaceContext();
     const { navigate, currentPath } = useRouting();
     const { openDialog, closeDialog } = useCommandDialog();
@@ -31,6 +33,18 @@ export function CommandMenu() {
         document.addEventListener("keydown", down);
         return () => document.removeEventListener("keydown", down);
     }, []);
+
+    // Listen for search dialog event
+    React.useEffect(() => {
+        return subscribe("notes:openSearch", () => {
+            openDialog({
+                title: "Search Notes",
+                description: "Search for text across all your notes",
+                content: <SearchNotesDialog />,
+                size: "jumbo",
+            });
+        });
+    }, [openDialog]);
 
     // Focus input when dialog opens
     React.useEffect(() => {
@@ -69,6 +83,7 @@ export function CommandMenu() {
                     closeDialog,
                     closeCommandMenu: () => setOpen(false),
                     addNewTab,
+                    openTab,
                     setActiveTabId,
                     closeTab,
                     activeTab,
@@ -89,6 +104,7 @@ export function CommandMenu() {
                 closeDialog,
                 closeCommandMenu: () => setOpen(false),
                 addNewTab,
+                openTab,
                 setActiveTabId,
                 closeTab,
                 activeTab,
@@ -104,6 +120,7 @@ export function CommandMenu() {
             const chatCommands = getChatCommands({
                 closeCommandMenu: () => setOpen(false),
                 addNewTab,
+                openTab,
                 setActiveTabId,
                 navigate,
                 currentPath,
@@ -119,6 +136,7 @@ export function CommandMenu() {
         loadCommands();
     }, [
         addNewTab,
+        openTab,
         setActiveTabId,
         navigate,
         currentPath,

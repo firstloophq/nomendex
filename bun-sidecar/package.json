@@ -10,7 +10,8 @@
         "build:css:dev": "bunx tailwindcss -i ./src/input.css -o ./src/output.css --watch",
         "build:css:full": "bunx tailwindcss -i ./src/input.css -o ./src/output.css --content './src/**/*.{js,ts,jsx,tsx}' --safelist '*'",
         "logs": "bun tail-logs.ts",
-        "agent": "bun run scripts/run-agent.ts"
+        "agent": "bun run scripts/run-agent.ts",
+        "build-dictionary": "bun run scripts/build-dictionary.ts"
     },
     "dependencies": {
         "@ai-sdk/anthropic": "^2.0.56",

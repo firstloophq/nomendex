@@ -72,6 +72,9 @@ export interface AppEventMap {
 
     // Notes editor events
     "notes:copyMarkdown": { noteFileName: string };
+    "notes:runSpellcheck": Record<string, never>;
+    "notes:clearSpellcheck": Record<string, never>;
+    "notes:openSearch": Record<string, never>;
 }
 
 type AppEventType = keyof AppEventMap;

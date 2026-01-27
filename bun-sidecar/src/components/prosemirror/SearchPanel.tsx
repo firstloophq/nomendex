@@ -23,6 +23,9 @@ export function SearchPanel({ view, isOpen, onClose }: SearchPanelProps) {
 
     // Update search in ProseMirror
     const updateSearch = useCallback(() => {
+        // Guard: only dispatch if view is ready (has docView)
+        if (!(view as unknown as { docView: unknown }).docView) return;
+
         const results = performSearch(searchQuery, caseSensitive, view.state.doc);
 
         const tr = view.state.tr.setMeta(searchPluginKey, {
@@ -113,14 +116,17 @@ export function SearchPanel({ view, isOpen, onClose }: SearchPanelProps) {
             setSearchQuery('');
             setCurrentIndex(0);
             setResultsCount(0);
-            // Clear search in editor
-            const tr = view.state.tr.setMeta(searchPluginKey, {
-                query: "",
-                caseSensitive: false,
-                currentIndex: 0,
-                results: [],
-            });
-            view.dispatch(tr);
+            // Clear search in editor - only if view is ready (has docView)
+            // This prevents errors when the component mounts before the view is fully initialized
+            if ((view as unknown as { docView: unknown }).docView) {
+                const tr = view.state.tr.setMeta(searchPluginKey, {
+                    query: "",
+                    caseSensitive: false,
+                    currentIndex: 0,
+                    results: [],
+                });
+                view.dispatch(tr);
+            }
         }
     }, [isOpen, view]);
 

@@ -362,6 +362,20 @@ export function createGitClient(config: GitClientConfig) {
                     abortOnConflict: false,
                     author,
                 });
+
+                // CRITICAL: isomorphic-git's merge() does NOT update the working directory,
+                // only the index and commit history. We must checkout HEAD to sync the working
+                // directory with the merged result. Without this, files added on remote but not
+                // local would be staged for deletion by addAll() because they exist in HEAD
+                // but not in the working directory.
+                logger.info("Merge completed, checking out HEAD to update working directory");
+                await git.checkout({
+                    fs,
+                    dir,
+                    ref: branch,
+                    force: false,
+                });
+
                 logger.info("Pull completed (fast-forward or clean merge)");
                 return { hadConflicts: false, conflictFiles: [] };
             } catch (e) {

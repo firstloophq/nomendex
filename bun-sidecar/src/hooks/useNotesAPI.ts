@@ -1,4 +1,4 @@
-import { Note, NoteFolder } from "@/features/notes";
+import { Note, NoteFolder, SearchResult } from "@/features/notes";
 import { BacklinksResult } from "@/features/notes/backlinks-types";
 import type { TagSuggestion } from "@/features/notes/tags-types";
 
@@ -61,6 +61,7 @@ function preloadNote(fileName: string): void {
 // Standalone API object for use outside React components
 export const notesAPI = {
     getNotes: () => fetchAPI<Note[]>("list"),
+    searchNotes: (args: { query: string }) => fetchAPI<SearchResult[]>("search", args),
     getNoteByFileName: async (args: { fileName: string; skipCache?: boolean }): Promise<Note> => {
         // Check cache first (unless skipCache is true)
         if (!args.skipCache) {

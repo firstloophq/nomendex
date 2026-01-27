@@ -11,6 +11,7 @@ interface CommandContext {
     closeDialog: () => void;
     closeCommandMenu: () => void;
     addNewTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
+    openTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
     setActiveTabId: (id: string) => void;
     closeTab: (id: string) => void;
     activeTab?: WorkspaceTab | null;
@@ -36,15 +37,12 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
             icon: "ListTodo",
             callback: () => {
                 context.closeCommandMenu();
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: todosPluginSerial,
                     view: "default",
                     props: {},
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -58,15 +56,12 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
             icon: "ListChecks",
             callback: () => {
                 context.closeCommandMenu();
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: todosPluginSerial,
                     view: "browser",
                     props: {},
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -80,15 +75,12 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
             icon: "FolderOpen",
             callback: () => {
                 context.closeCommandMenu();
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: todosPluginSerial,
                     view: "projects",
                     props: {},
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -118,15 +110,12 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
         icon: "FolderOpen",
         callback: () => {
             context.closeCommandMenu();
-            const newTab = context.addNewTab({
+            context.openTab({
                 pluginMeta: todosPluginSerial,
                 view: "browser",
                 props: { project },
             });
 
-            if (newTab) {
-                context.setActiveTabId(newTab.id);
-            }
             // Navigate to workspace if not already there
             if (context.currentPath !== "/") {
                 context.navigate("/");

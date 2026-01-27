@@ -6,6 +6,7 @@ import { SerializablePlugin } from "@/types/Plugin";
 interface CommandContext {
     closeCommandMenu: () => void;
     addNewTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
+    openTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
     setActiveTabId: (id: string) => void;
     navigate: (path: string) => void;
     currentPath: string;
@@ -20,15 +21,12 @@ export function getChatCommands(context: CommandContext): Command[] {
             icon: "MessageCircle",
             callback: () => {
                 context.closeCommandMenu();
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: chatPluginSerial,
                     view: "browser",
                     props: {},
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");

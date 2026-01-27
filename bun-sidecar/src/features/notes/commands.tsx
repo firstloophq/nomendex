@@ -6,6 +6,7 @@ import { RenameNoteDialog } from "./rename-note-dialog";
 import { MoveToFolderDialog } from "./move-to-folder-dialog";
 import { getTodayDailyNoteFileName, getYesterdayDailyNoteFileName, getTomorrowDailyNoteFileName } from "./date-utils";
 import { DailyNoteDatePickerDialog } from "./daily-note-date-picker-dialog";
+import { SearchNotesDialog } from "./search-notes-dialog";
 import { notesAPI } from "@/hooks/useNotesAPI";
 import { notesPluginSerial } from "./index";
 import { WorkspaceTab } from "@/types/Workspace";
@@ -13,10 +14,11 @@ import { SerializablePlugin } from "@/types/Plugin";
 import { emit } from "@/lib/events";
 
 interface CommandContext {
-    openDialog: (config: { title?: string; description?: string; content?: React.ReactNode }) => void;
+    openDialog: (config: { title?: string; description?: string; content?: React.ReactNode; size?: "default" | "sm" | "md" | "lg" | "xl" | "2xl" | "full" | "jumbo" }) => void;
     closeDialog: () => void;
     closeCommandMenu: () => void;
     addNewTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
+    openTab: (tab: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => WorkspaceTab | null;
     setActiveTabId: (id: string) => void;
     closeTab: (id: string) => void;
     activeTab?: WorkspaceTab | null;
@@ -26,6 +28,21 @@ interface CommandContext {
 
 export function getNotesCommands(context: CommandContext): Command[] {
     return [
+        {
+            id: "notes.search",
+            name: "Search Notes",
+            description: "Search across all notes (Cmd+Shift+F)",
+            icon: "Search",
+            callback: () => {
+                context.closeCommandMenu();
+                context.openDialog({
+                    title: "Search Notes",
+                    description: "Search for text across all your notes",
+                    content: <SearchNotesDialog />,
+                    size: "jumbo",
+                });
+            },
+        },
         {
             id: "notes.create",
             name: "Create New Note",
@@ -59,15 +76,12 @@ export function getNotesCommands(context: CommandContext): Command[] {
                     await notesAPI.createNote({ fileName });
                 }
 
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: notesPluginSerial,
                     view: "editor",
                     props: { noteFileName: fileName },
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -93,15 +107,12 @@ export function getNotesCommands(context: CommandContext): Command[] {
                     await notesAPI.createNote({ fileName });
                 }
 
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: notesPluginSerial,
                     view: "editor",
                     props: { noteFileName: fileName },
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -127,15 +138,12 @@ export function getNotesCommands(context: CommandContext): Command[] {
                     await notesAPI.createNote({ fileName });
                 }
 
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: notesPluginSerial,
                     view: "editor",
                     props: { noteFileName: fileName },
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -163,15 +171,12 @@ export function getNotesCommands(context: CommandContext): Command[] {
             icon: "FileText",
             callback: () => {
                 context.closeCommandMenu();
-                const newTab = context.addNewTab({
+                context.openTab({
                     pluginMeta: notesPluginSerial,
                     view: "browser",
                     props: {},
                 });
 
-                if (newTab) {
-                    context.setActiveTabId(newTab.id);
-                }
                 // Navigate to workspace if not already there
                 if (context.currentPath !== "/") {
                     context.navigate("/");
@@ -338,6 +343,34 @@ export function getNotesCommands(context: CommandContext): Command[] {
                 }
 
                 await notesAPI.revealInFinder({ fileName: noteFileName });
+            },
+        },
+        {
+            id: "notes.runSpellcheck",
+            name: "Run Spellcheck",
+            description: "Check spelling and highlight misspelled words",
+            icon: "SpellCheck",
+            // Only show when notes editor is active
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+                emit("notes:runSpellcheck", {});
+            },
+        },
+        {
+            id: "notes.clearSpellcheck",
+            name: "Clear Spellcheck",
+            description: "Remove all spellcheck highlighting",
+            icon: "SpellCheck2",
+            // Only show when notes editor is active
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+                emit("notes:clearSpellcheck", {});
             },
         },
     ];

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { todosAPI } from "@/hooks/useTodosAPI";
-import { EditorState, Selection, NodeSelection } from "prosemirror-state";
+import { EditorState, Selection, NodeSelection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
 import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
@@ -57,12 +57,16 @@ import { OverlayScrollbar } from "@/components/OverlayScrollbar";
 import { SearchPanel } from "@/components/prosemirror/SearchPanel";
 import { createSearchPlugin } from "@/components/prosemirror/search-plugin";
 import "@/components/prosemirror/search.css";
+import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/components/prosemirror/spellcheck";
+import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
+import "@/components/prosemirror/spellcheck/spellcheck.css";
 
 interface NotesViewProps {
     noteFileName: string;
     tabId: string;
     autoFocus?: boolean;
     compact?: boolean; // Hides header toolbar when embedded
+    scrollToLine?: number; // Line number to scroll to on initial load
 }
 
 interface Heading {
@@ -72,7 +76,7 @@ interface Heading {
 }
 
 export function NotesView(props: NotesViewProps) {
-    const { noteFileName, tabId, autoFocus = true, compact = false } = props;
+    const { noteFileName, tabId, autoFocus = true, compact = false, scrollToLine } = props;
     if (!tabId) {
         throw new Error("tabId is required");
     }
@@ -188,6 +192,24 @@ export function NotesView(props: NotesViewProps) {
             });
         });
     }, [noteFileName, content]);
+
+    // Subscribe to run spellcheck events
+    useEffect(() => {
+        return subscribe("notes:runSpellcheck", () => {
+            if (viewRef.current) {
+                runSpellcheck(viewRef.current);
+            }
+        });
+    }, []);
+
+    // Subscribe to clear spellcheck events
+    useEffect(() => {
+        return subscribe("notes:clearSpellcheck", () => {
+            if (viewRef.current) {
+                clearSpellcheck(viewRef.current);
+            }
+        });
+    }, []);
 
     // Memoize API instance to prevent infinite rerenders
     const notesAPI = useNotesAPI();
@@ -644,6 +666,9 @@ export function NotesView(props: NotesViewProps) {
         // Search plugin for CMD+F functionality
         const searchPlugin = createSearchPlugin();
 
+        // Spellcheck plugin for spell checking
+        const spellcheckPlugin = createSpellcheckPlugin();
+
         let state = EditorState.create({
             doc,
             plugins: [
@@ -656,6 +681,7 @@ export function NotesView(props: NotesViewProps) {
                 tagLinkPlugin, // Tag suggestions
                 tagDecorationPlugin, // Tag decorations and atomic deletion
                 searchPlugin, // Search highlighting
+                spellcheckPlugin, // Spellcheck
             ],
         });
 
@@ -816,22 +842,67 @@ export function NotesView(props: NotesViewProps) {
         initializedContentRef.current = contentToUse;
         currentNoteFileNameRef.current = noteFileName;
 
-        // Focus editor and restore cursor position (or place at start if no saved position)
+        // Helper to scroll to a specific line number with context above
+        const scrollToLineNumber = (lineNum: number) => {
+            const doc = view.state.doc;
+            const linePositions: number[] = [0]; // Position of each line start (1-indexed, so [0] is unused)
+
+            // Build array of line start positions
+            doc.descendants((node, pos) => {
+                if (node.isBlock && node.type.name !== "doc") {
+                    linePositions.push(pos);
+                }
+                return true;
+            });
+
+            // Calculate scroll target (a few lines before the match for context)
+            const contextLines = 5;
+            const scrollTargetLine = Math.max(1, lineNum - contextLines);
+            const scrollTargetPos = linePositions[scrollTargetLine] ?? 0;
+
+            // Get the actual target position for cursor placement
+            const targetPos = linePositions[lineNum] ?? linePositions[linePositions.length - 1] ?? 0;
+
+            // First scroll the context line into view at the top
+            const scrollTr = view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, scrollTargetPos)
+            );
+            view.dispatch(scrollTr.scrollIntoView());
+
+            // Then set cursor at the actual target line (without scrolling again)
+            requestAnimationFrame(() => {
+                const cursorTr = view.state.tr.setSelection(
+                    TextSelection.create(view.state.doc, targetPos)
+                );
+                view.dispatch(cursorTr);
+            });
+        };
+
+        // Focus editor and handle cursor/scroll position
         if (autoFocus) {
             requestAnimationFrame(() => {
                 try {
                     view.focus();
-                    // Try to restore saved cursor position, otherwise place at start
-                    restoreCursor(view);
+                    // If scrollToLine is specified, scroll to that line
+                    if (scrollToLine && scrollToLine > 0) {
+                        scrollToLineNumber(scrollToLine);
+                    } else {
+                        // Try to restore saved cursor position, otherwise place at start
+                        restoreCursor(view);
+                    }
                 } catch {
                     // no-op if focusing fails
                 }
             });
         } else {
-            // Even without autoFocus, try to restore cursor position
+            // Even without autoFocus, handle scroll position
             requestAnimationFrame(() => {
                 try {
-                    restoreCursor(view);
+                    if (scrollToLine && scrollToLine > 0) {
+                        scrollToLineNumber(scrollToLine);
+                    } else {
+                        restoreCursor(view);
+                    }
                 } catch {
                     // no-op
                 }
@@ -892,6 +963,9 @@ export function NotesView(props: NotesViewProps) {
             // Search plugin for CMD+F functionality
             const searchPlugin = createSearchPlugin();
 
+            // Spellcheck plugin for spell checking
+            const spellcheckPlugin = createSpellcheckPlugin();
+
             let newState = EditorState.create({
                 doc,
                 plugins: [
@@ -904,6 +978,7 @@ export function NotesView(props: NotesViewProps) {
                     tagLinkPlugin,
                     tagDecorationPlugin,
                     searchPlugin, // Search highlighting
+                    spellcheckPlugin, // Spellcheck
                 ],
             });
 
@@ -1221,162 +1296,169 @@ export function NotesView(props: NotesViewProps) {
         };
     }, [isMinimapFocused, headings, focusedHeadingIndex, activeHeadingId, scrollToHeading, scrollToHeadingPreview]);
 
-    // Single wrapper - ref stays on the same element across all states
+    // Single OverlayScrollbar stays mounted across all states for scroll persistence
     return (
         <div className="h-full overflow-hidden flex flex-col">
-            {(loading || !note) ? (
-                // Loading placeholder
-                <div className="h-full" />
-            ) : error ? (
-                // Error state
-                <div className="p-4">
-                    <Alert variant="destructive">
-                        <AlertDescription>Error: {error}</AlertDescription>
-                    </Alert>
-                </div>
-            ) : (
-                // Content
-                <>
-            {/* Header: filename + toolbar + mode/save */}
-            <div
-                className="shrink-0"
-                style={{
-                    backgroundColor: currentTheme.styles.surfacePrimary,
-                    borderBottom: `1px solid ${currentTheme.styles.borderDefault}`,
-                }}
-            >
-                <div className="px-4 py-2 flex items-center gap-3">
-                    <div className="flex flex-col items-start gap-1 min-w-0">
-                        {/* Breadcrumb for folder path */}
-                        {(() => {
-                            const pathWithoutExt = noteFileName.replace(/\.md$/, "");
-                            const parts = pathWithoutExt.split("/");
-                            const fileName = parts.pop() || pathWithoutExt;
-                            const folderPath = parts;
+            {/* Header: only visible when content is loaded */}
+            {!loading && !error && note && (
+                <div
+                    className="shrink-0"
+                    style={{
+                        backgroundColor: currentTheme.styles.surfacePrimary,
+                        borderBottom: `1px solid ${currentTheme.styles.borderDefault}`,
+                    }}
+                >
+                    <div className="px-4 py-2 flex items-center gap-3">
+                        <div className="flex flex-col items-start gap-1 min-w-0">
+                            {/* Breadcrumb for folder path */}
+                            {(() => {
+                                const pathWithoutExt = noteFileName.replace(/\.md$/, "");
+                                const parts = pathWithoutExt.split("/");
+                                const fileName = parts.pop() || pathWithoutExt;
+                                const folderPath = parts;
 
-                            return (
-                                <>
-                                    {folderPath.length > 0 && (
-                                        <Breadcrumb>
-                                            <BreadcrumbList className="text-xs">
-                                                {folderPath.map((folder, index) => (
-                                                    <BreadcrumbItem key={index}>
-                                                        <span style={{ color: currentTheme.styles.contentTertiary }}>
-                                                            {folder}
-                                                        </span>
-                                                        {index < folderPath.length - 1 && <BreadcrumbSeparator />}
-                                                    </BreadcrumbItem>
-                                                ))}
-                                            </BreadcrumbList>
-                                        </Breadcrumb>
-                                    )}
-                                    <div
-                                        className="text-3xl font-bold"
-                                        style={{ color: currentTheme.styles.contentPrimary }}
-                                    >
-                                        {fileName}
-                                    </div>
-                                </>
-                            );
-                        })()}
+                                return (
+                                    <>
+                                        {folderPath.length > 0 && (
+                                            <Breadcrumb>
+                                                <BreadcrumbList className="text-xs">
+                                                    {folderPath.map((folder, index) => (
+                                                        <BreadcrumbItem key={index}>
+                                                            <span style={{ color: currentTheme.styles.contentTertiary }}>
+                                                                {folder}
+                                                            </span>
+                                                            {index < folderPath.length - 1 && <BreadcrumbSeparator />}
+                                                        </BreadcrumbItem>
+                                                    ))}
+                                                </BreadcrumbList>
+                                            </Breadcrumb>
+                                        )}
+                                        <div
+                                            className="text-3xl font-bold"
+                                            style={{ color: currentTheme.styles.contentPrimary }}
+                                        >
+                                            {fileName}
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    </div>
+
+                    {/* Project and Tags row */}
+                    <div className="px-4 pb-2 flex items-center gap-4">
+                        <ProjectInput project={project} onProjectChange={handleProjectChange} />
+                        <TagInput tags={tags} onTagsChange={handleTagsChange} placeholder="Add tag..." />
                     </div>
                 </div>
+            )}
 
-                {/* Project and Tags row */}
-                <div className="px-4 pb-2 flex items-center gap-4">
-                    <ProjectInput project={project} onProjectChange={handleProjectChange} />
-                    <TagInput tags={tags} onTagsChange={handleTagsChange} placeholder="Add tag..." />
-                </div>
-            </div>
-
-            {/* Editor with inline TOC */}
+            {/* Main content area with flex layout */}
             <div className="flex-1 overflow-hidden flex min-h-0">
-                {/* Main editor area - this is the scrollable content */}
+                {/* Main scrollable area */}
                 <div className="flex-1 h-full relative">
-                    {/* Search Panel - positioned relative to main editor area, not the sidebar */}
-                    {viewRef.current && (
+                    {/* Search Panel - only visible when content is loaded */}
+                    {!loading && !error && note && viewRef.current && (
                         <SearchPanel
                             view={viewRef.current}
                             isOpen={isSearchOpen}
                             onClose={() => setIsSearchOpen(false)}
                         />
                     )}
+
+                    {/* Single OverlayScrollbar - always mounted to preserve scroll position */}
                     <OverlayScrollbar
-                    scrollRef={scrollRef}
-                    className="flex-1 h-full"
-                    style={{ backgroundColor: currentTheme.styles.surfacePrimary }}
-                >
-                    {isRichTextMode ? (
-                        <div className={compact ? 'compact-editor' : ''}>
-                            <div className="w-full max-w-4xl mx-auto px-6 py-4">
-                                <div
-                                    ref={editorRef}
-                                    className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none focus:outline-none editor-content"
-                                    style={
-                                        {
-                                            "--tw-prose-body": currentTheme.styles.contentPrimary,
-                                            "--tw-prose-headings": currentTheme.styles.contentPrimary,
-                                            "--tw-prose-links": currentTheme.styles.contentAccent,
-                                            "--tw-prose-bold": currentTheme.styles.contentPrimary,
-                                            "--tw-prose-counters": currentTheme.styles.contentSecondary,
-                                            "--tw-prose-bullets": currentTheme.styles.contentSecondary,
-                                            "--tw-prose-hr": currentTheme.styles.borderDefault,
-                                            "--tw-prose-quotes": currentTheme.styles.contentPrimary,
-                                            "--tw-prose-quote-borders": currentTheme.styles.borderDefault,
-                                            "--tw-prose-captions": currentTheme.styles.contentSecondary,
-                                            "--tw-prose-code": currentTheme.styles.contentPrimary,
-                                            "--tw-prose-pre-code": currentTheme.styles.contentPrimary,
-                                            "--tw-prose-pre-bg": currentTheme.styles.surfaceMuted,
-                                            "--tw-prose-th-borders": currentTheme.styles.borderDefault,
-                                            "--tw-prose-td-borders": currentTheme.styles.borderDefault,
-                                            // Todo checkbox theme variables
-                                            "--todo-border": currentTheme.styles.borderDefault,
-                                            "--todo-bg": currentTheme.styles.surfacePrimary,
-                                            "--todo-checked-bg": currentTheme.styles.semanticPrimary,
-                                            "--todo-checked-fg": currentTheme.styles.semanticPrimaryForeground,
-                                            "--todo-completed-text": currentTheme.styles.contentTertiary,
-                                            // Tag theme variables
-                                            "--tag-color": currentTheme.styles.contentAccent,
-                                            "--tag-hover-bg": currentTheme.styles.surfaceAccent,
-                                            color: currentTheme.styles.contentPrimary,
-                                        } as React.CSSProperties
-                                    }
-                                />
-                                {/* Wiki link popup */}
-                                {viewRef.current && wikiLinkState.active && (
-                                    <WikiLinkPopup
-                                        view={viewRef.current}
-                                        pluginState={wikiLinkState}
-                                    />
-                                )}
-                                {/* Tag link popup */}
-                                {viewRef.current && tagLinkState.active && (
-                                    <TagLinkPopup
-                                        view={viewRef.current}
-                                        pluginState={tagLinkState}
-                                    />
-                                )}
+                        scrollRef={scrollRef}
+                        className="flex-1 h-full"
+                        style={{ backgroundColor: currentTheme.styles.surfacePrimary }}
+                    >
+                        {(loading || !note) ? (
+                            // Loading placeholder
+                            <div className="h-full" />
+                        ) : error ? (
+                            // Error state
+                            <div className="p-4">
+                                <Alert variant="destructive">
+                                    <AlertDescription>Error: {error}</AlertDescription>
+                                </Alert>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="h-full bg-background">
-                            <div className="w-full max-w-4xl mx-auto px-6 py-4">
-                                <textarea
-                                    value={content}
-                                    onChange={(e) => updateContent(e.target.value)}
-                                    onBlur={() => saveImmediately(content)}
-                                    placeholder="Write your markdown here..."
-                                    className="w-full h-full min-h-[calc(100vh-200px)] bg-transparent border-0 resize-none font-mono text-sm focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground"
-                                    autoFocus
-                                />
+                        ) : isRichTextMode ? (
+                            // Rich text editor
+                            <div className={compact ? 'compact-editor' : ''}>
+                                <div className="w-full max-w-4xl mx-auto px-6 py-4">
+                                    <div
+                                        ref={editorRef}
+                                        className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none focus:outline-none editor-content"
+                                        style={
+                                            {
+                                                "--tw-prose-body": currentTheme.styles.contentPrimary,
+                                                "--tw-prose-headings": currentTheme.styles.contentPrimary,
+                                                "--tw-prose-links": currentTheme.styles.contentAccent,
+                                                "--tw-prose-bold": currentTheme.styles.contentPrimary,
+                                                "--tw-prose-counters": currentTheme.styles.contentSecondary,
+                                                "--tw-prose-bullets": currentTheme.styles.contentSecondary,
+                                                "--tw-prose-hr": currentTheme.styles.borderDefault,
+                                                "--tw-prose-quotes": currentTheme.styles.contentPrimary,
+                                                "--tw-prose-quote-borders": currentTheme.styles.borderDefault,
+                                                "--tw-prose-captions": currentTheme.styles.contentSecondary,
+                                                "--tw-prose-code": currentTheme.styles.contentPrimary,
+                                                "--tw-prose-pre-code": currentTheme.styles.contentPrimary,
+                                                "--tw-prose-pre-bg": currentTheme.styles.surfaceMuted,
+                                                "--tw-prose-th-borders": currentTheme.styles.borderDefault,
+                                                "--tw-prose-td-borders": currentTheme.styles.borderDefault,
+                                                // Todo checkbox theme variables
+                                                "--todo-border": currentTheme.styles.borderDefault,
+                                                "--todo-bg": currentTheme.styles.surfacePrimary,
+                                                "--todo-checked-bg": currentTheme.styles.semanticPrimary,
+                                                "--todo-checked-fg": currentTheme.styles.semanticPrimaryForeground,
+                                                "--todo-completed-text": currentTheme.styles.contentTertiary,
+                                                // Tag theme variables
+                                                "--tag-color": currentTheme.styles.contentAccent,
+                                                "--tag-hover-bg": currentTheme.styles.surfaceAccent,
+                                                color: currentTheme.styles.contentPrimary,
+                                            } as React.CSSProperties
+                                        }
+                                    />
+                                    {/* Wiki link popup */}
+                                    {viewRef.current && wikiLinkState.active && (
+                                        <WikiLinkPopup
+                                            view={viewRef.current}
+                                            pluginState={wikiLinkState}
+                                        />
+                                    )}
+                                    {/* Tag link popup */}
+                                    {viewRef.current && tagLinkState.active && (
+                                        <TagLinkPopup
+                                            view={viewRef.current}
+                                            pluginState={tagLinkState}
+                                        />
+                                    )}
+                                    {/* Spellcheck popup - handles hover internally */}
+                                    {viewRef.current && (
+                                        <SpellcheckPopup view={viewRef.current} />
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            // Plain text editor
+                            <div className="h-full bg-background">
+                                <div className="w-full max-w-4xl mx-auto px-6 py-4">
+                                    <textarea
+                                        value={content}
+                                        onChange={(e) => updateContent(e.target.value)}
+                                        onBlur={() => saveImmediately(content)}
+                                        placeholder="Write your markdown here..."
+                                        className="w-full h-full min-h-[calc(100vh-200px)] bg-transparent border-0 resize-none font-mono text-sm focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </OverlayScrollbar>
                 </div>
 
-                {/* Sidebar with TOC and Backlinks */}
-                {isRichTextMode && !compact && (
+                {/* Sidebar with TOC and Backlinks - only visible when content is loaded */}
+                {!loading && !error && note && isRichTextMode && !compact && (
                     <div
                         ref={minimapRef}
                         tabIndex={-1}
@@ -1476,8 +1558,6 @@ export function NotesView(props: NotesViewProps) {
                     </div>
                 )}
             </div>
-                </>
-            )}
         </div>
     );
 }

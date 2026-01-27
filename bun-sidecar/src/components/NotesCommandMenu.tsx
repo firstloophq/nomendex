@@ -7,7 +7,7 @@ import { Note, notesPluginSerial } from "@/features/notes";
 
 export function NotesCommandMenu() {
     const [open, setOpen] = React.useState(false);
-    const { addNewTab, setActiveTabId } = useWorkspaceContext();
+    const { openTab } = useWorkspaceContext();
     const inputRef = React.useRef<HTMLInputElement | null>(null);
     const [notes, setNotes] = React.useState<Note[]>([]);
     const [loading, setLoading] = React.useState(false);
@@ -59,23 +59,17 @@ export function NotesCommandMenu() {
     const handleSelectNote = (fileName: string) => {
         console.log("[NotesCommandMenu] Selecting note:", fileName);
 
-        // Add new tab with the notes editor view
-        const newTab = addNewTab({
+        // Open tab (or focus existing one) with the notes editor view
+        const tab = openTab({
             pluginMeta: notesPluginSerial,
             view: "editor",
             props: { noteFileName: fileName },
         });
 
-        if (newTab) {
-            console.log("[NotesCommandMenu] Created new tab:", newTab);
-            // Update the tab name to the note filename
-            newTab.title = fileName.replace(".md", "");
-            // Small delay to ensure tab is created before switching
-            setTimeout(() => {
-                setActiveTabId(newTab.id);
-            }, 0);
+        if (tab) {
+            console.log("[NotesCommandMenu] Opened tab:", tab);
         } else {
-            console.error("[NotesCommandMenu] Failed to create tab for note:", fileName);
+            console.error("[NotesCommandMenu] Failed to open tab for note:", fileName);
         }
 
         setOpen(false);

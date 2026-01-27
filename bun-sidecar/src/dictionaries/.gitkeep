@@ -1,0 +1,2 @@
+# Dictionary files will be stored here
+# Run `bun run scripts/download-dictionaries.ts` to download them

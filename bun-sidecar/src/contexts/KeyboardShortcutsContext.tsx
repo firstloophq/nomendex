@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { useKeybindings, Keybinding } from "@/hooks/useKeybindings";
 import { useWorkspaceContext } from "./WorkspaceContext";
 import { useRouting } from "@/hooks/useRouting";
+import { emit } from "@/lib/events";
 
 interface KeyboardShortcut {
     id: string;
@@ -9,7 +10,7 @@ interface KeyboardShortcut {
     description: string;
     defaultKeys: string[];
     customKeys?: string[];
-    category: "tabs" | "navigation" | "workspace" | "custom" | "editor";
+    category: "tabs" | "navigation" | "workspace" | "custom" | "editor" | "search";
     action?: () => void;
     /** If true, this shortcut is handled elsewhere (e.g., ProseMirror) and shown for documentation only */
     documentationOnly?: boolean;
@@ -135,6 +136,14 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
             description: "Navigate to settings page",
             defaultKeys: ["cmd", "comma"],
             category: "navigation",
+        },
+        // Search
+        {
+            id: "search-notes",
+            name: "Search Notes",
+            description: "Search across all notes",
+            defaultKeys: ["cmd", "shift", "f"],
+            category: "search",
         },
         // Editor - Table shortcuts (handled by ProseMirror, shown for documentation)
         {
@@ -278,6 +287,7 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
                 }
             },
             "go-to-settings": () => navigate("/settings"),
+            "search-notes": () => emit("notes:openSearch", {}),
         };
     }, [workspace.tabs, workspace.sidebarTabId, activeTab, closeTab, setActiveTabId, navigate]);
 

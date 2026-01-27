@@ -1,6 +1,6 @@
 ---
 name: macos-scrollbar
-description: Custom themed scrollbars for macOS WKWebView apps. Use when styling scrollbars in the native macOS app, fixing scrollbar theming issues, or implementing custom scroll containers that work in WKWebView.
+description: Custom themed scrollbars for macOS WKWebView apps. Use when styling scrollbars in the native macOS app, fixing scrollbar theming issues, implementing custom scroll containers that work in WKWebView, or debugging scroll position persistence issues with tabs.
 ---
 
 # MacOS WKWebView Custom Scrollbars
@@ -87,6 +87,94 @@ Key constants:
 - Thumb minimum height: 30px
 - Hide delay: 1000ms after scroll stops
 - Fade transition: 150ms
+
+## Scroll Position Persistence for Tabs
+
+When implementing scroll persistence for workspace tabs, use `useTabScrollPersistence` with `OverlayScrollbar`.
+
+### How It Works
+
+1. `useTabScrollPersistence(tabId)` returns a ref and:
+   - Saves scroll position to a module-level Map on every scroll event
+   - Restores position when the component mounts (using ResizeObserver/MutationObserver for async content)
+
+2. Pass the ref to `OverlayScrollbar`:
+   ```tsx
+   const scrollRef = useTabScrollPersistence(tabId);
+
+   <OverlayScrollbar scrollRef={scrollRef} className="flex-1">
+       {/* content */}
+   </OverlayScrollbar>
+   ```
+
+### Critical Rule: Keep OverlayScrollbar Mounted
+
+**The ref must be attached to a mounted element when `useTabScrollPersistence`'s effect runs.**
+
+If you conditionally render a different tree during loading, the ref won't be set and restoration will fail:
+
+```tsx
+// BAD - OverlayScrollbar unmounts during loading, ref is null when effect runs
+if (isLoading) {
+    return <Loader />;  // Different tree, no OverlayScrollbar!
+}
+
+return (
+    <OverlayScrollbar scrollRef={scrollRef}>
+        {/* content */}
+    </OverlayScrollbar>
+);
+```
+
+```tsx
+// GOOD - OverlayScrollbar stays mounted, ref is always set
+return (
+    <OverlayScrollbar scrollRef={scrollRef} className="flex-1">
+        {isLoading ? (
+            <div className="flex h-full items-center justify-center">
+                <Loader />
+            </div>
+        ) : (
+            {/* actual content */}
+        )}
+    </OverlayScrollbar>
+);
+```
+
+### Why This Matters
+
+The `useTabScrollPersistence` hook runs its effect on mount with `[tabId]` dependency:
+
+```tsx
+useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;  // Early return if ref not set!
+
+    // Set up observers and attempt restoration...
+}, [tabId]);
+```
+
+If the element isn't mounted when the effect runs:
+1. `scrollRef.current` is `null`
+2. Effect returns early without setting up observers
+3. When content loads and OverlayScrollbar mounts, the effect doesn't re-run
+4. No scroll restoration happens
+
+### Checklist for Scroll Persistence
+
+- [ ] Use `OverlayScrollbar` (not native `overflow-y-auto`) for the scroll container
+- [ ] Pass `scrollRef` from `useTabScrollPersistence` to `OverlayScrollbar`
+- [ ] Keep `OverlayScrollbar` in the component tree during ALL render states (loading, error, etc.)
+- [ ] Render loading/error states as CHILDREN of `OverlayScrollbar`, not as alternative returns
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/hooks/useTabScrollPersistence.ts` | Hook that saves/restores scroll position per tab |
+| `src/components/OverlayScrollbar.tsx` | Custom scrollbar with `scrollRef` prop |
+| `src/features/notes/note-view.tsx` | Reference implementation (lines 1370-1457) |
+| `src/features/chat/chat-view.tsx` | Chat implementation with loading state handling |
 
 ## References
 

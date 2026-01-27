@@ -7,6 +7,7 @@ interface DialogState {
     description?: string;
     content?: React.ReactNode;
     width?: string;
+    size?: "default" | "sm" | "md" | "lg" | "xl" | "2xl" | "full" | "jumbo";
 }
 
 interface CommandDialogContextType {
@@ -33,21 +34,29 @@ export function CommandDialogProvider({ children }: { children: React.ReactNode 
 
     const closeDialog = React.useCallback(() => {
         // Clear all dialog state when closing
-        setDialogState({ open: false, title: undefined, description: undefined, content: undefined, width: undefined });
+        setDialogState({ open: false, title: undefined, description: undefined, content: undefined, width: undefined, size: undefined });
     }, []);
+
+    const isJumbo = dialogState.size === "jumbo";
 
     return (
         <CommandDialogContext.Provider value={{ openDialog, closeDialog }}>
             {children}
             <Dialog open={dialogState.open} onOpenChange={(open) => !open && closeDialog()}>
-                <DialogContent style={dialogState.width ? { width: dialogState.width, maxWidth: '90vw' } : undefined}>
+                <DialogContent size={dialogState.size} style={dialogState.width ? { width: dialogState.width, maxWidth: '90vw' } : undefined}>
                     {dialogState.title && (
-                        <DialogHeader>
+                        <DialogHeader className={isJumbo ? "shrink-0" : undefined}>
                             <DialogTitle>{dialogState.title}</DialogTitle>
                             {dialogState.description && <DialogDescription>{dialogState.description}</DialogDescription>}
                         </DialogHeader>
                     )}
-                    {dialogState.content}
+                    {isJumbo ? (
+                        <div className="flex-1 min-h-0 flex flex-col">
+                            {dialogState.content}
+                        </div>
+                    ) : (
+                        dialogState.content
+                    )}
                 </DialogContent>
             </Dialog>
         </CommandDialogContext.Provider>

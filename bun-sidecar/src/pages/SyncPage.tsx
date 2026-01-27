@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -160,7 +160,7 @@ function SyncContent() {
         checkForChanges();
     }, [checkForChanges]);
 
-    const loadConflicts = async () => {
+    const loadConflicts = useCallback(async () => {
         try {
             const response = await fetch("/api/git/conflicts");
             if (response.ok) {
@@ -175,9 +175,9 @@ function SyncContent() {
         } catch (error) {
             console.error("Failed to load conflicts:", error);
         }
-    };
+    }, [syncStatus.hasMergeConflict, clearMergeConflict]);
 
-    const loadGitStatus = async () => {
+    const loadGitStatus = useCallback(async () => {
         try {
             setLoading(true);
             const response = await fetch("/api/git/status");
@@ -195,7 +195,7 @@ function SyncContent() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [syncStatus.hasMergeConflict, clearMergeConflict]);
 
     const initializeGit = async () => {
         try {
@@ -393,7 +393,7 @@ After you provide the merged content, I will manually update the file and mark t
 
     useEffect(() => {
         loadGitStatus();
-    }, []);
+    }, [loadGitStatus]);
 
     // Load conflicts when we detect a merge conflict, and poll for changes
     useEffect(() => {
@@ -405,7 +405,7 @@ After you provide the merged content, I will manually update the file and mark t
         } else {
             setConflicts([]);
         }
-    }, [hasMergeConflict]);
+    }, [hasMergeConflict, loadConflicts]);
 
     if (loading) {
         return (
