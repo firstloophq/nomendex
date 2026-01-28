@@ -151,9 +151,35 @@ export function useNativeKeyboardBridge() {
             console.log('Ctrl+Shift+Tab event dispatched to document');
         };
 
-        // Handle Cmd+Enter submit - dispatch custom event for any listening components
+        // Dispatch a synthetic Cmd+Enter key event to an element
+        const dispatchCmdEnterEvent = (element: HTMLElement) => {
+            const event = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13,
+                which: 13,
+                metaKey: true, // Cmd key on Mac
+                bubbles: true,
+                cancelable: true,
+            });
+            element.dispatchEvent(event);
+        };
+
+        // Handle Cmd+Enter submit - if in ProseMirror, dispatch keyboard event,
+        // otherwise dispatch custom event for dialogs
         const nativeSubmit = () => {
-            console.log('__nativeSubmit called, dispatching nativeSubmit event');
+            console.log('__nativeSubmit called');
+
+            // Check if focus is in a ProseMirror editor
+            const editor = isInProseMirrorEditor();
+            if (editor) {
+                console.log('Dispatching Cmd+Enter KeyboardEvent to ProseMirror editor');
+                dispatchCmdEnterEvent(editor);
+                return;
+            }
+
+            // Otherwise, dispatch custom event for dialogs using useNativeSubmit
+            console.log('Dispatching nativeSubmit CustomEvent for dialogs');
             const event = new CustomEvent('nativeSubmit', { bubbles: true });
             window.dispatchEvent(event);
         };
