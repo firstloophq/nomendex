@@ -38,8 +38,8 @@ export const AgentConfigSchema = z.object({
     description: z.string().optional(),
     systemPrompt: z.string(),
     model: ModelSchema,
-    mcpServers: z.array(z.string()), // Array of MCP server IDs from registry
-    allowedTools: z.array(z.string()).optional(), // Tools that are always allowed (persisted permissions)
+    mcpServers: z.array(z.string()).default([]), // Array of MCP server IDs from registry
+    allowedTools: z.array(z.string()).default([]), // Tools that are always allowed (persisted permissions)
     isDefault: z.boolean().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),

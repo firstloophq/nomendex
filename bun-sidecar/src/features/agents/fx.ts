@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import path from "path";
 import {
     type AgentConfig,
+    AgentConfigSchema,
     type AgentPreferences,
     DEFAULT_AGENT,
     DEFAULT_PREFERENCES,
@@ -78,8 +79,17 @@ async function getAgent(input: { agentId: string }): Promise<AgentConfig | null>
             return null;
         }
 
-        const agent = await file.json();
-        return agent as AgentConfig;
+        const rawAgent = await file.json();
+        const parseResult = AgentConfigSchema.safeParse(rawAgent);
+
+        if (parseResult.success) {
+            return parseResult.data;
+        }
+
+        agentsLogger.error(`Invalid agent file for ${input.agentId}`, {
+            errors: parseResult.error.errors
+        });
+        return null;
     } catch (error) {
         agentsLogger.error(`Failed to get agent ${input.agentId}`, { error });
         return null;
@@ -104,8 +114,16 @@ async function listAgents(): Promise<AgentConfig[]> {
             const filePath = path.join(getAgentsPath(), fileName);
             try {
                 const file = Bun.file(filePath);
-                const agent = (await file.json()) as AgentConfig;
-                agents.push(agent);
+                const rawAgent = await file.json();
+                const parseResult = AgentConfigSchema.safeParse(rawAgent);
+
+                if (parseResult.success) {
+                    agents.push(parseResult.data);
+                } else {
+                    agentsLogger.error(`Invalid agent file ${fileName}`, {
+                        errors: parseResult.error.errors
+                    });
+                }
             } catch (error) {
                 agentsLogger.error(`Error reading agent file ${fileName}`, { error });
             }
