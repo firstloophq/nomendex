@@ -60,14 +60,31 @@ function serializeFrontMatter(frontMatter: Record<string, unknown> | undefined, 
         return content;
     }
 }
-async function getNotes() {
+// Folders that should always be hidden from the notes browser
+const ALWAYS_HIDDEN_FOLDERS = ["todos", ".nomendex", ".git", ".github"];
+// Files that should always be hidden from the notes browser
+const ALWAYS_HIDDEN_FILES = [".DS_Store"];
+
+function shouldSkipFolder(folderPath: string): boolean {
+    // Check if the folder path starts with or contains any of the always-hidden folders
+    for (const hidden of ALWAYS_HIDDEN_FOLDERS) {
+        if (folderPath === hidden || folderPath.startsWith(`${hidden}/`) || folderPath.includes(`/${hidden}`)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function getNotes(args?: { showHiddenFiles?: boolean }) {
+    const showHiddenFiles = args?.showHiddenFiles ?? false;
     try {
         const notes: { fileName: string; content: string; frontMatter?: Record<string, unknown>; folderPath?: string }[] = [];
 
         // Get root-level files
-        const rootFiles = await getStorage().listFiles();
+        const rootFiles = await getStorage().listFiles(undefined, { includeHidden: showHiddenFiles });
         for (const file of rootFiles) {
             if (!file.endsWith(".md")) continue;
+            if (ALWAYS_HIDDEN_FILES.includes(file)) continue;
             let rawContent = await getStorage().readFile(file);
             if (!rawContent) rawContent = "";
             const { frontMatter, content } = parseFrontMatter(rawContent);
@@ -75,16 +92,17 @@ async function getNotes() {
         }
 
         // Get files from all folders recursively
-        const folders = await getStorage().listAllFoldersRecursive();
+        const folders = await getStorage().listAllFoldersRecursive(undefined, { includeHidden: showHiddenFiles });
         for (const folder of folders) {
-            // Skip system directories
-            if (folder.path.startsWith("todos") || folder.path.startsWith(".nomendex") || folder.path.startsWith(".git") || folder.path.includes("/.")) {
+            // Always skip system directories
+            if (shouldSkipFolder(folder.path)) {
                 continue;
             }
 
-            const folderFiles = await getStorage().listFiles(folder.path);
+            const folderFiles = await getStorage().listFiles(folder.path, { includeHidden: showHiddenFiles });
             for (const file of folderFiles) {
                 if (!file.endsWith(".md")) continue;
+                if (ALWAYS_HIDDEN_FILES.includes(file)) continue;
                 const filePath = `${folder.path}/${file}`;
                 let rawContent = await getStorage().readFile(filePath);
                 if (!rawContent) rawContent = "";
@@ -105,7 +123,7 @@ async function searchNotes(args: { query: string }) {
         const query = args.query.toLowerCase().trim();
         if (!query) return [];
 
-        const allNotes = await getNotes();
+        const allNotes = await getNotes({});
         const results: Array<{
             fileName: string;
             content: string;
@@ -415,10 +433,12 @@ async function getRecentDailyNotes(args: { days?: number }) {
 
 // ============ Folder Functions ============
 
-async function getFolders() {
+async function getFolders(args?: { showHiddenFiles?: boolean }) {
+    const showHiddenFiles = args?.showHiddenFiles ?? false;
     try {
-        const folders = await getStorage().listAllFoldersRecursive();
-        return folders;
+        const allFolders = await getStorage().listAllFoldersRecursive(undefined, { includeHidden: showHiddenFiles });
+        // Filter out system directories
+        return allFolders.filter(folder => !shouldSkipFolder(folder.path));
     } catch {
         return [];
     }

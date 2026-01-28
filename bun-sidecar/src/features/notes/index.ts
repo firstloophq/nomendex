@@ -40,7 +40,9 @@ export type SearchResult = z.infer<typeof SearchResultSchema>;
 
 export const functionStubs = {
     getNotes: {
-        input: z.object({}),
+        input: z.object({
+            showHiddenFiles: z.boolean().optional(),
+        }),
         output: z.array(NoteSchema),
     },
     searchNotes: {
@@ -98,7 +100,9 @@ export const functionStubs = {
     },
     // Folder operations
     getFolders: {
-        input: z.object({}),
+        input: z.object({
+            showHiddenFiles: z.boolean().optional(),
+        }),
         output: z.array(NoteFolderSchema),
     },
     createFolder: {

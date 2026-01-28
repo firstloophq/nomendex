@@ -26,6 +26,7 @@ export const workspaceRoutes = {
                         notesLocation: "root",
                         autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
                         chatInputEnterToSend: true,
+                        showHiddenFiles: false,
                     };
                     await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
 

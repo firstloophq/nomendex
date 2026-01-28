@@ -24,8 +24,9 @@ import {
 
 export const notesRoutes = {
     "/api/notes/list": {
-        async POST() {
-            const result = await functions.getNotes.fx({});
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.getNotes.fx(args);
             return Response.json(result);
         },
     },
@@ -104,8 +105,9 @@ export const notesRoutes = {
     },
     // Folder routes
     "/api/notes/folders": {
-        async POST() {
-            const result = await functions.getFolders.fx({});
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.getFolders.fx(args);
             return Response.json(result);
         },
     },
