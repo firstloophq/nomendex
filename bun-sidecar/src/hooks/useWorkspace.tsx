@@ -16,6 +16,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         notesLocation: "root",
         autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
         chatInputEnterToSend: true,
+        showHiddenFiles: false,
     });
     const [loading, setLoading] = useState(true);
     const initialRouteHandledRef = useRef(false);
@@ -568,6 +569,14 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         [updateWorkspace]
     );
 
+    // Show hidden files
+    const setShowHiddenFiles = useCallback(
+        (enabled: boolean) => {
+            updateWorkspace((prev) => ({ ...prev, showHiddenFiles: enabled }));
+        },
+        [updateWorkspace]
+    );
+
     return {
         // State
         workspace,
@@ -624,5 +633,9 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         // Chat input preferences
         chatInputEnterToSend: workspace.chatInputEnterToSend,
         setChatInputEnterToSend,
+
+        // Show hidden files
+        showHiddenFiles: workspace.showHiddenFiles,
+        setShowHiddenFiles,
     };
 }

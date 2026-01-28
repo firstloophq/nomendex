@@ -41,6 +41,7 @@ export const WorkspaceStateSchema = z.object({
     notesLocation: NotesLocationSchema.default("root"),
     autoSync: AutoSyncConfigSchema.default({ enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false }),
     chatInputEnterToSend: z.boolean().default(true),
+    showHiddenFiles: z.boolean().default(false),
 });
 
 export type WorkspaceTab = z.infer<typeof WorkspaceTabSchema>;

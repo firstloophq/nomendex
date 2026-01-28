@@ -60,7 +60,8 @@ function serializeFrontMatter(frontMatter: Record<string, unknown> | undefined, 
         return content;
     }
 }
-async function getNotes() {
+async function getNotes(args?: { showHiddenFiles?: boolean }) {
+    const showHiddenFiles = args?.showHiddenFiles ?? false;
     try {
         const notes: { fileName: string; content: string; frontMatter?: Record<string, unknown>; folderPath?: string }[] = [];
 
@@ -68,6 +69,8 @@ async function getNotes() {
         const rootFiles = await getStorage().listFiles();
         for (const file of rootFiles) {
             if (!file.endsWith(".md")) continue;
+            // Skip hidden files if showHiddenFiles is false
+            if (!showHiddenFiles && file.startsWith(".")) continue;
             let rawContent = await getStorage().readFile(file);
             if (!rawContent) rawContent = "";
             const { frontMatter, content } = parseFrontMatter(rawContent);
@@ -77,14 +80,20 @@ async function getNotes() {
         // Get files from all folders recursively
         const folders = await getStorage().listAllFoldersRecursive();
         for (const folder of folders) {
-            // Skip system directories
-            if (folder.path.startsWith("todos") || folder.path.startsWith(".nomendex") || folder.path.startsWith(".git") || folder.path.includes("/.")) {
+            // Always skip system directories
+            if (folder.path.startsWith("todos") || folder.path.startsWith(".nomendex") || folder.path.startsWith(".git")) {
+                continue;
+            }
+            // Skip hidden folders if showHiddenFiles is false
+            if (!showHiddenFiles && folder.path.includes("/.")) {
                 continue;
             }
 
             const folderFiles = await getStorage().listFiles(folder.path);
             for (const file of folderFiles) {
                 if (!file.endsWith(".md")) continue;
+                // Skip hidden files if showHiddenFiles is false
+                if (!showHiddenFiles && file.startsWith(".")) continue;
                 const filePath = `${folder.path}/${file}`;
                 let rawContent = await getStorage().readFile(filePath);
                 if (!rawContent) rawContent = "";
@@ -105,7 +114,7 @@ async function searchNotes(args: { query: string }) {
         const query = args.query.toLowerCase().trim();
         if (!query) return [];
 
-        const allNotes = await getNotes();
+        const allNotes = await getNotes({});
         const results: Array<{
             fileName: string;
             content: string;
@@ -415,9 +424,14 @@ async function getRecentDailyNotes(args: { days?: number }) {
 
 // ============ Folder Functions ============
 
-async function getFolders() {
+async function getFolders(args?: { showHiddenFiles?: boolean }) {
+    const showHiddenFiles = args?.showHiddenFiles ?? false;
     try {
-        const folders = await getStorage().listAllFoldersRecursive();
+        const allFolders = await getStorage().listAllFoldersRecursive();
+        // Filter out hidden folders if showHiddenFiles is false
+        const folders = showHiddenFiles
+            ? allFolders
+            : allFolders.filter(folder => !folder.path.includes("/."));
         return folders;
     } catch {
         return [];
