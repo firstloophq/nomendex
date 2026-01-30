@@ -548,3 +548,6 @@ export const NotesPluginWithFunctions: TypedPluginWithFunctions<typeof functionS
     ...NotesPluginBase,
     functions,
 };
+
+// Export individual functions for use by other services
+export { getNotes, updateNoteProject, deleteNote };

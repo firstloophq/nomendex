@@ -3,6 +3,8 @@ import { z } from "zod";
 import ProjectsBrowserView from "./projects-browser-view";
 import ProjectDetailView from "./project-detail-view";
 
+export { ProjectConfigSchema, type ProjectConfig } from "./project-types";
+
 export const ProjectInfoSchema = z.object({
     name: z.string(),
     todoCount: z.number(),
