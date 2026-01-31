@@ -1,6 +1,6 @@
 import { Note, NoteFolder, SearchResult } from "@/features/notes";
 import { BacklinksResult } from "@/features/notes/backlinks-types";
-import type { TagSuggestion } from "@/features/notes/tags-types";
+import type { TagSuggestion, ExplicitTagDefinition } from "@/features/notes/tags-types";
 
 async function fetchAPI<T>(endpoint: string, body: Record<string, unknown> = {}): Promise<T> {
     const response = await fetch(`/api/notes/${endpoint}`, {
@@ -131,6 +131,10 @@ export const notesAPI = {
     getTagsForFile: (args: { fileName: string }) => fetchAPI<string[]>("tags/for-file", args),
     getFilesWithTag: (args: { tag: string }) => fetchAPI<string[]>("tags/files-with", args),
     rebuildTagsIndex: () => fetchAPI<{ tagCount: number }>("tags/rebuild"),
+    createExplicitTag: (args: { tagName: string }) => fetchAPI<{ success: boolean; tag: ExplicitTagDefinition }>("tags/create-explicit", args),
+    deleteExplicitTag: (args: { tagName: string }) => fetchAPI<{ success: boolean }>("tags/delete-explicit", args),
+    isExplicitTag: (args: { tagName: string }) => fetchAPI<{ isExplicit: boolean }>("tags/is-explicit", args),
+    getExplicitTags: () => fetchAPI<ExplicitTagDefinition[]>("tags/list-explicit"),
     // Project operations
     updateNoteProject: async (args: { fileName: string; project: string | null }): Promise<Note> => {
         const note = await fetchAPI<Note>("update-project", args);
