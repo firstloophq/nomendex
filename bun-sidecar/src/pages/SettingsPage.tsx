@@ -32,9 +32,12 @@ type SecretInfo = {
 };
 
 function StorageSettings() {
-    const { notesLocation, setNotesLocation } = useWorkspaceContext();
+    const { notesLocation, setNotesLocation, showHiddenFiles, setShowHiddenFiles } = useWorkspaceContext();
     const { currentTheme } = useTheme();
     const [pendingChange, setPendingChange] = useState<NotesLocation | null>(null);
+    const [pendingHiddenFiles, setPendingHiddenFiles] = useState<boolean | null>(null);
+    const [savingHiddenFiles, setSavingHiddenFiles] = useState(false);
+    const [savedHiddenFiles, setSavedHiddenFiles] = useState(false);
 
     const handleNotesLocationChange = (value: string) => {
         const newLocation = value as NotesLocation;
@@ -57,7 +60,23 @@ function StorageSettings() {
         setPendingChange(null);
     };
 
+    const handleSaveHiddenFiles = async () => {
+        if (pendingHiddenFiles === null) return;
+        setSavingHiddenFiles(true);
+        setSavedHiddenFiles(false);
+        try {
+            setShowHiddenFiles(pendingHiddenFiles);
+            setSavedHiddenFiles(true);
+            setPendingHiddenFiles(null);
+            setTimeout(() => setSavedHiddenFiles(false), 2000);
+        } finally {
+            setSavingHiddenFiles(false);
+        }
+    };
+
     const displayValue = pendingChange ?? notesLocation;
+    const displayHiddenFiles = pendingHiddenFiles ?? showHiddenFiles;
+    const hasUnsavedHiddenFiles = pendingHiddenFiles !== null && pendingHiddenFiles !== showHiddenFiles;
 
     return (
         <Card>
@@ -127,6 +146,78 @@ function StorageSettings() {
                                     Cancel
                                 </Button>
                             </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Show Hidden Files Setting */}
+                <div
+                    className="p-4 rounded-lg border"
+                    style={{
+                        backgroundColor: currentTheme.styles.surfaceSecondary,
+                        borderColor: currentTheme.styles.borderDefault,
+                    }}
+                >
+                    <h4 className="font-medium mb-2" style={{ color: currentTheme.styles.contentPrimary }}>
+                        Show Hidden Files
+                    </h4>
+                    <p className="text-sm mb-4" style={{ color: currentTheme.styles.contentSecondary }}>
+                        Show or hide files and folders that start with a dot (.) in the notes browser.
+                    </p>
+
+                    <RadioGroup
+                        value={displayHiddenFiles ? "show" : "hide"}
+                        onValueChange={(value) => setPendingHiddenFiles(value === "show")}
+                        className="space-y-3"
+                    >
+                        <div className="flex items-start space-x-3">
+                            <RadioGroupItem value="hide" id="hide-hidden" className="mt-1" />
+                            <div className="flex-1">
+                                <Label htmlFor="hide-hidden" className="font-medium cursor-pointer">
+                                    Hide Hidden Files
+                                </Label>
+                                <p className="text-sm" style={{ color: currentTheme.styles.contentTertiary }}>
+                                    Files and folders starting with . are hidden (default)
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-start space-x-3">
+                            <RadioGroupItem value="show" id="show-hidden" className="mt-1" />
+                            <div className="flex-1">
+                                <Label htmlFor="show-hidden" className="font-medium cursor-pointer">
+                                    Show Hidden Files
+                                </Label>
+                                <p className="text-sm" style={{ color: currentTheme.styles.contentTertiary }}>
+                                    All files and folders are visible, including hidden ones
+                                </p>
+                            </div>
+                        </div>
+                    </RadioGroup>
+
+                    {hasUnsavedHiddenFiles && (
+                        <div className="flex items-center gap-2 mt-4 pt-4 border-t" style={{ borderColor: currentTheme.styles.borderDefault }}>
+                            <Button
+                                onClick={handleSaveHiddenFiles}
+                                disabled={savingHiddenFiles}
+                                size="sm"
+                            >
+                                {savingHiddenFiles ? "Saving..." : "Save"}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setPendingHiddenFiles(null)}
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    )}
+                    {savedHiddenFiles && (
+                        <div className="flex items-center gap-2 mt-4 pt-4 border-t" style={{ borderColor: currentTheme.styles.borderDefault }}>
+                            <Check className="h-4 w-4" style={{ color: currentTheme.styles.semanticSuccess }} />
+                            <span className="text-sm" style={{ color: currentTheme.styles.semanticSuccess }}>
+                                Saved successfully
+                            </span>
                         </div>
                     )}
                 </div>

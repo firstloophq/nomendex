@@ -60,7 +60,7 @@ function preloadNote(fileName: string): void {
 
 // Standalone API object for use outside React components
 export const notesAPI = {
-    getNotes: () => fetchAPI<Note[]>("list"),
+    getNotes: (args: { showHiddenFiles?: boolean } = {}) => fetchAPI<Note[]>("list", args),
     searchNotes: (args: { query: string }) => fetchAPI<SearchResult[]>("search", args),
     getNoteByFileName: async (args: { fileName: string; skipCache?: boolean }): Promise<Note> => {
         // Check cache first (unless skipCache is true)
@@ -108,7 +108,7 @@ export const notesAPI = {
             }>
         >("recent-daily", args),
     // Folder operations
-    getFolders: () => fetchAPI<NoteFolder[]>("folders"),
+    getFolders: (args: { showHiddenFiles?: boolean } = {}) => fetchAPI<NoteFolder[]>("folders", args),
     createFolder: (args: { name: string; parentPath?: string }) => fetchAPI<NoteFolder>("folders/create", args),
     deleteFolder: (args: { folderPath: string }) => fetchAPI<{ success: boolean }>("folders/delete", args),
     renameFolder: (args: { oldPath: string; newName: string }) => fetchAPI<NoteFolder>("folders/rename", args),

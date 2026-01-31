@@ -3,13 +3,16 @@ import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Search, FolderKanban, Clock, Circle, CheckCircle2, FileText } from "lucide-react";
+import { Search, FolderKanban, Clock, Circle, CheckCircle2, FileText, Pencil, Trash2 } from "lucide-react";
 import { useTodosAPI } from "@/hooks/useTodosAPI";
 import { useNotesAPI } from "@/hooks/useNotesAPI";
+import { useProjectsAPI } from "@/hooks/useProjectsAPI";
 import { useTheme } from "@/hooks/useTheme";
 import { projectsPluginSerial } from "./index";
 import type { ProjectInfo } from "./index";
 import { CreateProjectDialog } from "./CreateProjectDialog";
+import { DeleteProjectDialog } from "./DeleteProjectDialog";
+import { RenameProjectDialog } from "./RenameProjectDialog";
 import { cn } from "@/lib/utils";
 
 export function ProjectsBrowserView({ tabId }: { tabId: string }) {
@@ -18,10 +21,13 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
     }
     const { activeTab, setTabName, addNewTab, setActiveTabId, getViewSelfPlacement, setSidebarTabId } = useWorkspaceContext();
     const { loading, error, setLoading, setError } = usePlugin();
-    const [projects, setProjects] = useState<ProjectInfo[]>([]);
+    const [projects, setProjects] = useState<(ProjectInfo & { id: string })[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [createDialogOpen, setCreateDialogOpen] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+    const [selectedProject, setSelectedProject] = useState<{ id: string; name: string } | null>(null);
     const { currentTheme } = useTheme();
     const placement = getViewSelfPlacement(tabId);
 
@@ -31,6 +37,7 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
 
     const todosAPI = useTodosAPI();
     const notesAPI = useNotesAPI();
+    const projectsAPI = useProjectsAPI();
 
     // Set tab name
     useEffect(() => {
@@ -56,20 +63,21 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
                 setLoading(true);
                 setError(null);
 
-                // Get list of projects and all data
-                const [projectNames, allTodos, allNotes] = await Promise.all([
-                    todosAPI.getProjects(),
+                // Get list of projects from projects service and all data for stats
+                const [projectConfigs, allTodos, allNotes] = await Promise.all([
+                    projectsAPI.listProjects(),
                     todosAPI.getTodos(),
                     notesAPI.getNotes(),
                 ]);
 
                 // Calculate stats per project
-                const projectInfos: ProjectInfo[] = projectNames.map((name) => {
-                    const projectTodos = allTodos.filter((t) => t.project === name);
-                    const projectNotes = allNotes.filter((n) => n.frontMatter?.project === name);
+                const projectInfos = projectConfigs.map((config) => {
+                    const projectTodos = allTodos.filter((t) => t.project === config.name);
+                    const projectNotes = allNotes.filter((n) => n.frontMatter?.project === config.name);
 
                     return {
-                        name,
+                        id: config.id,
+                        name: config.name,
                         todoCount: projectTodos.filter((t) => t.status === "todo").length,
                         inProgressCount: projectTodos.filter((t) => t.status === "in_progress").length,
                         doneCount: projectTodos.filter((t) => t.status === "done").length,
@@ -94,33 +102,30 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
             }
         };
         fetchProjects();
-    }, [todosAPI, notesAPI, setLoading, setError]);
+    }, [projectsAPI, todosAPI, notesAPI, setLoading, setError]);
 
     // Handle project creation
     const handleCreateProject = async (projectName: string) => {
         try {
             setLoading(true);
-            await todosAPI.createTodo({
-                title: "Start Project",
-                project: projectName,
-                description: `Initial task for project ${projectName}`,
-                status: "todo",
-            });
+            // Create project via projects API
+            await projectsAPI.createProject({ name: projectName });
 
             // Refresh projects
-            const [projectNames, allTodos, allNotes] = await Promise.all([
-                todosAPI.getProjects(),
+            const [projectConfigs, allTodos, allNotes] = await Promise.all([
+                projectsAPI.listProjects(),
                 todosAPI.getTodos(),
                 notesAPI.getNotes(),
             ]);
 
             // Calculate stats per project
-            const projectInfos: ProjectInfo[] = projectNames.map((name) => {
-                const projectTodos = allTodos.filter((t) => t.project === name);
-                const projectNotes = allNotes.filter((n) => n.frontMatter?.project === name);
+            const projectInfos = projectConfigs.map((config) => {
+                const projectTodos = allTodos.filter((t) => t.project === config.name);
+                const projectNotes = allNotes.filter((n) => n.frontMatter?.project === config.name);
 
                 return {
-                    name,
+                    id: config.id,
+                    name: config.name,
                     todoCount: projectTodos.filter((t) => t.status === "todo").length,
                     inProgressCount: projectTodos.filter((t) => t.status === "in_progress").length,
                     doneCount: projectTodos.filter((t) => t.status === "done").length,
@@ -144,6 +149,56 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
             setLoading(false);
         }
     };
+
+    // Refresh projects list (used after rename/delete)
+    const refreshProjects = useCallback(async () => {
+        try {
+            const [projectConfigs, allTodos, allNotes] = await Promise.all([
+                projectsAPI.listProjects(),
+                todosAPI.getTodos(),
+                notesAPI.getNotes(),
+            ]);
+
+            const projectInfos = projectConfigs.map((config) => {
+                const projectTodos = allTodos.filter((t) => t.project === config.name);
+                const projectNotes = allNotes.filter((n) => n.frontMatter?.project === config.name);
+
+                return {
+                    id: config.id,
+                    name: config.name,
+                    todoCount: projectTodos.filter((t) => t.status === "todo").length,
+                    inProgressCount: projectTodos.filter((t) => t.status === "in_progress").length,
+                    doneCount: projectTodos.filter((t) => t.status === "done").length,
+                    notesCount: projectNotes.length,
+                };
+            });
+
+            projectInfos.sort((a, b) => {
+                const activeA = a.inProgressCount + a.todoCount;
+                const activeB = b.inProgressCount + b.todoCount;
+                if (activeB !== activeA) return activeB - activeA;
+                return a.name.localeCompare(b.name);
+            });
+
+            setProjects(projectInfos);
+        } catch (err) {
+            console.error("Failed to refresh projects:", err);
+        }
+    }, [projectsAPI, todosAPI, notesAPI]);
+
+    // Handle opening rename dialog
+    const handleOpenRename = useCallback((project: { id: string; name: string }, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedProject(project);
+        setRenameDialogOpen(true);
+    }, []);
+
+    // Handle opening delete dialog
+    const handleOpenDelete = useCallback((project: { id: string; name: string }, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedProject(project);
+        setDeleteDialogOpen(true);
+    }, []);
 
     // Filter projects based on search
     const filteredProjects = searchQuery
@@ -307,71 +362,116 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
                 ) : (
                     <div className="space-y-1">
                         {filteredProjects.map((project, index) => (
-                            <button
+                            <div
                                 key={project.name}
                                 data-index={index}
-                                onClick={() => handleOpenProject(project.name)}
                                 className={cn(
-                                    "w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-colors text-left",
-                                    "hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-offset-1"
+                                    "group w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-colors",
+                                    "hover:bg-accent/50"
                                 )}
                                 style={{
                                     backgroundColor: index === selectedIndex
                                         ? currentTheme.styles.surfaceAccent
                                         : "transparent",
-                                    color: currentTheme.styles.contentPrimary,
                                 }}
                             >
-                                <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleOpenProject(project.name)}
+                                    className="flex items-center gap-2 flex-1 text-left focus:outline-none"
+                                    style={{ color: currentTheme.styles.contentPrimary }}
+                                >
                                     <FolderKanban
                                         size={14}
                                         style={{ color: currentTheme.styles.contentAccent }}
                                     />
                                     <span className="font-medium">{project.name}</span>
-                                </div>
-                                <div className="flex items-center gap-3 text-xs">
-                                    {project.notesCount > 0 && (
-                                        <span
-                                            className="flex items-center gap-1 mr-2"
-                                            style={{ color: currentTheme.styles.contentTertiary }}
-                                        >
-                                            <FileText size={12} />
-                                            {project.notesCount}
-                                        </span>
-                                    )}
-                                    {project.inProgressCount > 0 && (
-                                        <span
-                                            className="flex items-center gap-1"
-                                            style={{ color: currentTheme.styles.contentAccent }}
-                                        >
-                                            <Clock size={12} />
-                                            {project.inProgressCount}
-                                        </span>
-                                    )}
-                                    {project.todoCount > 0 && (
-                                        <span
-                                            className="flex items-center gap-1"
+                                </button>
+                                <div className="flex items-center gap-2">
+                                    {/* Action buttons - visible on hover */}
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={(e) => handleOpenRename({ id: project.id, name: project.name }, e)}
+                                            className="p-1.5 rounded hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1"
+                                            title="Rename project"
                                             style={{ color: currentTheme.styles.contentSecondary }}
                                         >
-                                            <Circle size={12} />
-                                            {project.todoCount}
-                                        </span>
-                                    )}
-                                    {project.doneCount > 0 && (
-                                        <span
-                                            className="flex items-center gap-1"
-                                            style={{ color: currentTheme.styles.semanticSuccess }}
+                                            <Pencil size={14} />
+                                        </button>
+                                        <button
+                                            onClick={(e) => handleOpenDelete({ id: project.id, name: project.name }, e)}
+                                            className="p-1.5 rounded hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1"
+                                            title="Delete project"
+                                            style={{ color: currentTheme.styles.semanticDestructive }}
                                         >
-                                            <CheckCircle2 size={12} />
-                                            {project.doneCount}
-                                        </span>
-                                    )}
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    {/* Stats */}
+                                    <div className="flex items-center gap-3 text-xs ml-2">
+                                        {project.notesCount > 0 && (
+                                            <span
+                                                className="flex items-center gap-1"
+                                                style={{ color: currentTheme.styles.contentTertiary }}
+                                            >
+                                                <FileText size={12} />
+                                                {project.notesCount}
+                                            </span>
+                                        )}
+                                        {project.inProgressCount > 0 && (
+                                            <span
+                                                className="flex items-center gap-1"
+                                                style={{ color: currentTheme.styles.contentAccent }}
+                                            >
+                                                <Clock size={12} />
+                                                {project.inProgressCount}
+                                            </span>
+                                        )}
+                                        {project.todoCount > 0 && (
+                                            <span
+                                                className="flex items-center gap-1"
+                                                style={{ color: currentTheme.styles.contentSecondary }}
+                                            >
+                                                <Circle size={12} />
+                                                {project.todoCount}
+                                            </span>
+                                        )}
+                                        {project.doneCount > 0 && (
+                                            <span
+                                                className="flex items-center gap-1"
+                                                style={{ color: currentTheme.styles.semanticSuccess }}
+                                            >
+                                                <CheckCircle2 size={12} />
+                                                {project.doneCount}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                            </button>
+                            </div>
                         ))}
                     </div>
                 )}
             </div>
+
+            {/* Dialogs */}
+            {selectedProject && (
+                <>
+                    <DeleteProjectDialog
+                        open={deleteDialogOpen}
+                        onOpenChange={setDeleteDialogOpen}
+                        projectId={selectedProject.id}
+                        projectName={selectedProject.name}
+                        onDeleted={refreshProjects}
+                    />
+                    <RenameProjectDialog
+                        open={renameDialogOpen}
+                        onOpenChange={setRenameDialogOpen}
+                        projectId={selectedProject.id}
+                        projectName={selectedProject.name}
+                        existingProjects={projects.map((p) => p.name)}
+                        onRenamed={refreshProjects}
+                    />
+                </>
+            )}
         </div>
     );
 }
