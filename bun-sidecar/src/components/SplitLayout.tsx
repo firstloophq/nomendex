@@ -8,7 +8,6 @@ export function SplitLayout() {
     const {
         leftPane,
         rightPane,
-        activePaneId,
         splitRatio,
         setActivePaneId,
         setSplitRatio,
@@ -141,7 +140,6 @@ export function SplitLayout() {
             >
                 <Pane
                     pane={leftPane}
-                    isActive={activePaneId === leftPane.id}
                     onTabSelect={(tabId) => setActiveTabInPane(leftPane.id, tabId)}
                     onTabClose={(tabId) => closeTabInPane(leftPane.id, tabId)}
                     onTabReorder={(from, to) => reorderTabsInPane(leftPane.id, from, to)}
@@ -175,7 +173,6 @@ export function SplitLayout() {
             >
                 <Pane
                     pane={rightPane}
-                    isActive={activePaneId === rightPane.id}
                     onTabSelect={(tabId) => setActiveTabInPane(rightPane.id, tabId)}
                     onTabClose={(tabId) => closeTabInPane(rightPane.id, tabId)}
                     onTabReorder={(from, to) => reorderTabsInPane(rightPane.id, from, to)}

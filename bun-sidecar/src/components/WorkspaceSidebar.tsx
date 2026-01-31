@@ -23,7 +23,7 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function WorkspaceSidebar() {
     const plugins = Object.values(baseRegistry);
-    const { workspace, addNewTab, setActiveTabId } = useWorkspaceContext();
+    const { openTab } = useWorkspaceContext();
     const { navigate, currentPath } = useRouting();
     const { currentTheme } = useTheme();
     const [appVersion, setAppVersion] = useState("...");
@@ -35,26 +35,13 @@ export function WorkspaceSidebar() {
             .catch(() => setAppVersion("dev"));
     }, []);
 
-    const handleAddPlugin = async (plugin: { id: string; name: string; icon: PluginIcon }) => {
-        // If a tab for this plugin and view already exists, focus it
-        const existing = workspace.tabs.find((t) => t.pluginInstance.plugin.id === plugin.id && t.pluginInstance.viewId === "default");
-
-        if (existing) {
-            if (currentPath != "/") {
-                navigate("/");
-            }
-            setActiveTabId(existing.id);
-            return;
-        }
-
+    const handleAddPlugin = (plugin: { id: string; name: string; icon: PluginIcon }) => {
         if (currentPath != "/") {
             navigate("/");
         }
 
-        const newTab = await addNewTab({ pluginMeta: plugin, view: "default", props: {} });
-        if (newTab) {
-            setActiveTabId(newTab.id);
-        }
+        // openTab handles both single and split mode, and deduplication
+        openTab({ pluginMeta: plugin, view: "default", props: {} });
     };
 
     const handleNavigate = (path: string) => {

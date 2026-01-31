@@ -11,7 +11,6 @@ import { getIcon } from "./PluginViewIcons";
 
 interface PaneProps {
     pane: PaneType;
-    isActive: boolean;
     onTabSelect: (tabId: string) => void;
     onTabClose: (tabId: string) => void;
     onTabReorder: (fromIndex: number, toIndex: number) => void;
@@ -28,7 +27,6 @@ interface PaneProps {
 
 export function Pane({
     pane,
-    isActive,
     onTabSelect,
     onTabClose,
     onTabReorder,
@@ -152,7 +150,6 @@ export function Pane({
                 onDrop={handlePaneDrop}
                 style={{
                     backgroundColor: currentTheme.styles.surfacePrimary,
-                    border: isActive ? `2px solid ${currentTheme.styles.borderAccent}` : "2px solid transparent",
                 }}
             >
                 <div className="text-center p-6 text-muted-foreground">
@@ -167,9 +164,6 @@ export function Pane({
         <div
             className="flex flex-col h-full w-full min-w-0"
             onClick={onPaneFocus}
-            style={{
-                border: isActive ? `2px solid ${currentTheme.styles.borderAccent}` : "2px solid transparent",
-            }}
         >
             <Tabs
                 value={activeTab?.id || undefined}

@@ -135,20 +135,36 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         []
     );
     // Note that this does not set the tab as active
+    // In split mode, adds to the active pane
     const addNewTab = useCallback(
         ({ pluginMeta, view = "default", props = {} }: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => {
+            let resultTab: WorkspaceTab | null = null;
             try {
                 const pluginInstance = createPluginInstance({ pluginMeta, viewId: view, props });
                 const newTab: WorkspaceTab = {
-                    id: `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    id: generateId("tab"),
                     title: pluginInstance.plugin.name,
                     pluginInstance,
                 };
-                updateWorkspace((prev) => ({
-                    ...prev,
-                    tabs: [...prev.tabs, newTab],
-                }));
-                return newTab;
+                resultTab = newTab;
+
+                updateWorkspace((prev) => {
+                    // In split mode, add to the active pane
+                    if (prev.layoutMode === "split") {
+                        const targetPaneId = prev.activePaneId ?? prev.panes[0]?.id;
+                        if (!targetPaneId) return prev;
+
+                        const newPanes = prev.panes.map((p) =>
+                            p.id === targetPaneId ? { ...p, tabs: [...p.tabs, newTab] } : p
+                        );
+                        return { ...prev, panes: newPanes };
+                    }
+
+                    // Single mode: add to legacy tabs
+                    return { ...prev, tabs: [...prev.tabs, newTab] };
+                });
+
+                return resultTab;
             } catch {
                 return null;
             }
@@ -156,63 +172,102 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         [createPluginInstance, updateWorkspace]
     );
 
+    // Helper to check if a tab matches the given criteria
+    const tabMatchesCriteria = (tab: WorkspaceTab, pluginMeta: SerializablePlugin, view: string, props: Record<string, unknown>): boolean => {
+        const instance = tab.pluginInstance;
+
+        // Match on plugin ID and view
+        if (instance.plugin.id !== pluginMeta.id || instance.viewId !== view) {
+            return false;
+        }
+
+        // Match on props - do a deep comparison of the key properties
+        const existingProps = instance.instanceProps ?? {};
+
+        // For notes: match on noteFileName
+        if (pluginMeta.id === "notes" && props.noteFileName) {
+            return existingProps.noteFileName === props.noteFileName;
+        }
+
+        // For todos: match on project and view type
+        if (pluginMeta.id === "todos") {
+            // For browser/kanban views, match on project filter
+            if (view === "browser" || view === "kanban") {
+                return existingProps.project === props.project;
+            }
+            // For other views (projects, default), just match the view type
+            return true;
+        }
+
+        // For tags: match on tagName
+        if (pluginMeta.id === "tags" && props.tagName) {
+            return existingProps.tagName === props.tagName;
+        }
+
+        // For chat: match on sessionId
+        if (pluginMeta.id === "chat" && view === "chat") {
+            // If opening an existing chat (has sessionId), match on sessionId
+            if (props.sessionId) {
+                return existingProps.sessionId === props.sessionId;
+            }
+            // If opening a new chat (no sessionId), don't match - allow multiple new chats
+            return false;
+        }
+
+        // For other plugins, match if view is the same and props are empty or match
+        if (Object.keys(props).length === 0 && Object.keys(existingProps).length === 0) {
+            return true;
+        }
+
+        return false;
+    };
+
     // Opens a new tab AND sets it as active in a single atomic update
     // If a matching tab already exists, focus it instead of creating a duplicate
+    // In split mode, opens the tab in the active pane
     const openTab = useCallback(
         ({ pluginMeta, view = "default", props = {} }: { pluginMeta: SerializablePlugin; view: string; props?: Record<string, unknown> }) => {
             let resultTab: WorkspaceTab | null = null;
 
             try {
                 updateWorkspace((prev) => {
-                    // Check if a matching tab already exists (using latest state from prev)
-                    const existingTab = prev.tabs.find(tab => {
-                        const instance = tab.pluginInstance;
-
-                        // Match on plugin ID and view
-                        if (instance.plugin.id !== pluginMeta.id || instance.viewId !== view) {
-                            return false;
+                    // In split mode, open in the active pane
+                    if (prev.layoutMode === "split") {
+                        const targetPaneId = prev.activePaneId ?? prev.panes[0]?.id;
+                        const targetPane = prev.panes.find((p) => p.id === targetPaneId);
+                        if (!targetPane) {
+                            return prev;
                         }
 
-                        // Match on props - do a deep comparison of the key properties
-                        const existingProps = instance.instanceProps ?? {};
+                        // Check if matching tab exists in this pane
+                        const existingTab = targetPane.tabs.find((tab) => tabMatchesCriteria(tab, pluginMeta, view, props));
 
-                        // For notes: match on noteFileName
-                        if (pluginMeta.id === "notes" && props.noteFileName) {
-                            return existingProps.noteFileName === props.noteFileName;
+                        if (existingTab) {
+                            resultTab = existingTab;
+                            const newPanes = prev.panes.map((p) =>
+                                p.id === targetPaneId ? { ...p, activeTabId: existingTab.id } : p
+                            );
+                            return { ...prev, panes: newPanes, activePaneId: targetPaneId };
                         }
 
-                        // For todos: match on project and view type
-                        if (pluginMeta.id === "todos") {
-                            // For browser/kanban views, match on project filter
-                            if (view === "browser" || view === "kanban") {
-                                return existingProps.project === props.project;
-                            }
-                            // For other views (projects, default), just match the view type
-                            return true;
-                        }
+                        // Create new tab in the pane
+                        const pluginInstance = createPluginInstance({ pluginMeta, viewId: view, props });
+                        const newTab: WorkspaceTab = {
+                            id: generateId("tab"),
+                            title: pluginInstance.plugin.name,
+                            pluginInstance,
+                        };
+                        resultTab = newTab;
 
-                        // For tags: match on tagName
-                        if (pluginMeta.id === "tags" && props.tagName) {
-                            return existingProps.tagName === props.tagName;
-                        }
+                        const newPanes = prev.panes.map((p) =>
+                            p.id === targetPaneId ? { ...p, tabs: [...p.tabs, newTab], activeTabId: newTab.id } : p
+                        );
 
-                        // For chat: match on sessionId
-                        if (pluginMeta.id === "chat" && view === "chat") {
-                            // If opening an existing chat (has sessionId), match on sessionId
-                            if (props.sessionId) {
-                                return existingProps.sessionId === props.sessionId;
-                            }
-                            // If opening a new chat (no sessionId), don't match - allow multiple new chats
-                            return false;
-                        }
+                        return { ...prev, panes: newPanes, activePaneId: targetPaneId };
+                    }
 
-                        // For other plugins, match if view is the same and props are empty or match
-                        if (Object.keys(props).length === 0 && Object.keys(existingProps).length === 0) {
-                            return true;
-                        }
-
-                        return false;
-                    });
+                    // Single mode: use legacy tabs array
+                    const existingTab = prev.tabs.find((tab) => tabMatchesCriteria(tab, pluginMeta, view, props));
 
                     // If matching tab exists, focus it instead of creating new one
                     if (existingTab) {
@@ -432,20 +487,48 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         },
         [createPluginInstance, updateWorkspace]
     );
-    // Derived tabs
-    const activeTab = useMemo<WorkspaceTab | null>(
-        () => workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ?? null,
-        [workspace.tabs, workspace.activeTabId]
-    );
+    // Derived tabs - split-mode aware
+    const activeTab = useMemo<WorkspaceTab | null>(() => {
+        if (workspace.layoutMode === "split") {
+            // In split mode, find the active tab in the active pane
+            const activePane = workspace.panes.find((p) => p.id === workspace.activePaneId) ?? workspace.panes[0];
+            if (activePane) {
+                return activePane.tabs.find((tab) => tab.id === activePane.activeTabId) ?? null;
+            }
+            return null;
+        }
+        // Single mode: use legacy tabs
+        return workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ?? null;
+    }, [workspace.tabs, workspace.activeTabId, workspace.layoutMode, workspace.panes, workspace.activePaneId]);
+
     const sidebarTab = useMemo<WorkspaceTab | null>(
         () => workspace.tabs.find((tab) => tab.id === workspace.sidebarTabId) ?? null,
         [workspace.tabs, workspace.sidebarTabId]
     );
 
     // Explicit setters to avoid effect feedback loops
+    // In split mode, finds which pane has the tab and sets it as active there
     const setActiveTabId = useCallback(
         (id: string | null) => {
-            updateWorkspace({ activeTabId: id });
+            updateWorkspace((prev) => {
+                // In split mode, find which pane has this tab and set it as active there
+                if (prev.layoutMode === "split") {
+                    if (!id) return prev;
+
+                    // Find the pane containing this tab
+                    const paneWithTab = prev.panes.find((p) => p.tabs.some((t) => t.id === id));
+                    if (paneWithTab) {
+                        const newPanes = prev.panes.map((p) =>
+                            p.id === paneWithTab.id ? { ...p, activeTabId: id } : p
+                        );
+                        return { ...prev, panes: newPanes, activePaneId: paneWithTab.id };
+                    }
+                    return prev;
+                }
+
+                // Single mode: set legacy activeTabId
+                return { ...prev, activeTabId: id };
+            });
         },
         [updateWorkspace]
     );
@@ -487,17 +570,31 @@ export function useWorkspace(_initialRoute?: RouteParams) {
 
     // These accepts a view id. We check if it is the current `main` view or `right` view and return one of those.
     // This just calculates against workspace and checks for the active id matching
+    // In split mode, checks if the tab is active in any pane
     const getViewSelfPlacement = useCallback(
         (viewId: string) => {
-            let placement: "main" | "sidebar" | null = null;
-            if (workspace.activeTabId === viewId) {
-                placement = "main";
-            } else if (workspace.sidebarTabId === viewId) {
-                placement = "sidebar";
+            // Check sidebar first (works same in both modes)
+            if (workspace.sidebarTabId === viewId) {
+                return "sidebar" as const;
             }
-            return placement;
+
+            // In split mode, check if tab is active in any pane
+            if (workspace.layoutMode === "split") {
+                for (const pane of workspace.panes) {
+                    if (pane.activeTabId === viewId) {
+                        return "main" as const;
+                    }
+                }
+                return null;
+            }
+
+            // Single mode: check legacy activeTabId
+            if (workspace.activeTabId === viewId) {
+                return "main" as const;
+            }
+            return null;
         },
-        [workspace.activeTabId, workspace.sidebarTabId]
+        [workspace.activeTabId, workspace.sidebarTabId, workspace.layoutMode, workspace.panes]
     );
 
     // Reorder tabs by moving a tab from one index to another
@@ -897,11 +994,19 @@ export function useWorkspace(_initialRoute?: RouteParams) {
     const leftPane = useMemo<Pane | null>(() => workspace.panes[0] ?? null, [workspace.panes]);
     const rightPane = useMemo<Pane | null>(() => workspace.panes[1] ?? null, [workspace.panes]);
 
+    // Computed tabs - returns all tabs from panes in split mode, or legacy tabs in single mode
+    const allTabs = useMemo<WorkspaceTab[]>(() => {
+        if (workspace.layoutMode === "split") {
+            return workspace.panes.flatMap((p) => p.tabs);
+        }
+        return workspace.tabs;
+    }, [workspace.layoutMode, workspace.panes, workspace.tabs]);
+
     return {
         // State
         workspace,
         loading,
-        tabs: workspace.tabs,
+        tabs: allTabs,
 
         // Actions
         addNewTab,
