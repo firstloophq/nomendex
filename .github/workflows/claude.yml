@@ -41,10 +41,13 @@ jobs:
           additional_permissions: |
             actions: read
 
-          # Allow running build commands
+          # Allow running build commands (wildcards for flexibility)
           allowed_tools: |
-            Bash(cd bun-sidecar && bun run build)
-            Bash(cd bun-sidecar && bun install)
+            Bash(cd bun-sidecar && bun *)
+            Bash(bun *)
+
+          # Debug mode for troubleshooting
+          claude_args: --debug
 
           # Instructions for validating changes
           append_system_prompt: |
