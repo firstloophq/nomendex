@@ -1,6 +1,50 @@
 import { useEffect, useRef } from "react";
 
 /**
+ * Registry for ProseMirror editors that want to handle Cmd+Enter.
+ * Each editor can register a callback that will be called when Cmd+Enter is pressed
+ * and that editor has focus.
+ */
+type ProseMirrorCmdEnterHandler = () => boolean;
+const proseMirrorCmdEnterHandlers = new Map<HTMLElement, ProseMirrorCmdEnterHandler>();
+
+/**
+ * Register a ProseMirror editor to handle Cmd+Enter.
+ * The callback should return true if it handled the event.
+ */
+export function registerProseMirrorCmdEnter(
+    element: HTMLElement,
+    handler: ProseMirrorCmdEnterHandler
+): () => void {
+    proseMirrorCmdEnterHandlers.set(element, handler);
+    return () => {
+        proseMirrorCmdEnterHandlers.delete(element);
+    };
+}
+
+/**
+ * Try to handle Cmd+Enter by finding a registered ProseMirror handler
+ * for the currently focused editor.
+ * Returns true if a handler was found and handled the event.
+ */
+function tryProseMirrorCmdEnter(): boolean {
+    const activeElement = document.activeElement as HTMLElement | null;
+    if (!activeElement) return false;
+
+    // Find the ProseMirror editor containing the active element
+    const proseMirrorEditor = activeElement.closest('.ProseMirror[contenteditable="true"]');
+    if (!proseMirrorEditor) return false;
+
+    // Check if we have a registered handler for this editor
+    const handler = proseMirrorCmdEnterHandlers.get(proseMirrorEditor as HTMLElement);
+    if (handler) {
+        return handler();
+    }
+
+    return false;
+}
+
+/**
  * Hook for components that want to respond to Cmd+Enter from the native Mac app.
  *
  * Usage:
@@ -37,6 +81,20 @@ export function useNativeSubmit(onSubmit: () => void) {
  */
 export function useNativeKeyboardBridge() {
     useEffect(() => {
+        // Intercept nativeSubmit events to try ProseMirror handlers first
+        // Swift dispatches CustomEvent('nativeSubmit') directly for Cmd+Enter
+        // This listener runs early (app initialization) so it's first in queue
+        const handleNativeSubmitIntercept = (event: Event) => {
+            if (tryProseMirrorCmdEnter()) {
+                // ProseMirror handled it (e.g., todo toggle), don't let dialogs also handle
+                event.stopImmediatePropagation();
+                event.preventDefault();
+            }
+            // Otherwise, let event propagate to dialog handlers via useNativeSubmit
+        };
+
+        window.addEventListener('nativeSubmit', handleNativeSubmitIntercept);
+
         // Get all focusable elements in the document, respecting tab order
         const getFocusableElements = (): HTMLElement[] => {
             const selector = [
@@ -151,9 +209,19 @@ export function useNativeKeyboardBridge() {
             console.log('Ctrl+Shift+Tab event dispatched to document');
         };
 
-        // Handle Cmd+Enter submit - dispatch custom event for any listening components
+        // Handle Cmd+Enter submit - try registered ProseMirror handlers first,
+        // then fall back to custom event for dialogs
         const nativeSubmit = () => {
-            console.log('__nativeSubmit called, dispatching nativeSubmit event');
+            console.log('__nativeSubmit called');
+
+            // Try registered ProseMirror handlers first (for todo toggle, etc.)
+            if (tryProseMirrorCmdEnter()) {
+                console.log('ProseMirror Cmd+Enter handled by registered handler');
+                return;
+            }
+
+            // Otherwise, dispatch custom event for dialogs using useNativeSubmit
+            console.log('Dispatching nativeSubmit CustomEvent for dialogs');
             const event = new CustomEvent('nativeSubmit', { bubbles: true });
             window.dispatchEvent(event);
         };
@@ -174,6 +242,7 @@ export function useNativeKeyboardBridge() {
         win.__nativeSubmit = nativeSubmit;
 
         return () => {
+            window.removeEventListener('nativeSubmit', handleNativeSubmitIntercept);
             delete win.__nativeFocusNext;
             delete win.__nativeFocusPrevious;
             delete win.__nativeNextTab;
