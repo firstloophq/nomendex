@@ -163,9 +163,13 @@ The Button component (`src/components/ui/button.tsx`) already uses this pattern.
 </button>
 ```
 
-## Handling Cmd+Enter in Dialogs
+## Handling Cmd+Enter
 
-Use the `useNativeSubmit` hook for forms that should submit on Cmd+Enter:
+Swift intercepts Cmd+Enter at the native level and dispatches a `CustomEvent('nativeSubmit')` to JavaScript. This means ProseMirror keymaps (which expect a KeyboardEvent) never see it.
+
+### For Dialogs/Forms
+
+Use the `useNativeSubmit` hook:
 
 ```tsx
 import { useNativeSubmit } from "@/hooks/useNativeKeyboardBridge";
@@ -180,6 +184,85 @@ function MyDialog({ open, onSubmit }) {
   return (/* dialog content */);
 }
 ```
+
+### For ProseMirror Commands (e.g., Todo Toggle)
+
+ProseMirror keymaps listen for KeyboardEvents, but Swift dispatches a CustomEvent. The solution is to register a handler that gets called when Cmd+Enter is pressed while the editor has focus.
+
+**Architecture:**
+
+```
+User presses Cmd+Enter
+       ↓
+Swift intercepts (native level)
+       ↓
+Swift dispatches CustomEvent('nativeSubmit')
+       ↓
+useNativeKeyboardBridge intercept listener
+       ↓
+Check: Is focus in a registered ProseMirror editor?
+       ↓
+  YES: Call registered handler (e.g., toggleTodoAtLine)
+       → stopImmediatePropagation() to prevent dialog handlers
+  NO:  Let event propagate to useNativeSubmit dialog handlers
+```
+
+**Implementation:**
+
+1. Register your ProseMirror editor with a Cmd+Enter handler:
+
+```tsx
+import { registerProseMirrorCmdEnter } from "@/hooks/useNativeKeyboardBridge";
+import { toggleTodoAtLine } from "./simple-todo";
+
+// In your ProseMirror initialization useEffect:
+useEffect(() => {
+    const view = new EditorView(/* ... */);
+
+    // Register Cmd+Enter handler for this editor
+    const unregister = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
+        return toggleTodoAtLine(view.state, view.dispatch);
+    });
+
+    return () => {
+        unregister();
+        view.destroy();
+    };
+}, []);
+```
+
+2. The handler should return `true` if it handled the event, `false` otherwise.
+
+**Important: React useEffect cleanup re-registration**
+
+If your useEffect has early return paths (e.g., reusing an existing editor), the cleanup from the previous render will unregister the handler. You must re-register in those paths:
+
+```tsx
+useEffect(() => {
+    // Early return path that reuses existing editor
+    if (isNewNote && viewRef.current) {
+        // ... update editor content ...
+
+        // Re-register handler (cleanup from previous render unregistered it)
+        const view = viewRef.current;
+        const unregister = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
+            return toggleTodoAtLine(view.state, view.dispatch);
+        });
+
+        return () => { unregister(); };
+    }
+
+    // Normal path that creates new editor
+    const view = new EditorView(/* ... */);
+    const unregister = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
+        return toggleTodoAtLine(view.state, view.dispatch);
+    });
+
+    return () => {
+        unregister();
+        view.destroy();
+    };
+}, [dependencies]);
 
 ## Making Containers Keyboard Navigable
 
@@ -230,11 +313,12 @@ useKeyboardShortcuts([
 
 | File | Purpose |
 |------|---------|
-| `src/hooks/useNativeKeyboardBridge.ts` | Global focus navigation + ProseMirror detection |
-| `src/features/notes/simple-todo.ts` | Todo/bullet Tab indent handlers |
+| `src/hooks/useNativeKeyboardBridge.ts` | Global focus navigation, ProseMirror detection, Cmd+Enter registry |
+| `src/features/notes/simple-todo.ts` | Todo/bullet Tab indent handlers + `toggleTodoAtLine` command |
+| `src/features/notes/note-view.tsx` | ProseMirror editor setup + Cmd+Enter handler registration |
 | `src/components/ui/button.tsx` | Button with proper focus styling |
 | `docs/mac-app-keyboard-shortcuts.md` | Full keyboard bridge documentation |
-| `mac-app/macos-host/Sources/AppDelegate.swift` | Swift keyboard interception |
+| `mac-app/macos-host/Sources/AppDelegate.swift` | Swift keyboard interception (dispatches `nativeSubmit` event) |
 
 ## Debugging Focus Issues
 
@@ -261,6 +345,13 @@ useKeyboardShortcuts([
    - Verify `when` condition returns true
    - Check `onlyWhenActive` and whether the tab is active
 
+6. **Cmd+Enter not triggering ProseMirror command (Mac app)?**
+   - Swift dispatches CustomEvent, not KeyboardEvent - ProseMirror keymaps won't see it
+   - Use `registerProseMirrorCmdEnter()` to register a handler for the editor
+   - Ensure the handler is re-registered in useEffect early return paths
+   - Verify `document.activeElement.closest('.ProseMirror[contenteditable="true"]')` finds the editor
+   - Check that the handler returns `true` when it handles the event
+
 ## Browser vs Mac App Behavior
 
 | Feature | Browser | Mac App |
@@ -268,5 +359,18 @@ useKeyboardShortcuts([
 | Tab navigation | Native | Via `__nativeFocusNext` |
 | Tab in ProseMirror | Native KeyboardEvent | Synthetic KeyboardEvent via bridge |
 | focus-visible | Works | Doesn't trigger |
-| Cmd+Enter | KeyboardEvent | CustomEvent 'nativeSubmit' |
+| Cmd+Enter in dialogs | KeyboardEvent | CustomEvent 'nativeSubmit' → `useNativeSubmit` |
+| Cmd+Enter in ProseMirror | KeyboardEvent → keymap | CustomEvent → `registerProseMirrorCmdEnter` handler |
 | Arrow keys | Native | Native (not intercepted) |
+
+### Why Cmd+Enter Needs Special Handling in ProseMirror
+
+In the browser, Cmd+Enter fires a KeyboardEvent that ProseMirror keymaps can intercept:
+```typescript
+// This works in browser but NOT in Mac app
+export const todoKeymap = keymap({
+    "Cmd-Enter": toggleTodoAtLine,  // Never fires in Mac app!
+});
+```
+
+In the Mac app, Swift intercepts Cmd+Enter before it reaches JavaScript and dispatches a CustomEvent instead. The solution is the `registerProseMirrorCmdEnter` registry which intercepts the CustomEvent and calls your handler directly.
