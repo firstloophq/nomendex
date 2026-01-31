@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
 import { useTabCursorPersistence } from "@/hooks/useTabCursorPersistence";
+import { useFileLocks } from "@/hooks/useFileLocks";
 import { TagInput } from "./TagInput";
 import { ProjectInput } from "./ProjectInput";
 import { onRefresh, emit, subscribe } from "@/lib/events";
@@ -123,6 +124,16 @@ export function NotesView(props: NotesViewProps) {
     const lastKnownMtimeRef = useRef<number | null>(null);
     const prevActiveTabIdRef = useRef<string | undefined>(undefined);
     const { currentTheme } = useTheme();
+    const { isLocked: isFileLocked } = useFileLocks();
+    const isLocked = isFileLocked(noteFileName);
+
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.setProps({
+            editable: () => !isLocked,
+        });
+    }, [isLocked]);
 
     // Subscribe to wiki link click events and navigate
     useEffect(() => {
@@ -717,6 +728,7 @@ export function NotesView(props: NotesViewProps) {
 
         const view = new EditorView(editorRef.current, {
             state,
+            editable: () => !isLocked,
             dispatchTransaction(transaction) {
                 const newState = view.state.apply(transaction);
                 view.updateState(newState);
