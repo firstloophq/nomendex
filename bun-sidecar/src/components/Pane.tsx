@@ -1,4 +1,4 @@
-import { X, Plus } from "lucide-react";
+import { X, Plus, Lock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Button } from "./ui/button";
@@ -8,6 +8,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { TITLE_BAR_HEIGHT } from "./Layout";
 import { Pane as PaneType, WorkspaceTab } from "@/types/Workspace";
 import { getIcon } from "./PluginViewIcons";
+import { useFileLocks } from "@/hooks/useFileLocks";
 
 interface PaneProps {
     pane: PaneType;
@@ -39,8 +40,17 @@ export function Pane({
     const [localDraggedTabIndex, setLocalDraggedTabIndex] = useState<number | null>(null);
     const [dropIndicator, setDropIndicator] = useState<{ index: number; side: "left" | "right" } | null>(null);
     const { currentTheme } = useTheme();
+    const { getLock } = useFileLocks();
 
     const activeTab = pane.tabs.find((tab) => tab.id === pane.activeTabId) ?? null;
+
+    const getNoteLock = (tab: WorkspaceTab) => {
+        if (tab.pluginInstance.plugin.id !== "notes") return null;
+        if (tab.pluginInstance.viewId !== "editor") return null;
+        const noteFileName = tab.pluginInstance.instanceProps?.noteFileName;
+        if (typeof noteFileName !== "string") return null;
+        return getLock(noteFileName);
+    };
 
     // Use external drag state if provided, otherwise use local state
     const isDraggingFromThisPane = externalDragState
@@ -179,13 +189,15 @@ export function Pane({
                     id={`pane-tabs-header-${pane.id}`}
                 >
                     <TabsList className="h-full bg-transparent p-0 gap-0 flex-1 min-w-0 flex items-center">
-                        {visibleTabs.map((tab, index) => (
-                            <div
-                                key={tab.id}
-                                className="group flex items-center relative"
-                                onDragOver={(e) => handleTabDragOver(e, index)}
-                                onDrop={(e) => handleTabDrop(e, index)}
-                            >
+                        {visibleTabs.map((tab, index) => {
+                            const noteLock = getNoteLock(tab);
+                            return (
+                                <div
+                                    key={tab.id}
+                                    className="group flex items-center relative"
+                                    onDragOver={(e) => handleTabDragOver(e, index)}
+                                    onDrop={(e) => handleTabDrop(e, index)}
+                                >
                                 {/* Left drop indicator */}
                                 {dropIndicator?.index === index && dropIndicator?.side === "left" && draggedTabIndex !== index && (
                                     <div
@@ -226,6 +238,17 @@ export function Pane({
                                         />
                                     </span>
                                     <span className="truncate">{tab.title}</span>
+                                    {noteLock && (
+                                        <span
+                                            className="flex items-center flex-shrink-0"
+                                            title={`Locked by ${noteLock.agentName}`}
+                                        >
+                                            <Lock
+                                                className="h-3 w-3"
+                                                style={{ color: currentTheme.styles.contentSecondary }}
+                                            />
+                                        </span>
+                                    )}
                                 </TabsTrigger>
                                 {/* Right drop indicator */}
                                 {dropIndicator?.index === index && dropIndicator?.side === "right" && draggedTabIndex !== index && (
@@ -234,8 +257,9 @@ export function Pane({
                                         style={{ backgroundColor: currentTheme.styles.borderAccent }}
                                     />
                                 )}
-                            </div>
-                        ))}
+                                </div>
+                            );
+                        })}
                     </TabsList>
                     {hasOverflow && (
                         <div
@@ -262,6 +286,7 @@ export function Pane({
                                 <DropdownMenuContent align="start" className="w-56" style={{ backgroundColor: currentTheme.styles.surfacePrimary }}>
                                     {overflowTabs.map((tab, overflowIndex) => {
                                         const realIndex = 20 + overflowIndex;
+                                        const noteLock = getNoteLock(tab);
                                         return (
                                             <DropdownMenuItem
                                                 key={tab.id}
@@ -277,6 +302,17 @@ export function Pane({
                                                         return <IconComponent className="h-4 w-4 flex-shrink-0" />;
                                                     })()}
                                                     <span className="truncate">{tab.title}</span>
+                                                    {noteLock && (
+                                                        <span
+                                                            className="flex items-center flex-shrink-0"
+                                                            title={`Locked by ${noteLock.agentName}`}
+                                                        >
+                                                            <Lock
+                                                                className="h-3 w-3"
+                                                                style={{ color: currentTheme.styles.contentSecondary }}
+                                                            />
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <Button
                                                     variant="ghost"

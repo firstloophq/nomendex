@@ -44,6 +44,7 @@ import { QueuedMessagesList } from "./QueuedMessagesList";
 import type { QueuedMessage } from "./index";
 import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
 import { OverlayScrollbar } from "@/components/OverlayScrollbar";
+import { removeFileLock, upsertFileLock } from "@/hooks/useFileLocks";
 
 type ToolCallState =
     | "input-streaming"
@@ -648,6 +649,14 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                                         },
                                     },
                                 });
+                            }
+                        } else if (data.type === "file_lock") {
+                            if (data.lock) {
+                                upsertFileLock(data.lock);
+                            }
+                        } else if (data.type === "file_unlock") {
+                            if (data.noteFileName) {
+                                removeFileLock(data.noteFileName);
                             }
                         } else if (data.type === "done") {
                             // Clear query tracking - query is complete

@@ -6,6 +6,7 @@ import { initializeBacklinksWithData } from "./features/notes/backlinks-service"
 import { initializeTagsWithData } from "./features/notes/tags-service";
 import { scanAndExtractAll } from "./features/notes/notes-indexer";
 import { initializeDefaultSkills } from "./services/default-skills";
+import { clearFileLocks } from "./services/file-locks";
 import type { SkillUpdateCheckResult } from "./services/skills-types";
 
 /**
@@ -37,6 +38,8 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
     startupLog.info(`Bun version: ${Bun.version}`);
     startupLog.info(`Platform: ${process.platform}`);
     startupLog.info(`Working directory: ${process.cwd()}`);
+
+    clearFileLocks();
 
     // Only create directories if we have an active workspace
     if (!hasActiveWorkspace()) {
