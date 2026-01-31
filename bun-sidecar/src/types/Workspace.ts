@@ -30,11 +30,31 @@ export const AutoSyncConfigSchema = z.object({
 });
 export type AutoSyncConfig = z.infer<typeof AutoSyncConfigSchema>;
 
+// Pane schema for split layout
+export const PaneSchema = z.object({
+    id: z.string(),
+    tabs: z.array(WorkspaceTabSchema),
+    activeTabId: z.string().nullable(),
+});
+export type Pane = z.infer<typeof PaneSchema>;
+
+export const LayoutModeSchema = z.enum(["single", "split"]);
+export type LayoutMode = z.infer<typeof LayoutModeSchema>;
+
 export const WorkspaceStateSchema = z.object({
+    // Legacy tab fields (kept for backwards compatibility, used in single-pane mode)
     tabs: z.array(WorkspaceTabSchema),
     activeTabId: z.string().nullable(),
     sidebarOpen: z.boolean().default(false),
     sidebarTabId: z.string().nullable(),
+
+    // New pane-based structure for split layout
+    panes: z.array(PaneSchema).default([]),
+    activePaneId: z.string().nullable().default(null),
+    splitRatio: z.number().min(0.2).max(0.8).default(0.5),
+    layoutMode: LayoutModeSchema.default("single"),
+
+    // Other settings
     mcpServerConfigs: z.array(McpServerStatusSchema).default([]),
     projectPreferences: z.record(z.string(), ProjectPreferencesSchema).default({}),
     gitAuthMode: GitAuthModeSchema.default("local"),

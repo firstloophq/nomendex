@@ -10,9 +10,10 @@ import { useState, useEffect } from "react";
 import { WorkspaceTab } from "@/types/Workspace";
 import { useTheme } from "@/hooks/useTheme";
 import { TITLE_BAR_HEIGHT } from "./Layout";
+import { SplitLayout } from "./SplitLayout";
 
 export function Workspace() {
-    const { workspace, loading, activeTab, closeTab, setActiveTabId, reorderTabs } =
+    const { workspace, loading, activeTab, closeTab, setActiveTabId, reorderTabs, layoutMode } =
         useWorkspaceContext();
     const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
     const [dropIndicator, setDropIndicator] = useState<{ index: number; side: 'left' | 'right' } | null>(null);
@@ -94,6 +95,12 @@ export function Workspace() {
         );
     }
 
+    // In split mode, render the SplitLayout component
+    if (layoutMode === "split") {
+        return <SplitLayout />;
+    }
+
+    // Single pane mode (default) - original behavior
     if (workspace.tabs.length === 0) {
         return (
             <div className="flex h-full">

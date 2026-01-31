@@ -19,7 +19,7 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
     if (!tabId) {
         throw new Error("tabId is required");
     }
-    const { activeTab, setTabName, addNewTab, setActiveTabId, getViewSelfPlacement, setSidebarTabId } = useWorkspaceContext();
+    const { activeTab, setTabName, openTab } = useWorkspaceContext();
     const { loading, error, setLoading, setError } = usePlugin();
     const [projects, setProjects] = useState<(ProjectInfo & { id: string })[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -29,7 +29,6 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
     const [renameDialogOpen, setRenameDialogOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState<{ id: string; name: string } | null>(null);
     const { currentTheme } = useTheme();
-    const placement = getViewSelfPlacement(tabId);
 
     const searchInputRef = useRef<HTMLInputElement>(null);
     const hasSetTabNameRef = useRef<boolean>(false);
@@ -207,21 +206,15 @@ export function ProjectsBrowserView({ tabId }: { tabId: string }) {
 
     // Open project detail view
     const handleOpenProject = useCallback(
-        async (projectName: string) => {
-            const newTab = await addNewTab({
+        (projectName: string) => {
+            // openTab handles both single and split mode, and sets the tab as active
+            openTab({
                 pluginMeta: projectsPluginSerial,
                 view: "detail",
                 props: { projectName },
             });
-            if (newTab) {
-                if (placement === "sidebar") {
-                    setSidebarTabId(newTab.id);
-                } else {
-                    setActiveTabId(newTab.id);
-                }
-            }
         },
-        [addNewTab, placement, setActiveTabId, setSidebarTabId]
+        [openTab]
     );
 
     // Keyboard navigation
