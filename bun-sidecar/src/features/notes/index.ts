@@ -151,6 +151,22 @@ export const functionStubs = {
         input: z.object({ fileName: z.string() }),
         output: z.object({ success: z.boolean() }),
     },
+    // Frontmatter aggregation
+    getAllFrontmatterKeys: {
+        input: z.object({}),
+        output: z.array(z.string()),
+    },
+    getFrontmatterValues: {
+        input: z.object({ key: z.string() }),
+        output: z.array(z.string()),
+    },
+    updateNoteFrontmatter: {
+        input: z.object({
+            fileName: z.string(),
+            frontMatter: z.record(z.string(), z.unknown()),
+        }),
+        output: NoteSchema,
+    },
 } satisfies FunctionStubs;
 export const notesViewPropsSchema = z.object({
     noteFileName: z.string(),

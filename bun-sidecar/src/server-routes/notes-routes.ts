@@ -222,4 +222,25 @@ export const notesRoutes = {
             return Response.json(result);
         },
     },
+    // Frontmatter aggregation routes
+    "/api/notes/frontmatter/keys": {
+        async POST() {
+            const result = await functions.getAllFrontmatterKeys.fx({});
+            return Response.json(result);
+        },
+    },
+    "/api/notes/frontmatter/values": {
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.getFrontmatterValues.fx(args);
+            return Response.json(result);
+        },
+    },
+    "/api/notes/frontmatter/update": {
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.updateNoteFrontmatter.fx(args);
+            return Response.json(result);
+        },
+    },
 };

@@ -522,6 +522,86 @@ async function moveNoteToFolder(args: { fileName: string; targetFolder: string |
     return await getNoteByFileName({ fileName: newPath });
 }
 
+// ============ Frontmatter Aggregation Functions ============
+
+/**
+ * Get all unique frontmatter field keys used across all notes (excluding reserved fields like tags, project).
+ */
+async function getAllFrontmatterKeys() {
+    try {
+        const allNotes = await getNotes();
+        const keySet = new Set<string>();
+        const reservedFields = ["tags", "project"];
+
+        for (const note of allNotes) {
+            if (note.frontMatter) {
+                for (const key of Object.keys(note.frontMatter)) {
+                    if (!reservedFields.includes(key)) {
+                        keySet.add(key);
+                    }
+                }
+            }
+        }
+
+        return Array.from(keySet).sort();
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Get all unique values used for a specific frontmatter field across all notes.
+ */
+async function getFrontmatterValues(args: { key: string }) {
+    try {
+        const allNotes = await getNotes();
+        const valueSet = new Set<string>();
+
+        for (const note of allNotes) {
+            if (note.frontMatter && args.key in note.frontMatter) {
+                const value = note.frontMatter[args.key];
+                if (typeof value === "string") {
+                    valueSet.add(value);
+                } else if (typeof value === "number" || typeof value === "boolean") {
+                    valueSet.add(String(value));
+                }
+            }
+        }
+
+        return Array.from(valueSet).sort();
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Update the frontmatter for a note (replaces existing frontmatter).
+ */
+async function updateNoteFrontmatter(args: { fileName: string; frontMatter: Record<string, unknown> }) {
+    try {
+        const rawContent = await getStorage().readFile(args.fileName);
+
+        if (!rawContent) {
+            throw new Error(`Note ${args.fileName} not found`);
+        }
+
+        const { content } = parseFrontMatter(rawContent);
+
+        // Serialize the new front matter with content
+        const yamlString = yaml.dump(args.frontMatter, { lineWidth: -1 });
+        const fileContent = Object.keys(args.frontMatter).length > 0
+            ? `---\n${yamlString}---\n${content}`
+            : content;
+
+        await getStorage().writeFile(args.fileName, fileContent);
+
+        // Return content WITHOUT front matter (for editor display)
+        return { fileName: args.fileName, content, frontMatter: args.frontMatter };
+    } catch (error) {
+        throw new Error(`Failed to update frontmatter: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+}
+
 export const functions: FunctionsFromStubs<typeof functionStubs> = {
     getNotes: { ...functionStubs.getNotes, fx: getNotes },
     searchNotes: { ...functionStubs.searchNotes, fx: searchNotes },
@@ -542,6 +622,9 @@ export const functions: FunctionsFromStubs<typeof functionStubs> = {
     moveNoteToFolder: { ...functionStubs.moveNoteToFolder, fx: moveNoteToFolder },
     getNoteMtime: { ...functionStubs.getNoteMtime, fx: getNoteMtime },
     revealInFinder: { ...functionStubs.revealInFinder, fx: revealNoteInFinder },
+    getAllFrontmatterKeys: { ...functionStubs.getAllFrontmatterKeys, fx: getAllFrontmatterKeys },
+    getFrontmatterValues: { ...functionStubs.getFrontmatterValues, fx: getFrontmatterValues },
+    updateNoteFrontmatter: { ...functionStubs.updateNoteFrontmatter, fx: updateNoteFrontmatter },
 };
 
 export const NotesPluginWithFunctions: TypedPluginWithFunctions<typeof functionStubs> = {
@@ -550,4 +633,4 @@ export const NotesPluginWithFunctions: TypedPluginWithFunctions<typeof functionS
 };
 
 // Export individual functions for use by other services
-export { getNotes, updateNoteProject, deleteNote };
+export { getNotes, updateNoteProject, deleteNote, getAllFrontmatterKeys, getFrontmatterValues, updateNoteFrontmatter };

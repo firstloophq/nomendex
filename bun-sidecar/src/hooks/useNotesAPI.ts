@@ -140,6 +140,11 @@ export const notesAPI = {
     getNotesByProject: (args: { project: string }) => fetchAPI<Note[]>("by-project", args),
     getNoteMtime: (args: { fileName: string }) => fetchAPI<{ mtime: number | null }>("mtime", args),
     revealInFinder: (args: { fileName: string }) => fetchAPI<{ success: boolean }>("reveal-in-finder", args),
+    // Frontmatter aggregation
+    getAllFrontmatterKeys: () => fetchAPI<string[]>("frontmatter/keys"),
+    getFrontmatterValues: (args: { key: string }) => fetchAPI<string[]>("frontmatter/values", args),
+    updateNoteFrontmatter: (args: { fileName: string; frontMatter: Record<string, unknown> }) =>
+        fetchAPI<Note>("frontmatter/update", args),
 };
 
 // Hook wrapper for use in React components

@@ -49,9 +49,8 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
 import { useTabCursorPersistence } from "@/hooks/useTabCursorPersistence";
-import { TagInput } from "./TagInput";
-import { ProjectInput } from "./ProjectInput";
 import { onRefresh, emit, subscribe } from "@/lib/events";
+import { FrontmatterPanel } from "./FrontmatterPanel";
 import { BacklinksPanel, CollapsibleSection } from "./BacklinksPanel";
 import { toast } from "sonner";
 import { OverlayScrollbar } from "@/components/OverlayScrollbar";
@@ -478,6 +477,35 @@ export function NotesView(props: NotesViewProps) {
                 lastSavedContentRef.current = updatedNote.content;
             } catch (err) {
                 console.error("Failed to update project:", err);
+            }
+        },
+        [notesAPI, noteFileName]
+    );
+
+    // Handle frontmatter updates (for custom fields)
+    const handleFrontmatterChange = useCallback(
+        async (newFrontmatter: Record<string, unknown>) => {
+            try {
+                const updatedNote = await notesAPI.updateNoteFrontmatter({ fileName: noteFileName, frontMatter: newFrontmatter });
+                setNote(updatedNote);
+                setContent(updatedNote.content);
+                lastSavedContentRef.current = updatedNote.content;
+
+                // Update tags and project state from frontmatter
+                const noteTags = updatedNote.frontMatter?.tags;
+                if (Array.isArray(noteTags)) {
+                    setTags(noteTags.filter((tag): tag is string => typeof tag === "string"));
+                } else {
+                    setTags([]);
+                }
+                const noteProject = updatedNote.frontMatter?.project;
+                if (typeof noteProject === "string") {
+                    setProject(noteProject);
+                } else {
+                    setProject(null);
+                }
+            } catch (err) {
+                console.error("Failed to update frontmatter:", err);
             }
         },
         [notesAPI, noteFileName]
@@ -1325,56 +1353,62 @@ export function NotesView(props: NotesViewProps) {
         <div className="h-full overflow-hidden flex flex-col">
             {/* Header: only visible when content is loaded */}
             {!loading && !error && note && (
-                <div
-                    className="shrink-0"
-                    style={{
-                        backgroundColor: currentTheme.styles.surfacePrimary,
-                        borderBottom: `1px solid ${currentTheme.styles.borderDefault}`,
-                    }}
-                >
-                    <div className="px-4 py-2 flex items-center gap-3">
-                        <div className="flex flex-col items-start gap-1 min-w-0">
-                            {/* Breadcrumb for folder path */}
-                            {(() => {
-                                const pathWithoutExt = noteFileName.replace(/\.md$/, "");
-                                const parts = pathWithoutExt.split("/");
-                                const fileName = parts.pop() || pathWithoutExt;
-                                const folderPath = parts;
+                <>
+                    <div
+                        className="shrink-0"
+                        style={{
+                            backgroundColor: currentTheme.styles.surfacePrimary,
+                            borderBottom: `1px solid ${currentTheme.styles.borderDefault}`,
+                        }}
+                    >
+                        <div className="px-4 py-2 flex items-center gap-3">
+                            <div className="flex flex-col items-start gap-1 min-w-0">
+                                {/* Breadcrumb for folder path */}
+                                {(() => {
+                                    const pathWithoutExt = noteFileName.replace(/\.md$/, "");
+                                    const parts = pathWithoutExt.split("/");
+                                    const fileName = parts.pop() || pathWithoutExt;
+                                    const folderPath = parts;
 
-                                return (
-                                    <>
-                                        {folderPath.length > 0 && (
-                                            <Breadcrumb>
-                                                <BreadcrumbList className="text-xs">
-                                                    {folderPath.map((folder, index) => (
-                                                        <BreadcrumbItem key={index}>
-                                                            <span style={{ color: currentTheme.styles.contentTertiary }}>
-                                                                {folder}
-                                                            </span>
-                                                            {index < folderPath.length - 1 && <BreadcrumbSeparator />}
-                                                        </BreadcrumbItem>
-                                                    ))}
-                                                </BreadcrumbList>
-                                            </Breadcrumb>
-                                        )}
-                                        <div
-                                            className="text-3xl font-bold"
-                                            style={{ color: currentTheme.styles.contentPrimary }}
-                                        >
-                                            {fileName}
-                                        </div>
-                                    </>
-                                );
-                            })()}
+                                    return (
+                                        <>
+                                            {folderPath.length > 0 && (
+                                                <Breadcrumb>
+                                                    <BreadcrumbList className="text-xs">
+                                                        {folderPath.map((folder, index) => (
+                                                            <BreadcrumbItem key={index}>
+                                                                <span style={{ color: currentTheme.styles.contentTertiary }}>
+                                                                    {folder}
+                                                                </span>
+                                                                {index < folderPath.length - 1 && <BreadcrumbSeparator />}
+                                                            </BreadcrumbItem>
+                                                        ))}
+                                                    </BreadcrumbList>
+                                                </Breadcrumb>
+                                            )}
+                                            <div
+                                                className="text-3xl font-bold"
+                                                style={{ color: currentTheme.styles.contentPrimary }}
+                                            >
+                                                {fileName}
+                                            </div>
+                                        </>
+                                    );
+                                })()}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Project and Tags row */}
-                    <div className="px-4 pb-2 flex items-center gap-4">
-                        <ProjectInput project={project} onProjectChange={handleProjectChange} />
-                        <TagInput tags={tags} onTagsChange={handleTagsChange} placeholder="Add tag..." />
-                    </div>
-                </div>
+                    {/* Frontmatter Panel */}
+                    <FrontmatterPanel
+                        frontMatter={note.frontMatter}
+                        tags={tags}
+                        project={project}
+                        onTagsChange={handleTagsChange}
+                        onProjectChange={handleProjectChange}
+                        onFrontmatterChange={handleFrontmatterChange}
+                    />
+                </>
             )}
 
             {/* Main content area with flex layout */}
