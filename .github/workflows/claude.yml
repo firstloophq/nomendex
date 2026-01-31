@@ -35,23 +35,15 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-opus-4-5-20251101
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Allow running build commands (wildcards for flexibility)
-          allowed_tools: |
-            Bash(cd bun-sidecar && bun *)
-            Bash(bun *)
-
-          # Debug mode for troubleshooting
-          claude_args: --debug
-
-          # Instructions for validating changes
-          append_system_prompt: |
-            IMPORTANT: After making code changes, you MUST run `cd bun-sidecar && bun run build` to validate TypeScript and linting.
-            This runs Tailwind CSS build, ESLint, and TypeScript checking.
-            If the build fails, fix the errors before completing your task.
+          # Pass CLI flags via claude_args
+          claude_args: >-
+            --model claude-opus-4-5-20251101
+            --allowedTools "Bash(bun *)"
+            --append-system-prompt "After making code changes, run bun run build from within the bun-sidecar directory to validate TypeScript and linting."
+            --debug
 
