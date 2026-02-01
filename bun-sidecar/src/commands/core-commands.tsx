@@ -26,6 +26,9 @@ interface CoreCommandContext {
     setSidebarOpen: (open: boolean) => void;
     isSidebarOpen: () => boolean;
     activeTab?: WorkspaceTab | null;
+    // Split layout operations
+    toggleLayoutMode: () => void;
+    getLayoutMode: () => "single" | "split";
 }
 
 /**
@@ -396,6 +399,16 @@ export function getCoreCommands(context: CoreCommandContext): Command[] {
                 // Dispatch event that DevErrorTrigger listens to
                 // This triggers a render-time error that ErrorBoundary can catch
                 window.dispatchEvent(new CustomEvent("dev:trigger-error"));
+            },
+        },
+        {
+            id: "core.toggleSplitView",
+            name: "Toggle Split View",
+            description: "Switch between single-pane and split-pane layout",
+            icon: "Columns2",
+            callback: () => {
+                context.closeCommandMenu();
+                context.toggleLayoutMode();
             },
         },
     ];

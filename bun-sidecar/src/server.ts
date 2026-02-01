@@ -21,6 +21,7 @@ import { uploadsRoutes } from "./server-routes/uploads-routes";
 import { versionRoutes } from "./server-routes/version-routes";
 import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
+import { projectsRoutes } from "./server-routes/projects-routes";
 
 // Terminal WebSocket data type
 interface TerminalWSData {

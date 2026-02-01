@@ -373,5 +373,16 @@ export function getNotesCommands(context: CommandContext): Command[] {
                 emit("notes:clearSpellcheck", {});
             },
         },
+        {
+            id: "notes.rebuildTagsIndex",
+            name: "Rebuild Tags Index",
+            description: "Clear cache and reparse all tags from notes",
+            icon: "RefreshCw",
+            callback: async () => {
+                context.closeCommandMenu();
+                const result = await notesAPI.rebuildTagsIndex();
+                console.log(`Tags index rebuilt: ${result.tagCount} tags found`);
+            },
+        },
     ];
 }

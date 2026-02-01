@@ -45,13 +45,14 @@ export class FeatureStorage {
         await Bun.write(filePath, data, { createPath: true });
     }
 
-    async listFiles(directory?: string): Promise<string[]> {
+    async listFiles(directory?: string, options?: { includeHidden?: boolean }): Promise<string[]> {
         const filePath = directory ? path.join(this.basePath, directory) : this.basePath;
+        const includeHidden = options?.includeHidden ?? false;
         try {
             const output = await readdir(filePath);
             const files: string[] = [];
             for (const item of output) {
-                if (item.startsWith(".")) continue;
+                if (!includeHidden && item.startsWith(".")) continue;
                 const itemPath = path.join(filePath, item);
                 const stats = await stat(itemPath);
                 if (stats.isFile()) {
@@ -100,13 +101,14 @@ export class FeatureStorage {
         }
     }
 
-    async listFolders(directory?: string): Promise<FolderInfo[]> {
+    async listFolders(directory?: string, options?: { includeHidden?: boolean }): Promise<FolderInfo[]> {
         const basePath = directory ? path.join(this.basePath, directory) : this.basePath;
+        const includeHidden = options?.includeHidden ?? false;
         try {
             const items = await readdir(basePath);
             const folders: FolderInfo[] = [];
             for (const item of items) {
-                if (item.startsWith(".")) continue;
+                if (!includeHidden && item.startsWith(".")) continue;
                 const itemPath = path.join(basePath, item);
                 const stats = await stat(itemPath);
                 if (stats.isDirectory()) {
@@ -120,13 +122,13 @@ export class FeatureStorage {
         }
     }
 
-    async listAllFoldersRecursive(directory?: string): Promise<FolderInfo[]> {
+    async listAllFoldersRecursive(directory?: string, options?: { includeHidden?: boolean }): Promise<FolderInfo[]> {
         const folders: FolderInfo[] = [];
-        const baseFolders = await this.listFolders(directory);
+        const baseFolders = await this.listFolders(directory, options);
 
         for (const folder of baseFolders) {
             folders.push(folder);
-            const subFolders = await this.listAllFoldersRecursive(folder.path);
+            const subFolders = await this.listAllFoldersRecursive(folder.path, options);
             folders.push(...subFolders);
         }
 

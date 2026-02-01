@@ -8,7 +8,8 @@ import { exampleSetup } from "prosemirror-example-setup";
 import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
 import { keymap } from "prosemirror-keymap";
 import { chainCommands } from "prosemirror-commands";
-import { todoKeymap, todoPlugin } from "./simple-todo";
+import { todoKeymap, todoPlugin, toggleTodoAtLine } from "./simple-todo";
+import { registerProseMirrorCmdEnter } from "@/hooks/useNativeKeyboardBridge";
 import {
     tableSchema,
     tableMarkdownParser,
@@ -48,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
 import { useTabCursorPersistence } from "@/hooks/useTabCursorPersistence";
+import { useFileLocks } from "@/hooks/useFileLocks";
 import { TagInput } from "./TagInput";
 import { ProjectInput } from "./ProjectInput";
 import { onRefresh, emit, subscribe } from "@/lib/events";
@@ -122,6 +124,16 @@ export function NotesView(props: NotesViewProps) {
     const lastKnownMtimeRef = useRef<number | null>(null);
     const prevActiveTabIdRef = useRef<string | undefined>(undefined);
     const { currentTheme } = useTheme();
+    const { isLocked: isFileLocked } = useFileLocks();
+    const isLocked = isFileLocked(noteFileName);
+
+    useEffect(() => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.setProps({
+            editable: () => !isLocked,
+        });
+    }, [isLocked]);
 
     // Subscribe to wiki link click events and navigate
     useEffect(() => {
@@ -628,12 +640,29 @@ export function NotesView(props: NotesViewProps) {
             viewRef.current.updateState(stateWithNewDoc);
             currentNoteFileNameRef.current = noteFileName;
             initializedContentRef.current = contentToUse;
-            return;
+
+            // Re-register Cmd+Enter handler (cleanup from previous render unregistered it)
+            const view = viewRef.current;
+            const unregisterCmdEnter = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
+                return toggleTodoAtLine(view.state, view.dispatch);
+            });
+
+            return () => {
+                unregisterCmdEnter();
+            };
         }
 
         // If no note change and editor exists, nothing to do
         if (!isNewNote && viewRef.current) {
-            return;
+            // Re-register Cmd+Enter handler (cleanup from previous render unregistered it)
+            const view = viewRef.current;
+            const unregisterCmdEnter = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
+                return toggleTodoAtLine(view.state, view.dispatch);
+            });
+
+            return () => {
+                unregisterCmdEnter();
+            };
         }
 
         // Only destroy if we're creating fresh (shouldn't happen often now)
@@ -699,6 +728,7 @@ export function NotesView(props: NotesViewProps) {
 
         const view = new EditorView(editorRef.current, {
             state,
+            editable: () => !isLocked,
             dispatchTransaction(transaction) {
                 const newState = view.state.apply(transaction);
                 view.updateState(newState);
@@ -842,6 +872,11 @@ export function NotesView(props: NotesViewProps) {
         initializedContentRef.current = contentToUse;
         currentNoteFileNameRef.current = noteFileName;
 
+        // Register Cmd+Enter handler for todo toggle in native Mac app
+        const unregisterCmdEnter = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
+            return toggleTodoAtLine(view.state, view.dispatch);
+        });
+
         // Helper to scroll to a specific line number with context above
         const scrollToLineNumber = (lineNum: number) => {
             const doc = view.state.doc;
@@ -913,6 +948,7 @@ export function NotesView(props: NotesViewProps) {
         const toolbarContainer = toolbarContainerRef.current;
 
         return () => {
+            unregisterCmdEnter();
             if (viewRef.current) {
                 viewRef.current.destroy();
                 viewRef.current = null;

@@ -1,4 +1,4 @@
-import { X, Plus } from "lucide-react";
+import { X, Plus, Lock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -10,13 +10,24 @@ import { useState, useEffect } from "react";
 import { WorkspaceTab } from "@/types/Workspace";
 import { useTheme } from "@/hooks/useTheme";
 import { TITLE_BAR_HEIGHT } from "./Layout";
+import { SplitLayout } from "./SplitLayout";
+import { useFileLocks } from "@/hooks/useFileLocks";
 
 export function Workspace() {
-    const { workspace, loading, activeTab, closeTab, setActiveTabId, reorderTabs } =
+    const { workspace, loading, activeTab, closeTab, setActiveTabId, reorderTabs, layoutMode } =
         useWorkspaceContext();
     const [draggedTabIndex, setDraggedTabIndex] = useState<number | null>(null);
     const [dropIndicator, setDropIndicator] = useState<{ index: number; side: 'left' | 'right' } | null>(null);
     const { currentTheme } = useTheme();
+    const { getLock } = useFileLocks();
+
+    const getNoteLock = (tab: WorkspaceTab) => {
+        if (tab.pluginInstance.plugin.id !== "notes") return null;
+        if (tab.pluginInstance.viewId !== "editor") return null;
+        const noteFileName = tab.pluginInstance.instanceProps?.noteFileName;
+        if (typeof noteFileName !== "string") return null;
+        return getLock(noteFileName);
+    };
 
     const handleTabDragStart = (e: React.DragEvent, _tab: WorkspaceTab, index: number) => {
         setDraggedTabIndex(index);
@@ -94,6 +105,12 @@ export function Workspace() {
         );
     }
 
+    // In split mode, render the SplitLayout component
+    if (layoutMode === "split") {
+        return <SplitLayout />;
+    }
+
+    // Single pane mode (default) - original behavior
     if (workspace.tabs.length === 0) {
         return (
             <div className="flex h-full">
@@ -135,13 +152,15 @@ export function Workspace() {
                         <TabsList
                             className="h-full bg-transparent p-0 gap-0 flex-1 min-w-0 flex items-center"
                         >
-                            {visibleTabs.map((tab, index) => (
-                                <div
-                                    key={tab.id}
-                                    className="group flex items-center relative"
-                                    onDragOver={(e) => handleTabDragOver(e, index)}
-                                    onDrop={(e) => handleTabDrop(e, index)}
-                                >
+                            {visibleTabs.map((tab, index) => {
+                                const noteLock = getNoteLock(tab);
+                                return (
+                                    <div
+                                        key={tab.id}
+                                        className="group flex items-center relative"
+                                        onDragOver={(e) => handleTabDragOver(e, index)}
+                                        onDrop={(e) => handleTabDrop(e, index)}
+                                    >
                                     {/* Left drop indicator */}
                                     {dropIndicator?.index === index && dropIndicator?.side === 'left' && draggedTabIndex !== index && (
                                         <div
@@ -179,6 +198,17 @@ export function Workspace() {
                                             <X className="size-3 absolute transition-opacity duration-200 opacity-0 group-hover:opacity-100" style={{ color: currentTheme.styles.semanticDestructive }} />
                                         </span>
                                         <span className="truncate">{tab.title}</span>
+                                        {noteLock && (
+                                            <span
+                                                className="flex items-center flex-shrink-0"
+                                                title={`Locked by ${noteLock.agentName}`}
+                                            >
+                                                <Lock
+                                                    className="h-3 w-3"
+                                                    style={{ color: currentTheme.styles.contentSecondary }}
+                                                />
+                                            </span>
+                                        )}
                                     </TabsTrigger>
                                     {/* Right drop indicator */}
                                     {dropIndicator?.index === index && dropIndicator?.side === 'right' && draggedTabIndex !== index && (
@@ -187,8 +217,9 @@ export function Workspace() {
                                             style={{ backgroundColor: currentTheme.styles.borderAccent }}
                                         />
                                     )}
-                                </div>
-                            ))}
+                                    </div>
+                                );
+                            })}
                         </TabsList>
                         {hasOverflow && (
                             <div
@@ -215,35 +246,47 @@ export function Workspace() {
                                     <DropdownMenuContent align="start" className="w-56" style={{ backgroundColor: currentTheme.styles.surfacePrimary }}>
                                         {overflowTabs.map((tab, overflowIndex) => {
                                             const realIndex = 20 + overflowIndex; // Overflow tabs start at index 20
+                                            const noteLock = getNoteLock(tab);
                                             return (
-                                            <DropdownMenuItem
-                                                key={tab.id}
-                                                onClick={() => setActiveTabId(tab.id)}
-                                                className="flex items-center justify-between group cursor-move"
-                                                draggable
-                                                onDragStart={(e) => handleTabDragStart(e, tab, realIndex)}
-                                                onDragEnd={handleTabDragEnd}
-                                            >
-                                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                    {(() => {
-                                                        const IconComponent = getIcon(tab.pluginInstance.plugin.icon);
-                                                        return <IconComponent className="h-4 w-4 flex-shrink-0" />;
-                                                    })()}
-                                                    <span className="truncate">{tab.title}</span>
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:text-destructive"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        closeTab(tab.id);
-                                                    }}
+                                                <DropdownMenuItem
+                                                    key={tab.id}
+                                                    onClick={() => setActiveTabId(tab.id)}
+                                                    className="flex items-center justify-between group cursor-move"
+                                                    draggable
+                                                    onDragStart={(e) => handleTabDragStart(e, tab, realIndex)}
+                                                    onDragEnd={handleTabDragEnd}
                                                 >
-                                                    <X className="h-3 w-3" />
-                                                </Button>
-                                            </DropdownMenuItem>
+                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                        {(() => {
+                                                            const IconComponent = getIcon(tab.pluginInstance.plugin.icon);
+                                                            return <IconComponent className="h-4 w-4 flex-shrink-0" />;
+                                                        })()}
+                                                        <span className="truncate">{tab.title}</span>
+                                                        {noteLock && (
+                                                            <span
+                                                                className="flex items-center flex-shrink-0"
+                                                                title={`Locked by ${noteLock.agentName}`}
+                                                            >
+                                                                <Lock
+                                                                    className="h-3 w-3"
+                                                                    style={{ color: currentTheme.styles.contentSecondary }}
+                                                                />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:text-destructive"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            closeTab(tab.id);
+                                                        }}
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </Button>
+                                                </DropdownMenuItem>
                                             );
                                         })}
                                     </DropdownMenuContent>

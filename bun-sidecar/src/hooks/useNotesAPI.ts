@@ -1,6 +1,6 @@
 import { Note, NoteFolder, SearchResult } from "@/features/notes";
 import { BacklinksResult } from "@/features/notes/backlinks-types";
-import type { TagSuggestion } from "@/features/notes/tags-types";
+import type { TagSuggestion, ExplicitTagDefinition } from "@/features/notes/tags-types";
 
 async function fetchAPI<T>(endpoint: string, body: Record<string, unknown> = {}): Promise<T> {
     const response = await fetch(`/api/notes/${endpoint}`, {
@@ -60,7 +60,7 @@ function preloadNote(fileName: string): void {
 
 // Standalone API object for use outside React components
 export const notesAPI = {
-    getNotes: () => fetchAPI<Note[]>("list"),
+    getNotes: (args: { showHiddenFiles?: boolean } = {}) => fetchAPI<Note[]>("list", args),
     searchNotes: (args: { query: string }) => fetchAPI<SearchResult[]>("search", args),
     getNoteByFileName: async (args: { fileName: string; skipCache?: boolean }): Promise<Note> => {
         // Check cache first (unless skipCache is true)
@@ -108,7 +108,7 @@ export const notesAPI = {
             }>
         >("recent-daily", args),
     // Folder operations
-    getFolders: () => fetchAPI<NoteFolder[]>("folders"),
+    getFolders: (args: { showHiddenFiles?: boolean } = {}) => fetchAPI<NoteFolder[]>("folders", args),
     createFolder: (args: { name: string; parentPath?: string }) => fetchAPI<NoteFolder>("folders/create", args),
     deleteFolder: (args: { folderPath: string }) => fetchAPI<{ success: boolean }>("folders/delete", args),
     renameFolder: (args: { oldPath: string; newName: string }) => fetchAPI<NoteFolder>("folders/rename", args),
@@ -131,6 +131,10 @@ export const notesAPI = {
     getTagsForFile: (args: { fileName: string }) => fetchAPI<string[]>("tags/for-file", args),
     getFilesWithTag: (args: { tag: string }) => fetchAPI<string[]>("tags/files-with", args),
     rebuildTagsIndex: () => fetchAPI<{ tagCount: number }>("tags/rebuild"),
+    createExplicitTag: (args: { tagName: string }) => fetchAPI<{ success: boolean; tag: ExplicitTagDefinition }>("tags/create-explicit", args),
+    deleteExplicitTag: (args: { tagName: string }) => fetchAPI<{ success: boolean }>("tags/delete-explicit", args),
+    isExplicitTag: (args: { tagName: string }) => fetchAPI<{ isExplicit: boolean }>("tags/is-explicit", args),
+    getExplicitTags: () => fetchAPI<ExplicitTagDefinition[]>("tags/list-explicit"),
     // Project operations
     updateNoteProject: async (args: { fileName: string; project: string | null }): Promise<Note> => {
         const note = await fetchAPI<Note>("update-project", args);

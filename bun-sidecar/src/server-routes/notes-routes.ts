@@ -20,12 +20,17 @@ import {
     onNoteSavedTags,
     onNoteDeletedTags,
     onNoteRenamedTags,
+    createExplicitTag,
+    deleteExplicitTag,
+    isExplicitTag,
+    getExplicitTags,
 } from "@/features/notes/tags-service";
 
 export const notesRoutes = {
     "/api/notes/list": {
-        async POST() {
-            const result = await functions.getNotes.fx({});
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.getNotes.fx(args);
             return Response.json(result);
         },
     },
@@ -104,8 +109,9 @@ export const notesRoutes = {
     },
     // Folder routes
     "/api/notes/folders": {
-        async POST() {
-            const result = await functions.getFolders.fx({});
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await functions.getFolders.fx(args);
             return Response.json(result);
         },
     },
@@ -188,6 +194,33 @@ export const notesRoutes = {
     "/api/notes/tags/rebuild": {
         async POST() {
             const result = await rebuildTagsIndex();
+            return Response.json(result);
+        },
+    },
+    "/api/notes/tags/create-explicit": {
+        async POST(req: Request) {
+            const args = (await req.json()) as { tagName: string };
+            const result = await createExplicitTag({ tagName: args.tagName });
+            return Response.json(result);
+        },
+    },
+    "/api/notes/tags/delete-explicit": {
+        async POST(req: Request) {
+            const args = (await req.json()) as { tagName: string };
+            const result = await deleteExplicitTag({ tagName: args.tagName });
+            return Response.json(result);
+        },
+    },
+    "/api/notes/tags/is-explicit": {
+        async POST(req: Request) {
+            const args = (await req.json()) as { tagName: string };
+            const result = isExplicitTag({ tagName: args.tagName });
+            return Response.json({ isExplicit: result });
+        },
+    },
+    "/api/notes/tags/list-explicit": {
+        async POST() {
+            const result = getExplicitTags();
             return Response.json(result);
         },
     },
