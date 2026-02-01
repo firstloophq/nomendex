@@ -2,6 +2,7 @@ import { startupLog } from "@/lib/logger";
 import { initializePaths, hasActiveWorkspace, getActiveWorkspacePath } from "@/storage/root-path";
 import { initializeTodosService } from "@/features/todos/fx";
 import { initializeNotesService } from "@/features/notes/fx";
+import { initializeProjectsService } from "@/features/projects/fx";
 import { secrets } from "@/lib/secrets";
 import { onStartup } from "@/onStartup";
 
@@ -57,6 +58,7 @@ export async function initializeWorkspaceServices(): Promise<void> {
         try {
             await initializeTodosService();
             await initializeNotesService();
+            await initializeProjectsService();
             startupLog.info("Feature services initialized");
         } catch (error) {
             startupLog.error("Failed to initialize feature services", {

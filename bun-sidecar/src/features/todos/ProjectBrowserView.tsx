@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useTodosAPI } from "@/hooks/useTodosAPI";
+import { useProjectsAPI } from "@/hooks/useProjectsAPI";
 import { todosPluginSerial } from "./index";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function ProjectBrowserView() {
     const { loading, setLoading } = usePlugin();
     const { replaceTabWithNewView, activeTabId } = useWorkspaceContext();
     const todosAPI = useTodosAPI();
+    const projectsAPI = useProjectsAPI();
     const { currentTheme } = useTheme();
 
     const [projects, setProjects] = useState<string[]>([]);
@@ -35,13 +37,13 @@ export function ProjectBrowserView() {
     const loadData = async () => {
         setLoading(true);
         try {
+            // Get projects from the projects service (includes projects with no todos)
             const [projectConfigs, todos] = await Promise.all([
-                todosAPI.getProjectsList(),
+                projectsAPI.listProjects(),
                 todosAPI.getTodos()
             ]);
-            // Map project configs to names for compatibility
-            const projectList = projectConfigs.map((p: any) => p.name);
-            setProjects(projectList);
+            // Extract project names from configs
+            setProjects(projectConfigs.map(p => p.name));
             setAllTodos(todos.filter(t => !t.archived));
         } catch (error) {
             console.error("Failed to load data:", error);

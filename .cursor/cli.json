@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(bun)",
+      "Read(**/*)",
+      "Write(**/*)"
+    ],
+    "deny": [
+      "Read(.env*)",
+      "Write(**/.env*)"
+    ]
+  }
+}

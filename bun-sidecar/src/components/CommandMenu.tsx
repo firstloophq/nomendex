@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle, AlertTriangle } from "lucide-react";
+import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle, AlertTriangle, Columns2 } from "lucide-react";
 import { Command as CommandRoot, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
@@ -15,7 +15,7 @@ import { SearchNotesDialog } from "@/features/notes/search-notes-dialog";
 
 export function CommandMenu() {
     const [open, setOpen] = React.useState(false);
-    const { addNewTab, openTab, setActiveTabId, workspace, closeTab, closeAllTabs, setSidebarTabId, sidebarTabId, setSidebarOpen, sidebarOpen, activeTab } =
+    const { addNewTab, openTab, setActiveTabId, workspace, closeTab, closeAllTabs, setSidebarTabId, sidebarTabId, setSidebarOpen, sidebarOpen, activeTab, toggleLayoutMode, layoutMode } =
         useWorkspaceContext();
     const { navigate, currentPath } = useRouting();
     const { openDialog, closeDialog } = useCommandDialog();
@@ -74,6 +74,8 @@ export function CommandMenu() {
                 setSidebarOpen,
                 isSidebarOpen: () => sidebarOpen,
                 activeTab,
+                toggleLayoutMode,
+                getLayoutMode: () => layoutMode,
             });
 
             // Get commands from Todos plugin (placed first for better search priority)
@@ -150,6 +152,8 @@ export function CommandMenu() {
         setSidebarOpen,
         sidebarOpen,
         activeTab,
+        toggleLayoutMode,
+        layoutMode,
     ]);
 
     // Custom filter that prioritizes shorter/exact matches
@@ -234,6 +238,7 @@ export function CommandMenu() {
                                             Save,
                                             MessageCircle,
                                             AlertTriangle,
+                                            Columns2,
                                         };
                                         const IconComponent = iconMap[command.icon as keyof typeof iconMap] || FileText;
 

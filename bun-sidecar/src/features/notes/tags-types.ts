@@ -7,6 +7,13 @@
 
 import { StringSet } from "./backlinks-types";
 
+// Explicit tag definition with optional metadata
+export interface ExplicitTagDefinition {
+    name: string; // Tag name without #
+    createdAt: string; // ISO timestamp
+    // Future: color, description, etc.
+}
+
 // The persisted index structure
 export interface TagsIndex {
     version: 1;
@@ -23,6 +30,10 @@ export interface TagsIndex {
     // File modification times for incremental updates
     // Key: filename, Value: mtime in ms
     mtimes: Record<string, number>;
+
+    // User-defined explicit tags (persist even when unused)
+    // Key: tag name (without #), Value: tag definition
+    explicitTags?: Record<string, ExplicitTagDefinition>;
 }
 
 // Query result for autocomplete
@@ -39,5 +50,6 @@ export function createEmptyTagsIndex(): TagsIndex {
         tags: {},
         fileTags: {},
         mtimes: {},
+        explicitTags: {},
     };
 }

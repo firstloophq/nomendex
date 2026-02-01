@@ -1,4 +1,4 @@
-import { query, type SDKMessage, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKMessage, type McpServerConfig, type HookCallback, type PreToolUseHookInput } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync, mkdirSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
@@ -10,6 +10,7 @@ import type { AgentConfig } from "@/features/agents/index";
 import { createServiceLogger } from "@/lib/logger";
 import { secrets } from "@/lib/secrets";
 import { uiRendererServer } from "@/mcp-servers/ui-renderer";
+import { acquireFileLock, getActiveNoteFileNameForPath, releaseFileLockForToolUse } from "@/services/file-locks";
 
 // Create logger for chat routes
 const chatLogger = createServiceLogger("CHAT");
@@ -415,6 +416,64 @@ export const chatRoutes = {
                     }
                 };
 
+                type ToolInputWithFilePath = {
+                    file_path?: string;
+                    filePath?: string;
+                    path?: string;
+                };
+
+                const getToolFilePath = (toolInput?: ToolInputWithFilePath): string | null => {
+                    if (!toolInput) return null;
+                    if (typeof toolInput.file_path === "string") return toolInput.file_path;
+                    if (typeof toolInput.filePath === "string") return toolInput.filePath;
+                    if (typeof toolInput.path === "string") return toolInput.path;
+                    return null;
+                };
+
+                const lockOpenNoteFile: HookCallback = async (input, toolUseId) => {
+                    if (input.hook_event_name !== "PreToolUse") return {};
+                    const preInput = input as PreToolUseHookInput;
+                    const toolInput = preInput.tool_input as ToolInputWithFilePath | undefined;
+                    const filePath = getToolFilePath(toolInput);
+
+                    if (!filePath) {
+                        return {};
+                    }
+
+                    const noteFileName = await getActiveNoteFileNameForPath(filePath);
+                    if (!noteFileName) {
+                        return {};
+                    }
+
+                    const { lock, wasCreated } = acquireFileLock({
+                        noteFileName,
+                        agentId: agentConfig.id,
+                        agentName: agentConfig.name,
+                        toolUseId,
+                    });
+
+                    if (wasCreated) {
+                        pushToQueue({
+                            type: "file_lock",
+                            lock,
+                        });
+                    }
+
+                    return {};
+                };
+
+                const unlockNoteFile: HookCallback = async (_input, toolUseId) => {
+                    if (!toolUseId) return {};
+                    const released = releaseFileLockForToolUse(toolUseId);
+                    if (released) {
+                        pushToQueue({
+                            type: "file_unlock",
+                            noteFileName: released.noteFileName,
+                        });
+                    }
+                    return {};
+                };
+
                 console.log("[API] Starting SDK query iterator...");
 
                 // Create AbortController for this query
@@ -430,6 +489,8 @@ export const chatRoutes = {
                 const claudeCliPath = process.env.CLAUDE_CLI_PATH
                     || `${process.env.HOME}/.local/bin/claude`;
 
+                const modelOverride = "openai/gpt-oss-20b";
+
                 const sdkOptions: {
                     model: string;
                     cwd: string;
@@ -441,7 +502,7 @@ export const chatRoutes = {
                     pathToClaudeCodeExecutable: string;
                     settingSources: Array<"user" | "project">;
                 } = {
-                    model: agentConfig.model,
+                    model: modelOverride,
                     cwd: targetDir,
                     resume: sessionId,
                     maxTurns: 100,
@@ -544,6 +605,11 @@ export const chatRoutes = {
                             ...sdkOptions,
                             abortController,
                             canUseTool,
+                            hooks: {
+                                PreToolUse: [{ matcher: "Write|Edit|ApplyPatch", hooks: [lockOpenNoteFile] }],
+                                PostToolUse: [{ matcher: "Write|Edit|ApplyPatch", hooks: [unlockNoteFile] }],
+                                PostToolUseFailure: [{ matcher: "Write|Edit|ApplyPatch", hooks: [unlockNoteFile] }],
+                            },
                             stderr: (data: string) => {
                                 chatLogger.error("SDK STDERR", { data });
                             },

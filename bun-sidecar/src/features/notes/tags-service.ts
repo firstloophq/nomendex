@@ -7,9 +7,10 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "path";
+import yaml from "js-yaml";
 import { getNomendexPath, getNotesPath, getTodosPath, hasActiveWorkspace } from "@/storage/root-path";
 import { StringSet } from "./backlinks-types";
-import { TagsIndex, TagSuggestion, createEmptyTagsIndex } from "./tags-types";
+import { TagsIndex, TagSuggestion, createEmptyTagsIndex, ExplicitTagDefinition } from "./tags-types";
 import type { FileIndexData } from "./notes-indexer";
 
 // In-memory index for fast queries
@@ -21,12 +22,43 @@ let index: TagsIndex | null = null;
 const TAG_REGEX = /(?:^|[\s\[\(])#([a-zA-Z_][a-zA-Z0-9_-]*)/g;
 
 /**
- * Extract tags from markdown content
+ * Extract tags from YAML frontmatter
+ */
+function extractFrontmatterTags(content: string): string[] {
+    const frontMatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n/;
+    const match = content.match(frontMatterRegex);
+
+    if (!match) {
+        return [];
+    }
+
+    try {
+        const frontMatterYaml = match[1];
+        const frontMatter = yaml.load(frontMatterYaml) as Record<string, unknown>;
+
+        if (frontMatter && Array.isArray(frontMatter.tags)) {
+            return frontMatter.tags
+                .filter((tag): tag is string => typeof tag === "string")
+                .map(tag => tag.toLowerCase());
+        }
+        return [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Extract tags from markdown content (both frontmatter and inline #hashtags)
  */
 export function extractTags(content: string): string[] {
     const tags: string[] = [];
     let match;
 
+    // 1. Extract tags from YAML frontmatter
+    const frontmatterTags = extractFrontmatterTags(content);
+    tags.push(...frontmatterTags);
+
+    // 2. Extract inline #tags from body content
     // Reset regex state
     TAG_REGEX.lastIndex = 0;
 
@@ -64,7 +96,12 @@ async function loadIndexFromDisk(): Promise<TagsIndex | null> {
             return null;
         }
         const content = await file.text();
-        return JSON.parse(content) as TagsIndex;
+        const loaded = JSON.parse(content) as TagsIndex;
+        // Ensure explicitTags exists for backward compatibility
+        if (!loaded.explicitTags) {
+            loaded.explicitTags = {};
+        }
+        return loaded;
     } catch {
         return null;
     }
@@ -457,22 +494,36 @@ function updateFileInIndexWithTags(params: {
 
 /**
  * Get all tags for autocomplete, sorted by usage count
+ * Returns union of implicit tags (from files) and explicit tags (user-defined)
  */
 export function getAllTags(): TagSuggestion[] {
     if (!index) {
         return [];
     }
 
-    return Object.entries(index.tags)
-        .map(([tag, files]) => ({
-            tag,
-            count: StringSet.size(files),
-        }))
+    const tagMap = new Map<string, number>();
+
+    // Add implicit tags (from files)
+    for (const [tag, files] of Object.entries(index.tags)) {
+        tagMap.set(tag, StringSet.size(files));
+    }
+
+    // Add explicit tags (user-defined) - if not already present from files
+    const explicitTags = index.explicitTags || {};
+    for (const tag of Object.keys(explicitTags)) {
+        if (!tagMap.has(tag)) {
+            tagMap.set(tag, 0);
+        }
+    }
+
+    return Array.from(tagMap.entries())
+        .map(([tag, count]) => ({ tag, count }))
         .sort((a, b) => b.count - a.count);
 }
 
 /**
  * Search tags by prefix for autocomplete
+ * Searches both implicit tags (from files) and explicit tags (user-defined)
  */
 export function searchTags(params: { query: string }): TagSuggestion[] {
     if (!index) {
@@ -480,13 +531,25 @@ export function searchTags(params: { query: string }): TagSuggestion[] {
     }
 
     const query = params.query.toLowerCase();
+    const tagMap = new Map<string, number>();
 
-    return Object.entries(index.tags)
-        .filter(([tag]) => tag.startsWith(query))
-        .map(([tag, files]) => ({
-            tag,
-            count: StringSet.size(files),
-        }))
+    // Add matching implicit tags (from files)
+    for (const [tag, files] of Object.entries(index.tags)) {
+        if (tag.startsWith(query)) {
+            tagMap.set(tag, StringSet.size(files));
+        }
+    }
+
+    // Add matching explicit tags (user-defined) - if not already present from files
+    const explicitTags = index.explicitTags || {};
+    for (const tag of Object.keys(explicitTags)) {
+        if (tag.startsWith(query) && !tagMap.has(tag)) {
+            tagMap.set(tag, 0);
+        }
+    }
+
+    return Array.from(tagMap.entries())
+        .map(([tag, count]) => ({ tag, count }))
         .sort((a, b) => {
             // Exact match first, then by count
             if (a.tag === query) return -1;
@@ -625,4 +688,85 @@ export async function rebuildTagsIndex(): Promise<{ tagCount: number }> {
  */
 export function getTagsIndex(): TagsIndex | null {
     return index;
+}
+
+/**
+ * Create an explicit tag definition
+ */
+export async function createExplicitTag(params: { tagName: string }): Promise<{ success: boolean; tag: ExplicitTagDefinition }> {
+    if (!index || !hasActiveWorkspace()) {
+        throw new Error("No active workspace");
+    }
+
+    const tagName = params.tagName.toLowerCase().trim();
+
+    // Validate tag name (same rules as extraction regex)
+    if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(tagName)) {
+        throw new Error("Invalid tag name. Must start with letter/underscore and contain only letters, numbers, underscores, and hyphens.");
+    }
+
+    // Ensure explicitTags exists
+    if (!index.explicitTags) {
+        index.explicitTags = {};
+    }
+
+    // Check if already exists
+    if (index.explicitTags[tagName]) {
+        return { success: true, tag: index.explicitTags[tagName] };
+    }
+
+    // Create new explicit tag
+    const newTag: ExplicitTagDefinition = {
+        name: tagName,
+        createdAt: new Date().toISOString(),
+    };
+
+    index.explicitTags[tagName] = newTag;
+    await saveIndexToDisk(index);
+
+    return { success: true, tag: newTag };
+}
+
+/**
+ * Delete an explicit tag definition
+ * Note: This only removes the explicit definition, not the tag from files
+ */
+export async function deleteExplicitTag(params: { tagName: string }): Promise<{ success: boolean }> {
+    if (!index || !hasActiveWorkspace()) {
+        throw new Error("No active workspace");
+    }
+
+    const tagName = params.tagName.toLowerCase().trim();
+
+    if (!index.explicitTags || !index.explicitTags[tagName]) {
+        return { success: false };
+    }
+
+    delete index.explicitTags[tagName];
+    await saveIndexToDisk(index);
+
+    return { success: true };
+}
+
+/**
+ * Check if a tag is explicitly defined (vs only implicit)
+ */
+export function isExplicitTag(params: { tagName: string }): boolean {
+    if (!index) {
+        return false;
+    }
+
+    const tagName = params.tagName.toLowerCase().trim();
+    return !!(index.explicitTags && index.explicitTags[tagName]);
+}
+
+/**
+ * Get all explicit tag definitions
+ */
+export function getExplicitTags(): ExplicitTagDefinition[] {
+    if (!index || !index.explicitTags) {
+        return [];
+    }
+
+    return Object.values(index.explicitTags);
 }
