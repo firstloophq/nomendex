@@ -78,15 +78,34 @@ curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
   -H "Content-Type: application/json" \\
   -d '{"title": "My todo", "project": "work"}'
 
-# With explicit status
+# With status
 curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
   -H "Content-Type: application/json" \\
   -d '{"title": "My todo", "status": "in_progress", "project": "work"}'
+\`\`\`
 
-# With custom column (e.g. "Someday") - FIRST lookup column ID (e.g. "col-8f9a") using projects skill
-curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
-  -H "Content-Type: application/json" \\
-  -d '{"title": "My todo", "customColumnId": "col-8f9a", "project": "work"}'
+## Creating in Custom Columns
+
+**IMPORTANT**: \`customColumnId\` is NOT supported in the \`create\` endpoint. You MUST follow this workflow:
+
+1. **Get Project**: Load project to check case-sensitive name and get board config.
+2. **Create Todo**: Create the task in the project (it will start in default column).
+3. **Update Todo**: Immediately move it to the target custom column.
+
+\`\`\`bash
+# 1. Check project name (CASE SENSITIVE!) and get column ID
+# If project is "Demodata", then "demodata" will fail.
+PROJECT=$(curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" \\
+  -d '{"name": "Demodata"}')
+
+# 2. Create todo
+TODO=$(curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
+  -d '{"title": "My Task", "project": "Demodata"}')
+TODO_ID=$(echo $TODO | jq -r '.id')
+
+# 3. Move to custom column (e.g. from step 1 found "col-8f9a" for "Today")
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
+  -d '{"todoId": "$TODO_ID", "updates": {"customColumnId": "col-8f9a"}}'
 \`\`\`
 
 ## List Todos
