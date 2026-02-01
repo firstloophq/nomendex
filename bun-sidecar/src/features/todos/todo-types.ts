@@ -6,6 +6,7 @@ export const TodoSchema = z.object({
     title: z.string(),
     description: z.string().optional(),
     status: z.enum(["todo", "in_progress", "done", "later"]),
+    customColumnId: z.string().optional(), // ID sloupce z BoardConfig
     createdAt: z.string(),
     updatedAt: z.string(),
     archived: z.boolean().optional(),

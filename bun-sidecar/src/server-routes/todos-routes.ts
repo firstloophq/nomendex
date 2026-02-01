@@ -13,6 +13,9 @@ import {
     unarchiveTodo,
     getArchivedTodos,
     getTags,
+    getBoardConfig,
+    saveBoardConfig,
+    deleteColumn,
 } from "@/features/todos/fx";
 
 export const todosRoutes = {
@@ -89,6 +92,24 @@ export const todosRoutes = {
         async POST() {
             const result = await getTags();
             return Response.json(result);
+        },
+    },
+    "/api/todos/board-config/get": {
+        async POST(req: Request) {
+            const args = await req.json();
+            return Response.json(await getBoardConfig(args));
+        },
+    },
+    "/api/todos/board-config/save": {
+        async POST(req: Request) {
+            const args = await req.json();
+            return Response.json(await saveBoardConfig(args));
+        },
+    },
+    "/api/todos/column/delete": {
+        async POST(req: Request) {
+            const args = await req.json();
+            return Response.json(await deleteColumn(args));
         },
     },
 };

@@ -21,8 +21,8 @@ const DEFAULT_SKILLS: DefaultSkill[] = [
         files: {
             "SKILL.md": `---
 name: todos
-description: Manages project todos via REST API. Use when the user asks to create, view, update, or delete todos, list tasks by project, check task status, or filter by due date. Requires the Nomendex app to be running.
-version: 2
+description: Manages project todos via REST API. BEFORE using this skill, you must THINK: "Does the user mention a project? Does the user imply a specific column like Today?". Use when the user asks to create, view, update, or delete todos.
+version: 4
 ---
 
 # Todos Management
@@ -78,10 +78,34 @@ curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
   -H "Content-Type: application/json" \\
   -d '{"title": "My todo", "project": "work"}'
 
-# With explicit status
+# With status
 curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
   -H "Content-Type: application/json" \\
   -d '{"title": "My todo", "status": "in_progress", "project": "work"}'
+\`\`\`
+
+## Creating in Custom Columns
+
+**IMPORTANT**: \`customColumnId\` is NOT supported in the \`create\` endpoint. You MUST follow this workflow:
+
+1. **Get Project**: Load project to check case-sensitive name and get board config.
+2. **Create Todo**: Create the task in the project (it will start in default column).
+3. **Update Todo**: Immediately move it to the target custom column.
+
+\`\`\`bash
+# 1. Check project name (CASE SENSITIVE!) and get column ID
+# If project is "Demodata", then "demodata" will fail.
+PROJECT=$(curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" \\
+  -d '{"name": "Demodata"}')
+
+# 2. Create todo
+TODO=$(curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
+  -d '{"title": "My Task", "project": "Demodata"}')
+TODO_ID=$(echo $TODO | jq -r '.id')
+
+# 3. Move to custom column (e.g. from step 1 found "col-8f9a" for "Today")
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
+  -d '{"todoId": "$TODO_ID", "updates": {"customColumnId": "col-8f9a"}}'
 \`\`\`
 
 ## List Todos
@@ -98,23 +122,86 @@ curl -s -X POST "http://localhost:$PORT/api/todos/list" \\
   -d '{"project": "work"}'
 \`\`\`
 
-## Update Todo
+## Mandatory Execution Protocol
 
+Follow this checklist exactly for every request:
+
+1.  **Context Analysis**:
+    *   **Project Extraction**: Identify project name (e.g. "Nomendex dev").
+    *   **Column Extraction**: Identify urgency/column (e.g. "today").
+    *   **Title Cleaning**: Remove project and column words from the user's sentence to get the core task title.
+        *   *Bad*: "Today I need to fix a UI bug in Nomedex dev"
+        *   *Good*: "Fix a UI bug"
+
+2.  **Verification (BLOCKING STEP)**:
+    *   **STOP!** You cannot create the task yet.
+    *   \`POST /api/todos/projects\` -> Check exact case-sensitive project name.
+    *   \`POST /api/projects/get-by-name\` -> Load board config to find column IDs.
+
+3.  **Execution**:
+    *   Create using the **Cleaned Title**.
+    *   Updates MUST happen immediately after to move to custom columns.
+
+## Anti-Patterns (DO NOT DO)
+
+*   ❌ **DO NOT use raw input as title**: Clean it first! "Add task X to project Y" -> Title: "X".
+*   ❌ **DO NOT guess IDs**: Never use \`col-today\`. Look it up!
+*   ❌ **DO NOT create with customColumnId**: API ignores it. Create then Update.
+
+## Golden Example (Few-Shot)
+
+**User**: "Today I need to fix a UI bug in Nomedex dev: tag deletion icon UI"
+
+**Agent Thought Process**:
+1.  *Analyze*:
+    *   Project: "Nomedex dev" (needs verification)
+    *   Column: "Dneska" -> Today
+    *   **Clean Title**: "Fix a UI bug: tag deletion icon UI" (Removed project/time context)
+2.  *Verify*: Must check project list for "Nomedex dev".
+
+**Agent Actions**:
 \`\`\`bash
-# Update status
-curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
-  -H "Content-Type: application/json" \\
-  -d '{"todoId": "todo-123", "updates": {"status": "done"}}'
+# 1. List projects to find REAL name
+curl -s -X POST "http://localhost:$PORT/api/todos/projects" -d '{}'
+# Result: ["Nomendex dev"] (Note capital N!)
 
-# Update multiple fields
+# 2. Get board for "Nomendex dev" to find "Today" column
+curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" -d '{"name": "Nomendex dev"}'
+# Result: columns: [{ "title": "Today", "id": "col-8f9a..." }]
+
+# 3. Create Task with CLEAN TITLE and CORRECT PROJECT
+# Title is NOT "Today I need...", it is just the task itself.
+TODO=$(curl -s -X POST "http://localhost:$PORT/api/todos/create" \\
+  -d '{"title": "Fix a UI bug: tag deletion icon UI", "project": "Nomendex dev"}')
+ID=$(echo $TODO | jq -r '.id')
+
+# 4. Move to Target Column
 curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
-  -H "Content-Type: application/json" \\
-  -d '{"todoId": "todo-123", "updates": {"title": "New title", "status": "in_progress"}}'
+  -d '{"todoId": "$ID", "updates": {"customColumnId": "col-8f9a..."}}'
 \`\`\`
 
 ## How Claude Should Use This Skill
 
 Always start by getting the server port, then use the appropriate endpoint.
+
+## Custom Kanban Columns
+
+Projects can have custom Kanban columns beyond the default statuses. To work with custom columns:
+
+1. Use the **projects** skill to load the project and its board configuration
+2. Get the column ID from the board config (e.g. map "Someday" -> "col-8f9a")
+3. Update the todo with \`customColumnId\`
+
+> **IMPORTANT**: Column IDs are dynamic generated UUIDs. NEVER guess an ID like "col-today". ALWAYS map the user's requested column name to the actual ID found in the project configuration.
+
+Example: Moving a todo to a "Code Review" column:
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
+  -H "Content-Type: application/json" \\
+  -d '{"todoId": "todo-123", "updates": {"customColumnId": "col-review"}}'
+\`\`\`
+
+See the **projects** skill for full documentation on loading board configurations and working with custom columns.
 `,
         },
     },
@@ -169,6 +256,158 @@ version: 1
 ## Rendering Custom UI
 
 For rendering interactive HTML interfaces in chat, use the **create-interface** skill which provides comprehensive documentation on the \`mcp__noetect-ui__render_ui\` tool.
+`,
+        },
+    },
+    {
+        name: "projects",
+        files: {
+            "SKILL.md": `---
+name: projects
+description: Working with projects and custom Kanban boards. BEFORE using this skill, you must THINK: "Does the user assume the project already exists? Am I creating a duplicate because of case sensitivity?". Use when the user mentions a project name.
+version: 3
+---
+
+# Projects Skill
+
+## Overview
+
+Projects are stored in \`.nomendex/projects.json\` - the source of truth for all project data including custom Kanban board configurations. Each project can have custom columns with optional status mapping.
+
+## Mandatory Verification Protocol
+
+1.  **List First**: Always call \`/api/projects/list\` before creating a new project.
+2.  **Case Check**: Compare user input ("nomendex") with existing list ("Nomendex").
+3.  **Reuse**: If a match (even case-insensitive) exists, USE IT. Do not create a duplicate.
+
+## Anti-Patterns (DO NOT DO)
+
+*   ❌ **DO NOT create blindly**: "Create project X" -> List first!
+*   ❌ **DO NOT duplicate**: "nomendex" and "Nomendex" should not coexist.
+
+
+## Port Discovery
+
+\`\`\`bash
+PORT=$(cat ~/Library/Application\\\\ Support/com.firstloop.nomendex/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
+\`\`\`
+
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| \`/api/projects/list\` | List all projects |
+| \`/api/projects/get\` | Get project by ID |
+| \`/api/projects/get-by-name\` | Get project by name |
+| \`/api/projects/create\` | Create new project |
+| \`/api/projects/update\` | Update project (name, color, board) |
+| \`/api/projects/board/get\` | Get board config for project |
+| \`/api/projects/board/save\` | Save board config for project |
+
+## Loading a Project
+
+\`\`\`bash
+# By name (recommended)
+curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"name": "PROJECT_NAME"}'
+
+# By ID
+curl -s -X POST "http://localhost:$PORT/api/projects/get" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"projectId": "project-id"}'
+\`\`\`
+
+## Getting Board Configuration
+
+The board config contains custom columns with their IDs and status mappings:
+
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/projects/board/get" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"projectId": "PROJECT_ID"}'
+\`\`\`
+
+Response example:
+\`\`\`json
+{
+  "columns": [
+    {"id": "col-today", "title": "Today", "order": 1, "status": "todo"},
+    {"id": "col-review", "title": "Code Review", "order": 2},
+    {"id": "col-done", "title": "Done", "order": 3, "status": "done"}
+  ],
+  "showDone": true
+}
+\`\`\`
+
+## Moving a Task to a Column
+
+After loading the project, find the correct column by name and use its ID:
+
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"todoId": "TODO_ID", "updates": {"customColumnId": "COLUMN_ID"}}'
+\`\`\`
+
+## Saving Board Configuration
+
+Create or update custom columns:
+
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/projects/board/save" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{
+    "projectId": "PROJECT_ID",
+    "board": {
+      "columns": [
+        {"id": "col-1", "title": "Today", "order": 1, "status": "todo"},
+        {"id": "col-2", "title": "In Progress", "order": 2, "status": "in_progress"},
+        {"id": "col-3", "title": "Review", "order": 3},
+        {"id": "col-4", "title": "Done", "order": 4, "status": "done"}
+      ],
+      "showDone": true
+    }
+  }'
+\`\`\`
+
+## Workflow Example
+
+User: "Move the Fix bug task to Code Review in the Nomendex project"
+
+1. Get project by name → extract projectId
+2. Get board config → find "Code Review" column → get its ID
+3. Update todo with customColumnId
+
+\`\`\`bash
+# Step 1: Get project
+PROJECT=$(curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"name": "Nomendex"}')
+
+# Step 2: Get board config (extract projectId from response)
+BOARD=$(curl -s -X POST "http://localhost:$PORT/api/projects/board/get" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"projectId": "nomendex"}')
+
+# Step 3: Update todo (find column ID from board response)
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"todoId": "fix-bug-123", "updates": {"customColumnId": "col-review"}}'
+\`\`\`
+
+## Column Status Mapping
+
+Columns can have an optional \`status\` field. When a todo is moved to a column with a status, the todo's status is automatically updated:
+
+| Status | Description |
+|--------|-------------|
+| \`todo\` | Not started |
+| \`in_progress\` | Currently working on |
+| \`done\` | Completed |
+| \`later\` | Deferred |
+
+Columns without a status field don't affect the todo's status when items are moved there.
 `,
         },
     },

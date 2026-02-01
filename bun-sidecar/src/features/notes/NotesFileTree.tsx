@@ -388,6 +388,7 @@ function TreeItem({
                     className="p-0.5 hover:bg-muted rounded"
                     onClick={(e) => {
                         e.stopPropagation();
+                        // onDeleteNote now shows confirmation dialog (handled by parent)
                         onDeleteNote(note.fileName);
                     }}
                     title="Delete note"

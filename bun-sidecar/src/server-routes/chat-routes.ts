@@ -489,7 +489,7 @@ export const chatRoutes = {
                 const claudeCliPath = process.env.CLAUDE_CLI_PATH
                     || `${process.env.HOME}/.local/bin/claude`;
 
-                const modelOverride = "openai/gpt-oss-20b";
+                const modelOverride = agentConfig.model || "claude-sonnet-4-20250514";
 
                 const sdkOptions: {
                     model: string;
@@ -741,8 +741,8 @@ export const chatRoutes = {
                         // Check if this is a user-initiated abort (not an error)
                         const isAbort = error instanceof Error &&
                             (error.message.includes("aborted by user") ||
-                             error.name === "AbortError" ||
-                             abortController.signal.aborted);
+                                error.name === "AbortError" ||
+                                abortController.signal.aborted);
 
                         if (isAbort) {
                             console.log(`[API] Query cancelled by user after ${elapsed}s, ${messageCount} messages received`);

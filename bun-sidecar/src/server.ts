@@ -13,6 +13,7 @@ import { chatRoutes } from "./server-routes/chat-routes";
 import { agentsRoutes } from "./server-routes/agents-routes";
 import { secretsRoutes } from "./server-routes/secrets-routes";
 import { skillsRoutes } from "./server-routes/skills-routes";
+import { projectsRoutes } from "./server-routes/projects-routes";
 import { workspacesRoutes } from "./server-routes/workspaces-routes";
 import { mcpServersRoutes } from "./server-routes/mcp-servers-routes";
 import { filesystemRoutes } from "./server-routes/filesystem-routes";
@@ -20,7 +21,7 @@ import { uploadsRoutes } from "./server-routes/uploads-routes";
 import { versionRoutes } from "./server-routes/version-routes";
 import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
-import { projectsRoutes } from "./server-routes/projects-routes";
+
 
 // Terminal WebSocket data type
 interface TerminalWSData {
@@ -237,6 +238,20 @@ const server = serve<WSData>({
         "/api/git/abort-merge": gitAbortMergeRoute,
         "/api/git/continue-merge": gitContinueMergeRoute,
         "/api/git/conflict-content": gitConflictContentRoute,
+
+        // Catch-all for unknown API routes - return JSON 404 instead of HTML
+        "/api/*": {
+            GET(req: Request) {
+                const url = new URL(req.url);
+                serverLogger.warn(`Unknown API endpoint: ${url.pathname}`, { method: "GET" });
+                return Response.json({ error: "Not found", path: url.pathname }, { status: 404 });
+            },
+            POST(req: Request) {
+                const url = new URL(req.url);
+                serverLogger.warn(`Unknown API endpoint: ${url.pathname}`, { method: "POST" });
+                return Response.json({ error: "Not found", path: url.pathname }, { status: 404 });
+            },
+        },
 
         // This add end to catch all routes and route to frontend
         "/*": index,

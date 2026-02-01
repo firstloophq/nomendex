@@ -379,6 +379,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                     onEdit={(t) => handleOpenTodo(t.id)}
                     onDelete={deleteTodoWithToast}
                     onArchive={unarchiveTodoWithToast}
+                    hideStatusIcon={true}
                 />
             </div>
         );
@@ -485,9 +486,10 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                             <div className="transform rotate-2 opacity-80">
                                 <TodoCard
                                     todo={draggedTodo}
-                                    onEdit={() => {}}
-                                    onDelete={() => {}}
-                                    onArchive={() => {}}
+                                    onEdit={() => { }}
+                                    onDelete={() => { }}
+                                    onArchive={() => { }}
+                                    hideStatusIcon={true}
                                 />
                             </div>
                         ) : null}

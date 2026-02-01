@@ -7,6 +7,7 @@ import { ArchivedBrowserView } from "./archived-view";
 import { FunctionStubs } from "@/types/Functions";
 import { TodoSchema } from "./todo-types";
 import { AttachmentSchema } from "@/types/attachments";
+import { BoardConfigSchema } from "./board-types";
 
 // Export the commands function for use in CommandMenu
 export { getTodosCommands } from "./commands";
@@ -50,6 +51,7 @@ export const functionStubs = {
                 tags: z.array(z.string()).optional(),
                 dueDate: z.string().optional(),
                 attachments: z.array(AttachmentSchema).optional(),
+                customColumnId: z.string().optional(),
             }),
         }),
         output: TodoSchema,
@@ -84,6 +86,18 @@ export const functionStubs = {
     getTags: {
         input: z.object({}),
         output: z.array(z.string()),
+    },
+    getBoardConfig: {
+        input: z.object({ projectId: z.string() }),
+        output: BoardConfigSchema.nullable(),
+    },
+    saveBoardConfig: {
+        input: z.object({ config: BoardConfigSchema }),
+        output: BoardConfigSchema,
+    },
+    deleteColumn: {
+        input: z.object({ projectId: z.string(), columnId: z.string() }),
+        output: z.object({ success: z.boolean() }),
     },
 } satisfies FunctionStubs;
 
