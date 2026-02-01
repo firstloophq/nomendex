@@ -1720,9 +1720,20 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
                             toast.error("Failed to save settings");
                         }
                     }}
-                    onDeleteColumn={async (_columnId) => {
-                        // Column deletion is now handled as part of saving the full config
-                        // No separate API call needed
+                    onDeleteColumn={async (columnId) => {
+                        try {
+                            // Backend migration of todos + column deletion
+                            await todosAPI.deleteColumn({
+                                projectId: filterProject,
+                                columnId: columnId,
+                            });
+                            // Refresh todos to see them in new columns
+                            await loadTodos();
+                        } catch (error) {
+                            console.error("Failed to delete column", error);
+                            toast.error("Failed to delete column");
+                            throw error; // Re-throw to let dialog handle UI state if needed
+                        }
                     }}
                 />
             )}

@@ -72,6 +72,7 @@ export const todosAPI = {
     // Board config - now uses projects API
     getBoardConfig: (args: { projectId?: string; projectName?: string }) => fetchProjectsAPI<BoardConfig | null>("board/get", args),
     saveBoardConfig: (args: { projectId?: string; projectName?: string; board: BoardConfig }) => fetchProjectsAPI<ProjectConfig>("board/save", args),
+    deleteColumn: (args: { projectId: string; columnId: string }) => fetchProjectsAPI<{ success: boolean }>("column/delete", args),
     // Projects service API
     getProjectsList: () => fetch("/api/projects/list", { method: "POST" }).then(r => r.json() as Promise<any[]>),
 };
