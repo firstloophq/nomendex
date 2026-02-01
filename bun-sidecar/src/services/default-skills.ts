@@ -22,7 +22,7 @@ const DEFAULT_SKILLS: DefaultSkill[] = [
             "SKILL.md": `---
 name: todos
 description: Manages project todos via REST API. Use when the user asks to create, view, update, or delete todos, list tasks by project, check task status, or filter by due date. Requires the Nomendex app to be running.
-version: 2
+version: 3
 ---
 
 # Todos Management
@@ -115,6 +115,23 @@ curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
 ## How Claude Should Use This Skill
 
 Always start by getting the server port, then use the appropriate endpoint.
+
+## Custom Kanban Columns
+
+Projects can have custom Kanban columns beyond the default statuses. To work with custom columns:
+
+1. Use the **projects** skill to load the project and its board configuration
+2. Get the column ID from the board config
+3. Update the todo with \`customColumnId\`
+
+Example: Moving a todo to a "Code Review" column:
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
+  -H "Content-Type: application/json" \\
+  -d '{"todoId": "todo-123", "updates": {"customColumnId": "col-review"}}'
+\`\`\`
+
+See the **projects** skill for full documentation on loading board configurations and working with custom columns.
 `,
         },
     },
@@ -177,45 +194,138 @@ For rendering interactive HTML interfaces in chat, use the **create-interface** 
         files: {
             "SKILL.md": `---
 name: projects
-description: Working with projects and Kanban boards. Use when the user mentions a project name, wants to move an item to a column, or asks about the project structure.
-version: 1
+description: Working with projects and custom Kanban boards. Use when the user mentions a project name, wants to move an item to a column, configure board columns, or asks about project structure.
+version: 2
 ---
 
 # Projects Skill
 
-## Workflow
+## Overview
 
-1. Get the server port
-2. Load the project using /api/projects/get
-3. Use customColumnId to move items
+Projects are stored in \`.nomendex/projects.json\` - the source of truth for all project data including custom Kanban board configurations. Each project can have custom columns with optional status mapping.
 
-## Loading a project
+## Port Discovery
 
 \`\`\`bash
-PORT=$(cat ~/Library/Application\\ Support/com.firstloop.nomendex/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
-
-curl -s -X POST "http://localhost:$PORT/api/projects/get" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name": "PROJECT_NAME"}'
+PORT=$(cat ~/Library/Application\\\\ Support/com.firstloop.nomendex/serverport.json | grep -o '"port":[0-9]*' | cut -d: -f2)
 \`\`\`
 
-## Moving a task to a column
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| \`/api/projects/list\` | List all projects |
+| \`/api/projects/get\` | Get project by ID |
+| \`/api/projects/get-by-name\` | Get project by name |
+| \`/api/projects/create\` | Create new project |
+| \`/api/projects/update\` | Update project (name, color, board) |
+| \`/api/projects/board/get\` | Get board config for project |
+| \`/api/projects/board/save\` | Save board config for project |
+
+## Loading a Project
+
+\`\`\`bash
+# By name (recommended)
+curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"name": "PROJECT_NAME"}'
+
+# By ID
+curl -s -X POST "http://localhost:$PORT/api/projects/get" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"projectId": "project-id"}'
+\`\`\`
+
+## Getting Board Configuration
+
+The board config contains custom columns with their IDs and status mappings:
+
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/projects/board/get" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"projectId": "PROJECT_ID"}'
+\`\`\`
+
+Response example:
+\`\`\`json
+{
+  "columns": [
+    {"id": "col-todo", "title": "To Do", "order": 1, "status": "todo"},
+    {"id": "col-review", "title": "Code Review", "order": 2},
+    {"id": "col-done", "title": "Done", "order": 3, "status": "done"}
+  ],
+  "showDone": true
+}
+\`\`\`
+
+## Moving a Task to a Column
 
 After loading the project, find the correct column by name and use its ID:
 
 \`\`\`bash
-curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
-  -H "Content-Type: application/json" \\
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\\\
+  -H "Content-Type: application/json" \\\\
   -d '{"todoId": "TODO_ID", "updates": {"customColumnId": "COLUMN_ID"}}'
+\`\`\`
+
+## Saving Board Configuration
+
+Create or update custom columns:
+
+\`\`\`bash
+curl -s -X POST "http://localhost:$PORT/api/projects/board/save" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{
+    "projectId": "PROJECT_ID",
+    "board": {
+      "columns": [
+        {"id": "col-1", "title": "Backlog", "order": 1, "status": "todo"},
+        {"id": "col-2", "title": "In Progress", "order": 2, "status": "in_progress"},
+        {"id": "col-3", "title": "Review", "order": 3},
+        {"id": "col-4", "title": "Done", "order": 4, "status": "done"}
+      ],
+      "showDone": true
+    }
+  }'
 \`\`\`
 
 ## Workflow Example
 
 User: "Move the Fix bug task to Code Review in the Nomendex project"
 
-1. Load the Nomendex project → you get the columns
-2. Find the "Code Review" column → id is "col-review"
-3. Call update with customColumnId: "col-review"
+1. Get project by name → extract projectId
+2. Get board config → find "Code Review" column → get its ID
+3. Update todo with customColumnId
+
+\`\`\`bash
+# Step 1: Get project
+PROJECT=$(curl -s -X POST "http://localhost:$PORT/api/projects/get-by-name" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"name": "Nomendex"}')
+
+# Step 2: Get board config (extract projectId from response)
+BOARD=$(curl -s -X POST "http://localhost:$PORT/api/projects/board/get" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"projectId": "nomendex"}')
+
+# Step 3: Update todo (find column ID from board response)
+curl -s -X POST "http://localhost:$PORT/api/todos/update" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"todoId": "fix-bug-123", "updates": {"customColumnId": "col-review"}}'
+\`\`\`
+
+## Column Status Mapping
+
+Columns can have an optional \`status\` field. When a todo is moved to a column with a status, the todo's status is automatically updated:
+
+| Status | Description |
+|--------|-------------|
+| \`todo\` | Not started |
+| \`in_progress\` | Currently working on |
+| \`done\` | Completed |
+| \`later\` | Deferred |
+
+Columns without a status field don't affect the todo's status when items are moved there.
 `,
         },
     },

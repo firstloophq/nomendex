@@ -66,13 +66,14 @@ Tasks (Todos) are "first-class citizens" within projects.
 
 ### Schema Architecture
 
-Types are defined in `board-types.ts` (single source of truth) and re-exported from `projects-types.ts`:
+Types are defined in `project-types.ts` (single source of truth):
 
 ```
-board-types.ts           projects-types.ts
-├── BoardColumnSchema    ← re-exports BoardColumn, BoardConfig
-├── BoardConfigSchema    ← re-exports + adds EmbeddedBoardConfigSchema
-└── getDefaultColumns()  └── ProjectConfigSchema (uses EmbeddedBoardConfig)
+project-types.ts
+├── BoardColumnSchema    
+├── BoardConfigSchema    
+├── ProjectConfigSchema (includes optional board)
+└── getDefaultColumns()
 ```
 
 ### Data Model
@@ -87,21 +88,11 @@ interface BoardColumn {
 }
 ```
 
-#### BoardConfig (standalone storage in `board-configs.json`)
+#### BoardConfig (embedded in ProjectConfig)
 ```typescript
 interface BoardConfig {
-    id: string;           // Record identifier for FileDatabase
-    projectId: string;    // Reference to project
     columns: BoardColumn[];
     showDone: boolean;    // Hide completed items (default: true)
-}
-```
-
-#### EmbeddedBoardConfig (embedded in `projects.json`)
-```typescript
-interface EmbeddedBoardConfig {
-    columns: BoardColumn[];
-    showDone: boolean;    // (without id/projectId - embedded in ProjectConfig)
 }
 ```
 
@@ -111,7 +102,9 @@ interface ProjectConfig {
     id: string;           // "proj-abc123"
     name: string;         // "Nomendex"
     description?: string;
-    board?: EmbeddedBoardConfig;  // Embedded board configuration
+    color?: string;
+    archived?: boolean;
+    board?: BoardConfig;  // Embedded board configuration
     createdAt: string;
     updatedAt: string;
 }
@@ -134,9 +127,12 @@ Difference in understanding task positioning:
 Board configuration is part of the Project entity.
 
 *   **List Projects:** `POST /api/projects/list` `{}`
-*   **Get Project:** `POST /api/projects/get` `{ "name": "My Project" }` or `{ "id": "proj-123" }`
-*   **Save Project:** `POST /api/projects/save` `{ "project": ProjectConfig }`
-*   **Delete Project:** `POST /api/projects/delete` `{ "id": "proj-123" }`
+*   **Get Project by ID:** `POST /api/projects/get` `{ "projectId": "proj-123" }`
+*   **Get Project by Name:** `POST /api/projects/get-by-name` `{ "name": "My Project" }`
+*   **Update Project:** `POST /api/projects/update` `{ "projectId": "...", "updates": {...} }`
+*   **Get Board Config:** `POST /api/projects/board/get` `{ "projectId": "proj-123" }`
+*   **Save Board Config:** `POST /api/projects/board/save` `{ "projectId": "...", "board": BoardConfig }`
+*   **Delete Project:** `POST /api/projects/delete` `{ "projectId": "proj-123" }`
 
 ### Default Columns for New Boards
 

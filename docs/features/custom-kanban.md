@@ -88,19 +88,33 @@ Features:
 
 Board configuration is now part of the Project entity. To change the board, you update the project.
 
-### Get Project (matches by name or ID)
+### Get Project (by name or ID)
 
 ```
-POST /api/projects/get
+POST /api/projects/get-by-name
 Body: { "name": "My Project" }
 Response: ProjectConfig | null
 ```
 
-### Save Project (updates board config)
+```
+POST /api/projects/get
+Body: { "projectId": "proj-123" }
+Response: ProjectConfig | null
+```
+
+### Get Board Config
 
 ```
-POST /api/projects/save
-Body: { "project": ProjectConfig }
+POST /api/projects/board/get
+Body: { "projectId": "proj-123" }
+Response: BoardConfig | null
+```
+
+### Save Board Config
+
+```
+POST /api/projects/board/save
+Body: { "projectId": "proj-123", "board": BoardConfig }
 Response: ProjectConfig
 ```
 
@@ -130,8 +144,8 @@ This enables workflows like:
 
 ```
 bun-sidecar/src/features/projects/
-├── projects-types.ts        # ProjectConfig, BoardConfig schemas
-├── projects-service.ts      # Backend: getAllProjects, saveProject
+├── project-types.ts         # ProjectConfig, BoardConfig, BoardColumn schemas
+├── fx.ts                    # Backend: listProjects, getProject, saveBoardConfig
 ├── index.ts                 # Plugin definition
 ├── project-detail-view.tsx  # Kanban UI with custom column support
 └── CreateProjectDialog.tsx  # Project creation UI
