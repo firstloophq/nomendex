@@ -11,21 +11,51 @@ const logger = createServiceLogger("DEFAULT-SKILLS");
  * Embedded default skills - these are written to workspace on first init
  */
 interface DefaultSkill {
-    name: string;
-    files: Record<string, string>; // filename -> content
+  name: string;
+  files: Record<string, string>; // filename -> content
 }
 
 const DEFAULT_SKILLS: DefaultSkill[] = [
-    {
-        name: "todos",
-        files: {
-            "SKILL.md": `---
+  {
+    name: "todos",
+    files: {
+      "SKILL.md": `---
 name: todos
 description: Manages project todos via REST API. BEFORE using this skill, you must THINK: "Does the user mention a project? Does the user imply a specific column like Today?". Use when the user asks to create, view, update, or delete todos.
-version: 4
+version: 5
 ---
 
 # Todos Management
+
+## ⚠️ REQUIRED WORKFLOW (Always Do This)
+
+> **NEVER skip Step 1!** You MUST load project context before creating/updating todos.
+
+| Step | Action | Why |
+|------|--------|-----|
+| **1. LOAD PROJECT** | \`/api/projects/get-by-name\` | Get columns, verify project name |
+| **2. THEN ACT** | \`/api/todos/create\` or \`update\` | Now you know the structure |
+
+## 🎯 Core Concept: Custom Columns
+
+Every project can have **custom Kanban columns** with user-defined names. You CANNOT assume column names!
+
+**Examples of column names users might create:**
+- Time-based: "Today", "This Week", "Next Sprint", "Someday"
+- Workflow: "Backlog", "In Review", "Testing", "Deployed"  
+- Priority: "Urgent", "High", "Low"
+
+**Key rules:**
+1. Column names are freeform text, NOT predefined
+2. Always map user's words to actual column IDs from board config
+3. Match project names **case-insensitively** (if user says "my project" but "My Project" exists, use the existing one)
+
+### Status vs Custom Column
+
+| Concept | Purpose | Values |
+|---------|---------|--------|
+| **status** | Lifecycle state (for filtering) | \`todo\`, \`in_progress\`, \`done\`, \`later\` |
+| **customColumnId** | Visual position on board | UUID like \`col-a1b2c3d4\` |
 
 ## Overview
 
@@ -203,12 +233,12 @@ curl -s -X POST "http://localhost:$PORT/api/todos/update" \\
 
 See the **projects** skill for full documentation on loading board configurations and working with custom columns.
 `,
-        },
     },
-    {
-        name: "manage-skills",
-        files: {
-            "SKILL.md": `---
+  },
+  {
+    name: "manage-skills",
+    files: {
+      "SKILL.md": `---
 name: manage-skills
 description: Manages Claude Code skills - creates, updates, and maintains skills following established design principles. Use when the user asks to create a skill, update a skill, refactor a skill, or wants to teach Claude a new capability.
 version: 3
@@ -257,12 +287,12 @@ version: 1
 
 For rendering interactive HTML interfaces in chat, use the **create-interface** skill which provides comprehensive documentation on the \`mcp__noetect-ui__render_ui\` tool.
 `,
-        },
     },
-    {
-        name: "projects",
-        files: {
-            "SKILL.md": `---
+  },
+  {
+    name: "projects",
+    files: {
+      "SKILL.md": `---
 name: projects
 description: Working with projects and custom Kanban boards. BEFORE using this skill, you must THINK: "Does the user assume the project already exists? Am I creating a duplicate because of case sensitivity?". Use when the user mentions a project name.
 version: 3
@@ -409,12 +439,12 @@ Columns can have an optional \`status\` field. When a todo is moved to a column 
 
 Columns without a status field don't affect the todo's status when items are moved there.
 `,
-        },
     },
-    {
-        name: "create-interface",
-        files: {
-            "SKILL.md": `---
+  },
+  {
+    name: "create-interface",
+    files: {
+      "SKILL.md": `---
 name: create-interface
 description: Renders interactive HTML interfaces in chat using the render_ui tool. Use when the user asks to display UI, create a widget, show a form, render a chart, build an interface, or display interactive content.
 version: 1
@@ -606,12 +636,12 @@ Set a fixed \`height\` parameter to disable auto-resize.
 - Forms work but submissions stay within the iframe
 - Safe for displaying user-generated or dynamic content
 `,
-        },
     },
-    {
-        name: "daily-notes",
-        files: {
-            "SKILL.md": `---
+  },
+  {
+    name: "daily-notes",
+    files: {
+      "SKILL.md": `---
 name: daily-notes
 description: Manages daily notes with M-D-YYYY format (e.g., 1-1-2026.md). Use when the user asks to view recent notes, create daily notes, read today's notes, summarize the week, or references @notes/ or dates. Can fetch last 7 days of notes. Notes location is configurable in Settings > Storage.
 version: 1
@@ -707,7 +737,7 @@ User: "Add this to my daily note: Completed feature X"
 3. **Preserve existing content** - Use Edit tool, not Write when modifying
 4. **Support natural language dates** - Convert to \`M-D-YYYY\` format
 `,
-            "daily-note.sh": `#!/bin/bash
+      "daily-note.sh": `#!/bin/bash
 
 # Daily Notes CLI
 # Manages daily notes in M-D-YYYY format (e.g., 1-1-2026.md)
@@ -829,8 +859,8 @@ case "$COMMAND" in
         ;;
 esac
 `,
-        },
     },
+  },
 ];
 
 /**
@@ -843,145 +873,145 @@ let pendingUpdates: SkillUpdateInfo[] = [];
  * Parse SKILL.md frontmatter to extract metadata including version
  */
 function parseSkillFrontmatter(content: string): SkillMetadata | null {
-    const frontMatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
-    const match = content.match(frontMatterRegex);
+  const frontMatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
+  const match = content.match(frontMatterRegex);
 
-    if (!match) {
-        return null;
+  if (!match) {
+    return null;
+  }
+
+  try {
+    const frontMatterYaml = match[1];
+    const parsed = yaml.load(frontMatterYaml);
+    const result = SkillMetadataSchema.safeParse(parsed);
+
+    if (result.success) {
+      return result.data;
     }
 
-    try {
-        const frontMatterYaml = match[1];
-        const parsed = yaml.load(frontMatterYaml);
-        const result = SkillMetadataSchema.safeParse(parsed);
-
-        if (result.success) {
-            return result.data;
-        }
-
-        logger.warn("Invalid skill frontmatter schema", { parsed, error: result.error });
-        return null;
-    } catch (error) {
-        logger.error("Failed to parse skill frontmatter", { error });
-        return null;
-    }
+    logger.warn("Invalid skill frontmatter schema", { parsed, error: result.error });
+    return null;
+  } catch (error) {
+    logger.error("Failed to parse skill frontmatter", { error });
+    return null;
+  }
 }
 
 /**
  * Get the version of an installed skill, or null if not installed
  */
 async function getInstalledSkillVersion(skillName: string): Promise<number | null> {
-    if (!hasActiveWorkspace()) {
-        return null;
-    }
+  if (!hasActiveWorkspace()) {
+    return null;
+  }
 
-    const skillPath = path.join(getSkillsPath(), skillName, "SKILL.md");
-    const file = Bun.file(skillPath);
+  const skillPath = path.join(getSkillsPath(), skillName, "SKILL.md");
+  const file = Bun.file(skillPath);
 
-    if (!(await file.exists())) {
-        return null;
-    }
+  if (!(await file.exists())) {
+    return null;
+  }
 
-    try {
-        const content = await file.text();
-        const metadata = parseSkillFrontmatter(content);
-        return metadata?.version ?? null;
-    } catch {
-        return null;
-    }
+  try {
+    const content = await file.text();
+    const metadata = parseSkillFrontmatter(content);
+    return metadata?.version ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Get metadata for an embedded default skill
  */
 function getDefaultSkillMetadata(skillName: string): SkillMetadata | null {
-    const skill = DEFAULT_SKILLS.find((s) => s.name === skillName);
-    if (!skill) return null;
+  const skill = DEFAULT_SKILLS.find((s) => s.name === skillName);
+  if (!skill) return null;
 
-    const skillMd = skill.files["SKILL.md"];
-    if (!skillMd) return null;
+  const skillMd = skill.files["SKILL.md"];
+  if (!skillMd) return null;
 
-    return parseSkillFrontmatter(skillMd);
+  return parseSkillFrontmatter(skillMd);
 }
 
 /**
  * Write a default skill to the workspace
  */
 async function writeDefaultSkill(skillName: string): Promise<boolean> {
-    if (!hasActiveWorkspace()) {
-        logger.warn("No active workspace, cannot write skill");
-        return false;
+  if (!hasActiveWorkspace()) {
+    logger.warn("No active workspace, cannot write skill");
+    return false;
+  }
+
+  const skill = DEFAULT_SKILLS.find((s) => s.name === skillName);
+  if (!skill) {
+    logger.error(`Default skill not found: ${skillName}`);
+    return false;
+  }
+
+  const destPath = path.join(getSkillsPath(), skillName);
+
+  try {
+    // Create destination directory
+    await mkdir(destPath, { recursive: true });
+
+    // Write all files
+    for (const [filename, content] of Object.entries(skill.files)) {
+      const filePath = path.join(destPath, filename);
+      await Bun.write(filePath, content);
+
+      // Make shell scripts executable
+      if (filename.endsWith(".sh")) {
+        await chmod(filePath, 0o755);
+      }
+
+      logger.info(`Wrote ${filename} to ${destPath}`);
     }
 
-    const skill = DEFAULT_SKILLS.find((s) => s.name === skillName);
-    if (!skill) {
-        logger.error(`Default skill not found: ${skillName}`);
-        return false;
-    }
-
-    const destPath = path.join(getSkillsPath(), skillName);
-
-    try {
-        // Create destination directory
-        await mkdir(destPath, { recursive: true });
-
-        // Write all files
-        for (const [filename, content] of Object.entries(skill.files)) {
-            const filePath = path.join(destPath, filename);
-            await Bun.write(filePath, content);
-
-            // Make shell scripts executable
-            if (filename.endsWith(".sh")) {
-                await chmod(filePath, 0o755);
-            }
-
-            logger.info(`Wrote ${filename} to ${destPath}`);
-        }
-
-        logger.info(`Successfully wrote skill: ${skillName}`);
-        return true;
-    } catch (error) {
-        logger.error(`Failed to write skill: ${skillName}`, { error });
-        return false;
-    }
+    logger.info(`Successfully wrote skill: ${skillName}`);
+    return true;
+  } catch (error) {
+    logger.error(`Failed to write skill: ${skillName}`, { error });
+    return false;
+  }
 }
 
 /**
  * Check for available skill updates
  */
 async function checkForSkillUpdates(): Promise<SkillUpdateCheckResult> {
-    const result: SkillUpdateCheckResult = {
-        pendingUpdates: [],
-        newSkills: [],
-    };
+  const result: SkillUpdateCheckResult = {
+    pendingUpdates: [],
+    newSkills: [],
+  };
 
-    if (!hasActiveWorkspace()) {
-        return result;
-    }
-
-    for (const skill of DEFAULT_SKILLS) {
-        const defaultMetadata = getDefaultSkillMetadata(skill.name);
-        if (!defaultMetadata) {
-            logger.warn(`Could not read metadata for default skill: ${skill.name}`);
-            continue;
-        }
-
-        const installedVersion = await getInstalledSkillVersion(skill.name);
-
-        if (installedVersion === null) {
-            // Skill not installed
-            result.newSkills.push(skill.name);
-        } else if (installedVersion < defaultMetadata.version) {
-            // Update available
-            result.pendingUpdates.push({
-                skillName: skill.name,
-                currentVersion: installedVersion,
-                availableVersion: defaultMetadata.version,
-            });
-        }
-    }
-
+  if (!hasActiveWorkspace()) {
     return result;
+  }
+
+  for (const skill of DEFAULT_SKILLS) {
+    const defaultMetadata = getDefaultSkillMetadata(skill.name);
+    if (!defaultMetadata) {
+      logger.warn(`Could not read metadata for default skill: ${skill.name}`);
+      continue;
+    }
+
+    const installedVersion = await getInstalledSkillVersion(skill.name);
+
+    if (installedVersion === null) {
+      // Skill not installed
+      result.newSkills.push(skill.name);
+    } else if (installedVersion < defaultMetadata.version) {
+      // Update available
+      result.pendingUpdates.push({
+        skillName: skill.name,
+        currentVersion: installedVersion,
+        availableVersion: defaultMetadata.version,
+      });
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -991,73 +1021,73 @@ async function checkForSkillUpdates(): Promise<SkillUpdateCheckResult> {
  * - Returns list of pending updates for UI notification
  */
 export async function initializeDefaultSkills(): Promise<SkillUpdateCheckResult> {
-    if (!hasActiveWorkspace()) {
-        logger.info("No active workspace, skipping default skills initialization");
-        return { pendingUpdates: [], newSkills: [] };
-    }
+  if (!hasActiveWorkspace()) {
+    logger.info("No active workspace, skipping default skills initialization");
+    return { pendingUpdates: [], newSkills: [] };
+  }
 
-    logger.info("Initializing default skills...");
+  logger.info("Initializing default skills...");
 
-    // Check for new skills and updates
-    const updateCheck = await checkForSkillUpdates();
+  // Check for new skills and updates
+  const updateCheck = await checkForSkillUpdates();
 
-    // Write any new (missing) skills
-    for (const skillName of updateCheck.newSkills) {
-        logger.info(`Installing new default skill: ${skillName}`);
-        await writeDefaultSkill(skillName);
-    }
+  // Write any new (missing) skills
+  for (const skillName of updateCheck.newSkills) {
+    logger.info(`Installing new default skill: ${skillName}`);
+    await writeDefaultSkill(skillName);
+  }
 
-    // Store pending updates for UI notification
-    pendingUpdates = updateCheck.pendingUpdates;
+  // Store pending updates for UI notification
+  pendingUpdates = updateCheck.pendingUpdates;
 
-    if (updateCheck.pendingUpdates.length > 0) {
-        logger.info(`${updateCheck.pendingUpdates.length} skill update(s) available`);
-    }
+  if (updateCheck.pendingUpdates.length > 0) {
+    logger.info(`${updateCheck.pendingUpdates.length} skill update(s) available`);
+  }
 
-    logger.info(`Default skills initialization complete. Installed ${updateCheck.newSkills.length} new skill(s).`);
+  logger.info(`Default skills initialization complete. Installed ${updateCheck.newSkills.length} new skill(s).`);
 
-    return {
-        pendingUpdates: updateCheck.pendingUpdates,
-        newSkills: updateCheck.newSkills,
-    };
+  return {
+    pendingUpdates: updateCheck.pendingUpdates,
+    newSkills: updateCheck.newSkills,
+  };
 }
 
 /**
  * Get the list of pending skill updates
  */
 export function getPendingSkillUpdates(): SkillUpdateInfo[] {
-    return pendingUpdates;
+  return pendingUpdates;
 }
 
 /**
  * Apply a skill update (write new version to workspace)
  */
 export async function applySkillUpdate(skillName: string): Promise<boolean> {
-    const success = await writeDefaultSkill(skillName);
+  const success = await writeDefaultSkill(skillName);
 
-    if (success) {
-        // Remove from pending updates
-        pendingUpdates = pendingUpdates.filter((u) => u.skillName !== skillName);
-    }
+  if (success) {
+    // Remove from pending updates
+    pendingUpdates = pendingUpdates.filter((u) => u.skillName !== skillName);
+  }
 
-    return success;
+  return success;
 }
 
 /**
  * Apply all pending skill updates
  */
 export async function applyAllSkillUpdates(): Promise<{ success: string[]; failed: string[] }> {
-    const success: string[] = [];
-    const failed: string[] = [];
+  const success: string[] = [];
+  const failed: string[] = [];
 
-    for (const update of [...pendingUpdates]) {
-        const result = await applySkillUpdate(update.skillName);
-        if (result) {
-            success.push(update.skillName);
-        } else {
-            failed.push(update.skillName);
-        }
+  for (const update of [...pendingUpdates]) {
+    const result = await applySkillUpdate(update.skillName);
+    if (result) {
+      success.push(update.skillName);
+    } else {
+      failed.push(update.skillName);
     }
+  }
 
-    return { success, failed };
+  return { success, failed };
 }
