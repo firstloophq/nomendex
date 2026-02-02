@@ -89,12 +89,8 @@ export class FileDatabase<T extends DatabaseRecord> {
             metadata.id = String(metadata.id);
         }
 
-        // Convert null values to undefined for optional fields
-        for (const key in metadata) {
-            if (metadata[key] === null) {
-                metadata[key] = undefined;
-            }
-        }
+        // Note: We intentionally preserve null values to allow explicit field clearing
+        // (e.g., clearing a dueDate field by setting it to null)
 
         // Add description from body if present
         if (bodyContent) {

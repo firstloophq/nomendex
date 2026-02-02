@@ -8,7 +8,7 @@ interface CreateTodoInput {
     project?: string;
     status?: "todo" | "in_progress" | "done" | "later";
     tags?: string[];
-    dueDate?: string;
+    dueDate?: string | null;
     attachments?: Attachment[];
     customColumnId?: string;
 }
@@ -22,7 +22,7 @@ interface UpdateTodoInput {
         project?: string;
         archived?: boolean;
         tags?: string[];
-        dueDate?: string;
+        dueDate?: string | null;
         attachments?: Attachment[];
         customColumnId?: string;
     };
@@ -36,7 +36,9 @@ async function fetchAPI<T>(endpoint: string, body: object = {}): Promise<T> {
     const response = await fetch(`/api/todos/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        // Convert undefined to null to support explicit field clearing
+        // (JSON.stringify drops undefined, preventing backend from receiving cleared fields)
+        body: JSON.stringify(body, (key, value) => value === undefined ? null : value),
     });
     if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
