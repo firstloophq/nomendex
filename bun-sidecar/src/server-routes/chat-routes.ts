@@ -489,8 +489,6 @@ export const chatRoutes = {
                 const claudeCliPath = process.env.CLAUDE_CLI_PATH
                     || `${process.env.HOME}/.local/bin/claude`;
 
-                const modelOverride = "openai/gpt-oss-20b";
-
                 const sdkOptions: {
                     model: string;
                     cwd: string;
@@ -502,7 +500,7 @@ export const chatRoutes = {
                     pathToClaudeCodeExecutable: string;
                     settingSources: Array<"user" | "project">;
                 } = {
-                    model: modelOverride,
+                    model: agentConfig.model,
                     cwd: targetDir,
                     resume: sessionId,
                     maxTurns: 100,
