@@ -199,9 +199,16 @@ export const notesRoutes = {
     },
     "/api/notes/tags/create-explicit": {
         async POST(req: Request) {
-            const args = (await req.json()) as { tagName: string };
-            const result = await createExplicitTag({ tagName: args.tagName });
-            return Response.json(result);
+            try {
+                const args = (await req.json()) as { tagName: string };
+                const result = await createExplicitTag({ tagName: args.tagName });
+                return Response.json(result);
+            } catch (error) {
+                // Return 400 for validation errors (which createExplicitTag throws), 500 for others
+                const message = error instanceof Error ? error.message : "Unknown error";
+                const status = message.includes("Invalid tag name") ? 400 : 500;
+                return Response.json({ error: message }, { status });
+            }
         },
     },
     "/api/notes/tags/delete-explicit": {

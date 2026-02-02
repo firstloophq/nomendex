@@ -9,7 +9,16 @@ async function fetchAPI<T>(endpoint: string, body: Record<string, unknown> = {})
         body: JSON.stringify(body),
     });
     if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        let errorMessage = `API error: ${response.status}`;
+        try {
+            const errorData = await response.json();
+            if (errorData && typeof errorData.error === 'string') {
+                errorMessage = errorData.error;
+            }
+        } catch {
+            // parsing failed, use default message
+        }
+        throw new Error(errorMessage);
     }
     return response.json();
 }
