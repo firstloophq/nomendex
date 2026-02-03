@@ -9,14 +9,15 @@ import {
     CommandGroup,
     CommandItem,
 } from "@/components/ui/command";
-import { FileTextIcon, CheckSquareIcon } from "lucide-react";
+import { FileTextIcon, CheckSquareIcon, FolderIcon } from "lucide-react";
 import { notesAPI } from "@/hooks/useNotesAPI";
 import { todosAPI } from "@/hooks/useTodosAPI";
+import { projectsAPI } from "@/hooks/useProjectsAPI";
 
 type FileItem = {
     id: string;
     label: string;
-    type: "note" | "todo";
+    type: "note" | "todo" | "project";
 };
 
 type FilePickerDialogProps = {
@@ -28,6 +29,7 @@ type FilePickerDialogProps = {
 export function FilePickerDialog({ open, onOpenChange, onSelect }: FilePickerDialogProps) {
     const [notes, setNotes] = useState<FileItem[]>([]);
     const [todos, setTodos] = useState<FileItem[]>([]);
+    const [projects, setProjects] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const listRef = useRef<HTMLDivElement>(null);
@@ -52,9 +54,10 @@ export function FilePickerDialog({ open, onOpenChange, onSelect }: FilePickerDia
         const fetchItems = async () => {
             setLoading(true);
             try {
-                const [notesData, todosData] = await Promise.all([
+                const [notesData, todosData, projectsData] = await Promise.all([
                     notesAPI.getNotes(),
                     todosAPI.getTodos(),
+                    projectsAPI.listProjects(),
                 ]);
 
                 setNotes(
@@ -70,6 +73,14 @@ export function FilePickerDialog({ open, onOpenChange, onSelect }: FilePickerDia
                         id: `@todos/${todo.id}`,
                         label: todo.title,
                         type: "todo" as const,
+                    }))
+                );
+
+                setProjects(
+                    projectsData.map((project) => ({
+                        id: `@projects/${project.name}`,
+                        label: project.name,
+                        type: "project" as const,
                     }))
                 );
             } catch (error) {
@@ -98,7 +109,7 @@ export function FilePickerDialog({ open, onOpenChange, onSelect }: FilePickerDia
             description="Search for notes and todos to reference"
         >
             <CommandInput
-                placeholder="Search notes and todos..."
+                placeholder="Search notes, todos and projects..."
                 value={search}
                 onValueChange={setSearch}
             />
@@ -136,6 +147,21 @@ export function FilePickerDialog({ open, onOpenChange, onSelect }: FilePickerDia
                                     >
                                         <CheckSquareIcon className="text-amber-500" />
                                         <span>{todo.label}</span>
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        )}
+
+                        {projects.length > 0 && (
+                            <CommandGroup heading="Projects">
+                                {projects.map((project) => (
+                                    <CommandItem
+                                        key={project.id}
+                                        value={`${project.label} ${project.id}`}
+                                        onSelect={() => handleSelect(project)}
+                                    >
+                                        <FolderIcon className="text-purple-500" />
+                                        <span>{project.label}</span>
                                     </CommandItem>
                                 ))}
                             </CommandGroup>
