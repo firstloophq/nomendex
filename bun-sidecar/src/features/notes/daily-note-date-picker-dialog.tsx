@@ -104,11 +104,43 @@ export function DailyNoteDatePickerDialog({ onSuccess }: DailyNoteDatePickerDial
         });
     }, [selectedDate]);
 
+    // Check if selected date is today
+    const isToday = React.useMemo(() => {
+        const now = new Date();
+        return selectedDate.getDate() === now.getDate() &&
+            selectedDate.getMonth() === now.getMonth() &&
+            selectedDate.getFullYear() === now.getFullYear();
+    }, [selectedDate]);
+
+    // Get relative date label for context
+    const relativeDateLabel = React.useMemo(() => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const selected = new Date(selectedDate);
+        selected.setHours(0, 0, 0, 0);
+        const diffTime = selected.getTime() - now.getTime();
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === -1) return "Yesterday";
+        if (diffDays === 1) return "Tomorrow";
+        return null;
+    }, [selectedDate]);
+
     return (
         <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
                 <div className="rounded-lg border bg-muted/50 p-4 text-center">
-                    <p className="text-2xl font-semibold">{formattedDate}</p>
+                    <div className="flex items-center justify-center gap-2">
+                        <p className="text-2xl font-semibold">{formattedDate}</p>
+                        {isToday && (
+                            <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground">
+                                Today
+                            </span>
+                        )}
+                    </div>
+                    {relativeDateLabel && (
+                        <p className="text-sm text-muted-foreground mt-1">{relativeDateLabel}</p>
+                    )}
                 </div>
                 <div className="grid gap-2">
                     <Label htmlFor="date-input">Search</Label>
@@ -126,6 +158,12 @@ export function DailyNoteDatePickerDialog({ onSuccess }: DailyNoteDatePickerDial
                         selected={selectedDate}
                         onSelect={handleCalendarSelect}
                         defaultMonth={selectedDate}
+                        modifiers={{
+                            today: new Date(),
+                        }}
+                        modifiersClassNames={{
+                            today: "ring-2 ring-primary ring-offset-1",
+                        }}
                     />
                 </div>
             </div>
