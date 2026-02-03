@@ -2,6 +2,7 @@ import {
     listProjects,
     getProject,
     getProjectByName,
+    createProject,
     updateProject,
     deleteProject,
     getProjectStats,
@@ -31,11 +32,19 @@ export const projectsRoutes = {
         },
     },
     "/api/projects/create": {
-        async POST(_req: Request) {
-            return Response.json(
-                { error: "Project creation via API is disabled. To create a project, open the 'Projects' view from the sidebar and click 'New Project'." },
-                { status: 403 }
-            );
+        async POST(req: Request) {
+            // Only allow project creation from UI (has X-Nomendex-UI header)
+            const isFromUI = req.headers.get("X-Nomendex-UI") === "true";
+            if (!isFromUI) {
+                return Response.json(
+                    { error: "Project creation via API is disabled. To create a project, open the 'Projects' view from the sidebar and click 'New Project'." },
+                    { status: 403 }
+                );
+            }
+
+            const args = await req.json();
+            const result = await createProject(args);
+            return Response.json(result);
         },
     },
     "/api/projects/update": {
