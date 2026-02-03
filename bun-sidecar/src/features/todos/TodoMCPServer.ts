@@ -4,6 +4,7 @@ import { McpServer } from "@socotra/modelcontextprotocol-sdk/server/mcp.js";
 import { StdioServerTransport } from "@socotra/modelcontextprotocol-sdk/server/stdio.js";
 import { FileDatabase } from "@/storage/FileDatabase";
 import { Todo } from "./todo-types";
+import { createTodo, updateTodo } from "./fx";
 import path from "path";
 import { getTodosPath } from "@/storage/root-path";
 import { z } from "zod";
@@ -69,7 +70,7 @@ server.registerTool(
     "update_todo",
     {
         title: "Update Todo",
-        description: "Update a todo item",
+        description: "Update a todo item. IMPORTANT: If updating project, the project must already exist. Use list_projects first.",
         inputSchema: {
             todoId: z.string(),
             updates: z.object({
@@ -81,15 +82,7 @@ server.registerTool(
         },
     },
     async (input) => {
-        const updated = await todosDb.update(input.todoId, {
-            ...input.updates,
-            updatedAt: new Date().toISOString(),
-        });
-
-        if (!updated) {
-            throw new Error(`Todo not found: ${input.todoId}`);
-        }
-
+        const updated = await updateTodo(input);
         return {
             content: [{
                 type: "text",
@@ -104,7 +97,7 @@ server.registerTool(
     "create_todo",
     {
         title: "Create Todo",
-        description: "Create a new todo item",
+        description: "Create a new todo item. IMPORTANT: The project must already exist. Use list_projects first to see available projects.",
         inputSchema: {
             title: z.string(),
             description: z.string().optional(),
@@ -112,19 +105,7 @@ server.registerTool(
         },
     },
     async (input) => {
-        const now = new Date().toISOString();
-        const newTodo: Todo = {
-            id: `todo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            title: input.title,
-            description: input.description,
-            status: "todo",
-            createdAt: now,
-            updatedAt: now,
-            archived: false,
-            project: input.project,
-        };
-
-        const created = await todosDb.create(newTodo);
+        const created = await createTodo(input);
         return {
             content: [{
                 type: "text",

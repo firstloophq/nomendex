@@ -41,7 +41,7 @@ server.registerTool(
     "update_todo",
     {
         title: "Update Todo",
-        description: "Update a todo",
+        description: "Update a todo. IMPORTANT: If updating project, the project must already exist. Use list_projects first.",
         inputSchema: {
             todoId: z.string(),
             updates: z.object({
@@ -62,7 +62,7 @@ server.registerTool(
     "create_todo",
     {
         title: "Create Todo",
-        description: "Create a new todo",
+        description: "Create a new todo. IMPORTANT: The project must already exist. Use list_projects first to see available projects.",
         inputSchema: {
             title: z.string(),
             description: z.string().optional(),

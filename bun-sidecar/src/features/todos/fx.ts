@@ -36,12 +36,12 @@ function getDb(): FileDatabase<Todo> {
 
 async function getTodos(input: { project?: string }) {
     todosLogger.info(`Getting todos${input.project !== undefined ? ` for project: ${input.project || 'No Project'}` : ''}`);
-    
+
     try {
         const todos = await getDb().findAll();
-        
+
         let activeTodos = todos.filter(t => !t.archived);
-        
+
         // Filter by project if specified
         if (input.project !== undefined) {
             if (input.project === "") {
@@ -70,15 +70,15 @@ async function getTodos(input: { project?: string }) {
 
 async function getTodoById(input: { todoId: string }) {
     todosLogger.info(`Getting todo by ID: ${input.todoId}`);
-    
+
     try {
         const todo = await getDb().findById(input.todoId);
-        
+
         if (!todo) {
             todosLogger.warn(`Todo not found: ${input.todoId}`);
             throw new Error(`Todo with ID ${input.todoId} not found`);
         }
-        
+
         todosLogger.info(`Retrieved todo: ${input.todoId}`);
         return todo;
     } catch (error) {
@@ -99,6 +99,15 @@ async function createTodo(input: {
     todosLogger.info(`Creating new todo: ${input.title}`);
 
     try {
+        // Validate that the project exists BEFORE creating the todo
+        if (input.project && input.project.trim() !== "") {
+            const { getProjectByName } = await import("@/features/projects/fx");
+            const project = await getProjectByName({ name: input.project });
+            if (!project) {
+                throw new Error(`Project '${input.project}' does not exist. Please ask the user to create it manually: Open the 'Projects' view from the sidebar and click 'New Project'.`);
+            }
+        }
+
         // Get existing todos to determine next order
         const existingTodos = await getDb().findAll();
         const status = input.status || "todo";
@@ -152,6 +161,15 @@ async function updateTodo(input: {
     todosLogger.info(`Updating todo: ${input.todoId}`);
 
     try {
+        // Validate that the project exists if it's being updated
+        if (input.updates.project && input.updates.project.trim() !== "") {
+            const { getProjectByName } = await import("@/features/projects/fx");
+            const project = await getProjectByName({ name: input.updates.project });
+            if (!project) {
+                throw new Error(`Project '${input.updates.project}' does not exist. Please ask the user to create it manually: Open the 'Projects' view from the sidebar and click 'New Project'.`);
+            }
+        }
+
         let updates = {
             ...input.updates,
             updatedAt: new Date().toISOString(),
@@ -176,12 +194,12 @@ async function updateTodo(input: {
         }
 
         const updated = await getDb().update(input.todoId, updates);
-        
+
         if (!updated) {
             todosLogger.warn(`Todo not found for update: ${input.todoId}`);
             throw new Error(`Todo with ID ${input.todoId} not found`);
         }
-        
+
         todosLogger.info(`Updated todo: ${input.todoId}`);
         return updated;
     } catch (error) {
@@ -192,15 +210,15 @@ async function updateTodo(input: {
 
 async function deleteTodo(input: { todoId: string }) {
     todosLogger.info(`Deleting todo: ${input.todoId}`);
-    
+
     try {
         const deleted = await getDb().delete(input.todoId);
-        
+
         if (!deleted) {
             todosLogger.warn(`Todo not found for deletion: ${input.todoId}`);
             throw new Error(`Todo with ID ${input.todoId} not found`);
         }
-        
+
         todosLogger.info(`Deleted todo: ${input.todoId}`);
         return { success: true };
     } catch (error) {
@@ -211,11 +229,11 @@ async function deleteTodo(input: { todoId: string }) {
 
 async function getProjects() {
     todosLogger.info(`Getting unique projects`);
-    
+
     try {
         const todos = await getDb().findAll();
         const activeTodos = todos.filter(t => !t.archived);
-        
+
         // Extract unique projects
         const projectSet = new Set<string>();
         for (const todo of activeTodos) {
@@ -223,7 +241,7 @@ async function getProjects() {
                 projectSet.add(todo.project);
             }
         }
-        
+
         const projects = Array.from(projectSet).sort();
         todosLogger.info(`Found ${projects.length} unique projects`);
         return projects;

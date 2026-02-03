@@ -19,7 +19,10 @@ interface UpdateProjectInput {
 async function fetchAPI<T>(endpoint: string, body: object = {}): Promise<T> {
     const response = await fetch(`/api/projects/${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            "X-Nomendex-UI": "true"
+        },
         body: JSON.stringify(body),
     });
     if (!response.ok) {
