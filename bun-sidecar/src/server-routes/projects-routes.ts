@@ -2,10 +2,8 @@ import {
     listProjects,
     getProject,
     getProjectByName,
-    createProject,
     updateProject,
     deleteProject,
-    ensureProject,
     getProjectStats,
     renameProject,
 } from "@/features/projects/fx";
@@ -33,10 +31,11 @@ export const projectsRoutes = {
         },
     },
     "/api/projects/create": {
-        async POST(req: Request) {
-            const args = await req.json();
-            const result = await createProject(args);
-            return Response.json(result);
+        async POST(_req: Request) {
+            return Response.json(
+                { error: "Project creation via API is disabled. To create a project, open the 'Projects' view from the sidebar and click 'New Project'." },
+                { status: 403 }
+            );
         },
     },
     "/api/projects/update": {
@@ -54,10 +53,11 @@ export const projectsRoutes = {
         },
     },
     "/api/projects/ensure": {
-        async POST(req: Request) {
-            const args = await req.json();
-            const result = await ensureProject(args);
-            return Response.json(result);
+        async POST(_req: Request) {
+            return Response.json(
+                { error: "Implicit project creation is disabled. To create a project, open the 'Projects' view from the sidebar and click 'New Project'." },
+                { status: 403 }
+            );
         },
     },
     "/api/projects/stats": {
