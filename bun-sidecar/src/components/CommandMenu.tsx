@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle, AlertTriangle, Columns2 } from "lucide-react";
+import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle, AlertTriangle, Columns2, Zap } from "lucide-react";
 import { Command as CommandRoot, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
@@ -8,6 +8,7 @@ import { useCommandDialog } from "./CommandDialogProvider";
 import { getNotesCommands } from "@/features/notes";
 import { getTodosCommands } from "@/features/todos";
 import { getChatCommands } from "@/features/chat/commands";
+import { getCapturesCommands } from "@/features/captures";
 import { getCoreCommands } from "@/commands/core-commands";
 import type { Command } from "@/types/Commands";
 import { subscribe } from "@/lib/events";
@@ -132,6 +133,15 @@ export function CommandMenu() {
                 commands["chat"] = chatCommands;
             }
 
+            // Get commands from Captures feature
+            const capturesCommands = getCapturesCommands({
+                closeCommandMenu: () => setOpen(false),
+            });
+
+            if (capturesCommands.length > 0) {
+                commands["captures"] = capturesCommands;
+            }
+
             setFeatureCommands(commands);
         }
 
@@ -239,6 +249,7 @@ export function CommandMenu() {
                                             MessageCircle,
                                             AlertTriangle,
                                             Columns2,
+                                            Zap,
                                         };
                                         const IconComponent = iconMap[command.icon as keyof typeof iconMap] || FileText;
 

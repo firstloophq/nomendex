@@ -24,6 +24,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
         chatInputEnterToSend: true,
         showHiddenFiles: false,
+        captureSettings: { destination: "folder", captureFolder: "Captures" },
     });
     const [loading, setLoading] = useState(true);
     const initialRouteHandledRef = useRef(false);

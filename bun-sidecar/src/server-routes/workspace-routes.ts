@@ -31,6 +31,7 @@ export const workspaceRoutes = {
                         autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
                         chatInputEnterToSend: true,
                         showHiddenFiles: false,
+                        captureSettings: { destination: "folder", captureFolder: "Captures" },
                     };
                     await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
 

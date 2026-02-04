@@ -6,6 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var windowController: WebViewWindowController?
     private var statusBar: StatusBarController?
     private var hotKey: GlobalHotKey?
+    private var quickCaptureHotKey: GlobalHotKey?
     private let sidecar = SidecarLauncher()
     private var localEventMonitor: Any?
     private var updaterController: SPUStandardUpdaterController!
@@ -48,6 +49,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             DispatchQueue.main.async { self?.windowController?.show() }
         })
 
+        // Hyperkey + N opens Quick Capture
+        self.quickCaptureHotKey = GlobalHotKey(modifiers: .hyperKey, keyCode: 45 /* N */, callback: { [weak self] in
+            DispatchQueue.main.async { self?.triggerQuickCapture() }
+        })
+
         // Local event monitor to intercept keyboard events before WebView handles them
         self.localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Check for Cmd+Enter (keyCode 36 = Return/Enter)
@@ -78,6 +84,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         windowController?.show()
         return true
+    }
+
+    /// Trigger Quick Capture dialog
+    private func triggerQuickCapture() {
+        // Make sure window is visible first
+        windowController?.show()
+
+        // Then trigger quick capture in the web view
+        if let webView = windowController?.window?.contentView as? WKWebView {
+            let script = "window.__nativeQuickCapture && window.__nativeQuickCapture();"
+            webView.evaluateJavaScript(script) { _, error in
+                if let error = error {
+                    log("Error triggering quick capture: \(error)")
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

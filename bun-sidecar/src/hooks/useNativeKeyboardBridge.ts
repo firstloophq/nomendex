@@ -226,6 +226,12 @@ export function useNativeKeyboardBridge() {
             window.dispatchEvent(event);
         };
 
+        // Quick Capture trigger - dispatch custom event for QuickCaptureProvider
+        const quickCapture = () => {
+            console.log('__nativeQuickCapture called, dispatching event');
+            document.dispatchEvent(new CustomEvent('nativeQuickCapture'));
+        };
+
         // Register global functions for Swift to call
         const win = window as Window & {
             __nativeFocusNext?: () => void;
@@ -233,6 +239,7 @@ export function useNativeKeyboardBridge() {
             __nativeNextTab?: () => void;
             __nativePrevTab?: () => void;
             __nativeSubmit?: () => void;
+            __nativeQuickCapture?: () => void;
         };
 
         win.__nativeFocusNext = focusNext;
@@ -240,6 +247,7 @@ export function useNativeKeyboardBridge() {
         win.__nativeNextTab = nextTab;
         win.__nativePrevTab = prevTab;
         win.__nativeSubmit = nativeSubmit;
+        win.__nativeQuickCapture = quickCapture;
 
         return () => {
             window.removeEventListener('nativeSubmit', handleNativeSubmitIntercept);
@@ -248,6 +256,7 @@ export function useNativeKeyboardBridge() {
             delete win.__nativeNextTab;
             delete win.__nativePrevTab;
             delete win.__nativeSubmit;
+            delete win.__nativeQuickCapture;
         };
     }, []);
 }

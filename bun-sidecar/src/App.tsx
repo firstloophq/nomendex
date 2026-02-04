@@ -26,6 +26,7 @@ import { TabSwitcherMenu } from "./components/TabSwitcherMenu";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
 import { WorkspaceOnboarding } from "./components/WorkspaceOnboarding";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { QuickCaptureProvider } from "./components/QuickCaptureProvider";
 
 // Bridge component for native Mac app keyboard handling
 function NativeKeyboardBridge() {
@@ -103,6 +104,7 @@ export function App() {
                                 <KeyboardShortcutsProvider>
                                     <GHSyncProvider>
                                         <CommandDialogProvider>
+                                            <QuickCaptureProvider>
                                             <Routes>
                                                 {/* Main workspace - handles tabs for todos, notes */}
                                                 <Route path="/" element={<WorkspacePage />} />
@@ -125,6 +127,7 @@ export function App() {
                                             <CommandMenu />
                                             <NotesCommandMenu />
                                             <TabSwitcherMenu />
+                                            </QuickCaptureProvider>
                                         </CommandDialogProvider>
                                     </GHSyncProvider>
                                 </KeyboardShortcutsProvider>

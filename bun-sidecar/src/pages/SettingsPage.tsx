@@ -13,12 +13,13 @@ import { triggerNativeUpdate } from "@/hooks/useUpdateNotification";
 import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 
-import { RotateCcw, Eye, EyeOff, Check, X, Key, RefreshCw, Info, Plus, Trash2, FolderOpen } from "lucide-react";
+import { RotateCcw, Eye, EyeOff, Check, X, Key, RefreshCw, Info, Plus, Trash2, FolderOpen, Zap, CalendarDays } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import type { NotesLocation } from "@/types/Workspace";
+import type { CaptureSettings, CaptureDestination } from "@/features/captures/capture-types";
 
 type SecretInfo = {
     key: string;
@@ -221,6 +222,191 @@ function StorageSettings() {
                         </div>
                     )}
                 </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function CaptureSettingsTab() {
+    const { currentTheme } = useTheme();
+    const [settings, setSettings] = useState<CaptureSettings>({
+        destination: "folder",
+        captureFolder: "Captures",
+    });
+    const [pendingDestination, setPendingDestination] = useState<CaptureDestination | null>(null);
+    const [pendingFolder, setPendingFolder] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    // Load settings on mount
+    useEffect(() => {
+        async function loadSettings() {
+            try {
+                const response = await fetch("/api/captures/settings");
+                if (response.ok) {
+                    const data = await response.json();
+                    setSettings(data);
+                }
+            } catch (error) {
+                console.error("Failed to load capture settings:", error);
+            } finally {
+                setLoading(false);
+            }
+        }
+        loadSettings();
+    }, []);
+
+    const displayDestination = pendingDestination ?? settings.destination;
+    const displayFolder = pendingFolder ?? settings.captureFolder;
+    const hasUnsavedChanges = pendingDestination !== null || pendingFolder !== null;
+
+    const handleSave = async () => {
+        setSaving(true);
+        setSaved(false);
+        try {
+            const newSettings: CaptureSettings = {
+                destination: pendingDestination ?? settings.destination,
+                captureFolder: pendingFolder ?? settings.captureFolder,
+            };
+            const response = await fetch("/api/captures/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(newSettings),
+            });
+            if (response.ok) {
+                setSettings(newSettings);
+                setPendingDestination(null);
+                setPendingFolder(null);
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+            }
+        } catch (error) {
+            console.error("Failed to save capture settings:", error);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <Card>
+                <CardContent className="p-6">
+                    <p style={{ color: currentTheme.styles.contentSecondary }}>Loading...</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5" />
+                    Quick Capture Settings
+                </CardTitle>
+                <CardDescription>
+                    Configure where quick captures are saved. Use Hyper+N to open quick capture.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div
+                    className="p-4 rounded-lg border"
+                    style={{
+                        backgroundColor: currentTheme.styles.surfaceSecondary,
+                        borderColor: currentTheme.styles.borderDefault,
+                    }}
+                >
+                    <h4 className="font-medium mb-2" style={{ color: currentTheme.styles.contentPrimary }}>
+                        Capture Destination
+                    </h4>
+                    <p className="text-sm mb-4" style={{ color: currentTheme.styles.contentSecondary }}>
+                        Choose where quick captures are saved.
+                    </p>
+
+                    <RadioGroup
+                        value={displayDestination}
+                        onValueChange={(value) => setPendingDestination(value as CaptureDestination)}
+                        className="space-y-3"
+                    >
+                        <div className="flex items-start space-x-3">
+                            <RadioGroupItem value="folder" id="capture-folder" className="mt-1" />
+                            <div className="flex-1">
+                                <Label htmlFor="capture-folder" className="font-medium cursor-pointer flex items-center gap-2">
+                                    <FolderOpen className="h-4 w-4" />
+                                    Captures Folder
+                                </Label>
+                                <p className="text-sm" style={{ color: currentTheme.styles.contentTertiary }}>
+                                    Create a new note in the Captures folder for each capture
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-start space-x-3">
+                            <RadioGroupItem value="daily" id="capture-daily" className="mt-1" />
+                            <div className="flex-1">
+                                <Label htmlFor="capture-daily" className="font-medium cursor-pointer flex items-center gap-2">
+                                    <CalendarDays className="h-4 w-4" />
+                                    Daily Note
+                                </Label>
+                                <p className="text-sm" style={{ color: currentTheme.styles.contentTertiary }}>
+                                    Append captures to today's daily note
+                                </p>
+                            </div>
+                        </div>
+                    </RadioGroup>
+                </div>
+
+                {displayDestination === "folder" && (
+                    <div
+                        className="p-4 rounded-lg border"
+                        style={{
+                            backgroundColor: currentTheme.styles.surfaceSecondary,
+                            borderColor: currentTheme.styles.borderDefault,
+                        }}
+                    >
+                        <h4 className="font-medium mb-2" style={{ color: currentTheme.styles.contentPrimary }}>
+                            Folder Name
+                        </h4>
+                        <p className="text-sm mb-4" style={{ color: currentTheme.styles.contentSecondary }}>
+                            The folder where captures will be saved (created automatically if it doesn't exist).
+                        </p>
+                        <Input
+                            value={displayFolder}
+                            onChange={(e) => setPendingFolder(e.target.value)}
+                            placeholder="Captures"
+                        />
+                    </div>
+                )}
+
+                {hasUnsavedChanges && (
+                    <div className="flex items-center gap-2">
+                        <Button
+                            onClick={handleSave}
+                            disabled={saving}
+                            size="sm"
+                        >
+                            {saving ? "Saving..." : "Save"}
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setPendingDestination(null);
+                                setPendingFolder(null);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                )}
+                {saved && (
+                    <div className="flex items-center gap-2">
+                        <Check className="h-4 w-4" style={{ color: currentTheme.styles.semanticSuccess }} />
+                        <span className="text-sm" style={{ color: currentTheme.styles.semanticSuccess }}>
+                            Saved successfully
+                        </span>
+                    </div>
+                )}
             </CardContent>
         </Card>
     );
@@ -551,6 +737,7 @@ function SettingsContent() {
                     <TabsTrigger value="theme">Theme</TabsTrigger>
                     <TabsTrigger value="secrets">API Keys</TabsTrigger>
                     <TabsTrigger value="storage">Storage</TabsTrigger>
+                    <TabsTrigger value="capture">Capture</TabsTrigger>
                     <TabsTrigger value="about">About</TabsTrigger>
                 </TabsList>
 
@@ -1274,6 +1461,10 @@ function SettingsContent() {
 
                 <TabsContent value="storage">
                     <StorageSettings />
+                </TabsContent>
+
+                <TabsContent value="capture">
+                    <CaptureSettingsTab />
                 </TabsContent>
 
                 <TabsContent value="about">
