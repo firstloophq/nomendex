@@ -1,7 +1,8 @@
 import { RouteHandler } from "../types/Routes";
-import { getRootPath } from "../storage/root-path";
+import { getRootPath, getNomendexPath } from "../storage/root-path";
 import { createServiceLogger } from "../lib/logger";
 import { createGitClient, CommitInfo, ConflictFile } from "../lib/git";
+import { GitAuthMode, WorkspaceStateSchema } from "../types/Workspace";
 
 const logger = createServiceLogger("GIT-SYNC");
 
@@ -27,6 +28,40 @@ function getAuthConfig(): { token: string } | null {
     const pat = getGitHubPAT();
     if (!pat) return null;
     return { token: pat };
+}
+
+// Get the current git auth mode from workspace state
+async function getGitAuthMode(): Promise<GitAuthMode> {
+    try {
+        const workspacePath = `${getNomendexPath()}/workspace.json`;
+        const file = Bun.file(workspacePath);
+        if (await file.exists()) {
+            const workspaceRaw = await file.json();
+            const workspace = WorkspaceStateSchema.parse(workspaceRaw);
+            return workspace.gitAuthMode;
+        }
+    } catch (error) {
+        logger.warn("Failed to read git auth mode from workspace, defaulting to 'local'", { error: String(error) });
+    }
+    return "local"; // Default to local if we can't read the setting
+}
+
+// Check if PAT auth is required based on auth mode
+// Returns: { required: true, auth: null } if PAT is required but missing
+// Returns: { required: true, auth: { token } } if PAT is required and present
+// Returns: { required: false, auth: null } if PAT is not required (local auth mode)
+async function checkAuthRequired(): Promise<{ required: boolean; auth: { token: string } | null; mode: GitAuthMode }> {
+    const mode = await getGitAuthMode();
+
+    if (mode === "local") {
+        // Local auth mode - PAT is not required
+        // User is expected to handle auth externally (this will fail for private repos with isomorphic-git)
+        return { required: false, auth: null, mode };
+    }
+
+    // PAT auth mode - PAT is required
+    const auth = getAuthConfig();
+    return { required: true, auth, mode };
 }
 
 interface GitStatusResponse {
@@ -316,10 +351,11 @@ export const gitPullRoute: RouteHandler<GitSyncResponse> = {
     POST: async (_req) => {
         try {
             const git = getGitClient();
-            const auth = getAuthConfig();
-            logger.info("Pulling from remote", { path: getRootPath() });
+            const { required, auth, mode } = await checkAuthRequired();
+            logger.info("Pulling from remote", { path: getRootPath(), authMode: mode });
 
-            if (!auth) {
+            // In PAT mode, require PAT to be configured
+            if (required && !auth) {
                 return Response.json(
                     {
                         success: false,
@@ -327,6 +363,16 @@ export const gitPullRoute: RouteHandler<GitSyncResponse> = {
                     },
                     { status: 400 }
                 );
+            }
+
+            // In Local mode, PAT is optional - if available, use it; otherwise skip the operation
+            // Note: isomorphic-git only supports HTTPS + token auth, so without PAT we can't sync
+            if (!auth) {
+                logger.info("Skipping pull - Local auth mode without PAT (isomorphic-git requires token auth)");
+                return Response.json({
+                    success: true,
+                    message: "Skipped - Local auth mode enabled. Add a GitHub PAT in Settings > Secrets to enable sync.",
+                });
             }
 
             const branch = await git.currentBranch();
@@ -455,10 +501,11 @@ export const gitPushRoute: RouteHandler<GitSyncResponse> = {
     POST: async (_req) => {
         try {
             const git = getGitClient();
-            const auth = getAuthConfig();
-            logger.info("Pushing to remote", { path: getRootPath() });
+            const { required, auth, mode } = await checkAuthRequired();
+            logger.info("Pushing to remote", { path: getRootPath(), authMode: mode });
 
-            if (!auth) {
+            // In PAT mode, require PAT to be configured
+            if (required && !auth) {
                 return Response.json(
                     {
                         success: false,
@@ -466,6 +513,15 @@ export const gitPushRoute: RouteHandler<GitSyncResponse> = {
                     },
                     { status: 400 }
                 );
+            }
+
+            // In Local mode, PAT is optional - if not available, skip the operation
+            if (!auth) {
+                logger.info("Skipping push - Local auth mode without PAT (isomorphic-git requires token auth)");
+                return Response.json({
+                    success: true,
+                    message: "Skipped - Local auth mode enabled. Add a GitHub PAT in Settings > Secrets to enable sync.",
+                });
             }
 
             const branch = await git.currentBranch();
@@ -568,10 +624,11 @@ export const gitFetchStatusRoute: RouteHandler<GitFetchStatusResponse> = {
     POST: async (_req) => {
         try {
             const git = getGitClient();
-            const auth = getAuthConfig();
-            logger.info("Fetching status from remote", { path: getRootPath() });
+            const { required, auth, mode } = await checkAuthRequired();
+            logger.info("Fetching status from remote", { path: getRootPath(), authMode: mode });
 
-            if (!auth) {
+            // In PAT mode, require PAT to be configured
+            if (required && !auth) {
                 return Response.json(
                     {
                         success: false,
@@ -583,6 +640,18 @@ export const gitFetchStatusRoute: RouteHandler<GitFetchStatusResponse> = {
                     },
                     { status: 400 }
                 );
+            }
+
+            // In Local mode, PAT is optional - if not available, return empty status
+            if (!auth) {
+                logger.info("Skipping fetch status - Local auth mode without PAT (isomorphic-git requires token auth)");
+                return Response.json({
+                    success: true,
+                    behindCount: 0,
+                    aheadCount: 0,
+                    incomingCommits: [],
+                    incomingFiles: [],
+                });
             }
 
             const branch = await git.currentBranch();
