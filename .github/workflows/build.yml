@@ -22,6 +22,11 @@ jobs:
           cd bun-sidecar
           bun install
 
+      - name: Run tests
+        run: |
+          cd bun-sidecar
+          bun test
+
       - name: Build (Tailwind + ESLint + TypeScript)
         run: |
           cd bun-sidecar

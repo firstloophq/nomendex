@@ -1,5 +1,8 @@
 // Session utility functions for message reconstruction
 
+import type { SessionMetadata } from "./index";
+export type { SessionMetadata };
+
 export type ContentBlock =
   | { type: "text"; content: string; id: string }
   | { type: "image"; content: string; id: string }
@@ -19,14 +22,6 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   blocks: ContentBlock[];
-};
-
-export type SessionMetadata = {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount: number;
 };
 
 type SDKMessage = {

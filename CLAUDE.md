@@ -300,3 +300,4 @@ This ensures CMD+Enter in any focused chat input submits to the correct tab's fo
 - For Python scripts: use `uv run script.py`
 - Never create documentation files unless explicitly requested
 - Focus on exact scope requested - no "improvements" without permission
+- NEVER manually inspect dependency source code (node_modules, vendor dirs, etc). Always use public documentation and web searches to understand how dependencies work.
