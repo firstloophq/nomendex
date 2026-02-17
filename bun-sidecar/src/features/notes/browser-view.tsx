@@ -110,12 +110,15 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
     }, [notesAPI, setLoading, setError, loadFolders, showHiddenFiles]);
 
     const handleCreateNote = async () => {
-        const finalNoteId = newNoteName.trim();
-        if (!finalNoteId) return;
+        const trimmedName = newNoteName.trim();
+        if (!trimmedName) return;
+
+        // Sanitize filename and add .md extension (matching CreateNoteDialog behavior)
+        const finalNoteId = trimmedName.replace(/[/\\]/g, "-") + ".md";
 
         try {
             setLoading(true);
-            await notesAPI.saveNote({ fileName: finalNoteId, content: `# ${finalNoteId}\n\n` });
+            await notesAPI.saveNote({ fileName: finalNoteId, content: `# ${trimmedName}\n\n` });
 
             // If creating in a folder, move the note there
             if (createNoteInFolderPath) {
