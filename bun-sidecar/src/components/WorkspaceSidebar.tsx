@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, GitBranch, Bot, HelpCircle } from "lucide-react";
+import { Settings, GitBranch, Bot, HelpCircle, Users } from "lucide-react";
 import {
     Sidebar,
     SidebarContent,
@@ -20,12 +20,15 @@ import { getIcon } from "./PluginViewIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { TITLE_BAR_HEIGHT } from "./Layout";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { useTeamAuth } from "@/contexts/AuthContext";
+import { UserButton, OrganizationSwitcher } from "@clerk/clerk-react";
 
 export function WorkspaceSidebar() {
     const plugins = Object.values(baseRegistry);
     const { openTab } = useWorkspaceContext();
     const { navigate, currentPath } = useRouting();
     const { currentTheme } = useTheme();
+    const { isSignedIn } = useTeamAuth();
     const [appVersion, setAppVersion] = useState("...");
 
     useEffect(() => {
@@ -179,6 +182,22 @@ export function WorkspaceSidebar() {
                             </SidebarMenuItem>
                             <SidebarMenuItem>
                                 <SidebarMenuButton
+                                    onClick={() => handleNavigate("/team")}
+                                    className="cursor-pointer transition-all duration-200"
+                                    style={{ color: currentTheme.styles.contentPrimary }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = currentTheme.styles.surfaceAccent;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                >
+                                    <Users className="size-4" />
+                                    <span>Team</span>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
                                     onClick={() => handleNavigate("/settings")}
                                     className="cursor-pointer transition-all duration-200"
                                     style={{ color: currentTheme.styles.contentPrimary }}
@@ -212,6 +231,38 @@ export function WorkspaceSidebar() {
                         </SidebarMenu>
                     </SidebarGroupContent>
                 </SidebarGroup>
+                {isSignedIn && (
+                    <div className="px-2 py-1 space-y-2">
+                        <div className="flex items-center justify-center">
+                            <OrganizationSwitcher
+                                hidePersonal={false}
+                                appearance={{
+                                    elements: {
+                                        rootBox: { width: "100%" },
+                                        organizationSwitcherTrigger: {
+                                            width: "100%",
+                                            justifyContent: "flex-start",
+                                        },
+                                    },
+                                }}
+                            />
+                        </div>
+                        <div className="flex items-center justify-center">
+                            <UserButton
+                                showName
+                                appearance={{
+                                    elements: {
+                                        rootBox: { width: "100%" },
+                                        userButtonTrigger: {
+                                            width: "100%",
+                                            justifyContent: "flex-start",
+                                        },
+                                    },
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
                 <div className="px-2 py-1">
                     <WorkspaceSwitcher />
                 </div>

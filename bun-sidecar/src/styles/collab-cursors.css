@@ -1,0 +1,35 @@
+/* Remote cursor styles for y-prosemirror yCursorPlugin */
+
+/* Remote cursor caret line */
+.ProseMirror .yRemoteSelection {
+    background-color: var(--user-color, rgba(100, 100, 255, 0.3));
+    opacity: 0.7;
+}
+
+/* Remote cursor head (the blinking caret) */
+.ProseMirror .yRemoteSelectionHead {
+    position: relative;
+    border-left: 2px solid var(--user-color, rgba(100, 100, 255, 1));
+    border-right: none;
+    margin-left: -1px;
+}
+
+/* Name label above cursor */
+.ProseMirror .yRemoteSelectionHead::after {
+    content: attr(data-user-name);
+    position: absolute;
+    left: -1px;
+    top: -1.4em;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+    padding: 1px 4px;
+    border-radius: 3px 3px 3px 0;
+    white-space: nowrap;
+    background-color: var(--user-color, rgba(100, 100, 255, 1));
+    color: white;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.9;
+    z-index: 10;
+}

@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  clerkUserId String   @unique @map("clerk_user_id")
+  name        String?
+  email       String?
+  imageUrl    String?  @map("image_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  memberships   OrgMembership[]
+  installations GitHubInstallation[]
+
+  @@map("users")
+}
+
+model Org {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships OrgMembership[]
+  workspaces  OrgWorkspace[]
+
+  @@map("orgs")
+}
+
+model OrgMembership {
+  id       String   @id @default(cuid())
+  orgId    String   @map("org_id")
+  userId   String   @map("user_id")
+  role     String   @default("admin")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@map("org_memberships")
+}
+
+model GitHubInstallation {
+  id               String   @id @default(cuid())
+  installationId   Int      @unique @map("installation_id")
+  accountLogin     String   @map("account_login")
+  accountType      String   @map("account_type")
+  accountAvatarUrl String?  @map("account_avatar_url")
+  installedById    String   @map("installed_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  installedBy User           @relation(fields: [installedById], references: [id], onDelete: Cascade)
+  workspaces  OrgWorkspace[]
+
+  @@map("github_installations")
+}
+
+model OrgWorkspace {
+  id             String   @id @default(cuid())
+  orgId          String   @map("org_id")
+  installationId String   @map("gh_installation_id")
+  repoFullName   String   @map("repo_full_name")
+  repoId         Int      @map("repo_id")
+  defaultBranch  String   @default("main") @map("default_branch")
+  displayName    String   @map("display_name")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  org          Org                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  installation GitHubInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, repoFullName])
+  @@map("org_workspaces")
+}

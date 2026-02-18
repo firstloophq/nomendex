@@ -1,12 +1,28 @@
 import { mkdir } from "node:fs/promises";
 import path from "path";
 
+export type TeamMode = "solo" | "team";
+
 export interface WorkspaceInfo {
     id: string;
     path: string;
     name: string;
     createdAt: string;
     lastAccessedAt: string;
+    teamVaultId?: string;
+    teamMode: TeamMode;
+    /** team-backend Org.id — set for GitHub-backed team workspaces */
+    orgId?: string;
+    /** team-backend OrgWorkspace.id */
+    orgWorkspaceId?: string;
+    /** "owner/repo" — presence means this is a GitHub-backed workspace */
+    repoFullName?: string;
+    /** team-backend GitHubInstallation.id */
+    installationId?: string;
+    /** GitHub's numeric installation ID */
+    githubInstallationId?: number;
+    /** Default branch of the repo */
+    defaultBranch?: string;
 }
 
 export interface GlobalConfig {
@@ -38,7 +54,13 @@ export class GlobalConfigManager {
             const file = Bun.file(this.configPath);
             if (await file.exists()) {
                 const content = await file.text();
-                return JSON.parse(content) as GlobalConfig;
+                const config = JSON.parse(content) as GlobalConfig;
+                // Backfill teamMode for workspaces created before team support
+                config.workspaces = config.workspaces.map((w) => ({
+                    ...w,
+                    teamMode: w.teamMode ?? "solo",
+                }));
+                return config;
             }
         } catch {
             // File doesn't exist or is invalid, return default
@@ -89,6 +111,7 @@ export class GlobalConfigManager {
             name: path.basename(workspacePath),
             createdAt: new Date().toISOString(),
             lastAccessedAt: new Date().toISOString(),
+            teamMode: "solo",
         };
 
         config.workspaces.push(workspace);
@@ -118,6 +141,30 @@ export class GlobalConfigManager {
         }
 
         workspace.name = name;
+        await this.save(config);
+    }
+
+    async enableTeamMode(params: { workspaceId: string; vaultId: string }): Promise<void> {
+        const config = await this.load();
+        const workspace = config.workspaces.find((w) => w.id === params.workspaceId);
+        if (!workspace) {
+            throw new Error(`Workspace not found: ${params.workspaceId}`);
+        }
+
+        workspace.teamMode = "team";
+        workspace.teamVaultId = params.vaultId;
+        await this.save(config);
+    }
+
+    async disableTeamMode(params: { workspaceId: string }): Promise<void> {
+        const config = await this.load();
+        const workspace = config.workspaces.find((w) => w.id === params.workspaceId);
+        if (!workspace) {
+            throw new Error(`Workspace not found: ${params.workspaceId}`);
+        }
+
+        workspace.teamMode = "solo";
+        workspace.teamVaultId = undefined;
         await this.save(config);
     }
 }

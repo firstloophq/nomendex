@@ -1,6 +1,9 @@
 import { globalConfig, type GlobalConfig, type WorkspaceInfo } from "@/storage/global-config";
 import { Result, ErrorCodes } from "../types/Result";
 import { initializeWorkspaceServices } from "@/services/workspace-init";
+import { createGitClient, type AuthConfig } from "@/lib/git";
+import { mkdir, rm } from "node:fs/promises";
+import path from "path";
 
 export const workspacesRoutes = {
     // List all registered workspaces
@@ -160,6 +163,79 @@ export const workspacesRoutes = {
         },
     },
 
+    // Enable team mode on a workspace
+    "/api/workspaces/enable-team": {
+        async POST(req: Request) {
+            try {
+                const { workspaceId, vaultId } = (await req.json()) as { workspaceId: string; vaultId: string };
+
+                if (!workspaceId) {
+                    const response: Result = {
+                        success: false,
+                        code: ErrorCodes.BAD_REQUEST,
+                        message: "workspaceId is required",
+                    };
+                    return Response.json(response, { status: 400 });
+                }
+
+                // Generate a vault ID if none provided (for initial setup before collab server)
+                const resolvedVaultId = vaultId || crypto.randomUUID();
+
+                await globalConfig.enableTeamMode({ workspaceId, vaultId: resolvedVaultId });
+
+                const response: Result<{ vaultId: string; requiresReload: boolean }> = {
+                    success: true,
+                    data: { vaultId: resolvedVaultId, requiresReload: true },
+                };
+                return Response.json(response);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                const response: Result = {
+                    success: false,
+                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message: `Failed to enable team mode: ${message}`,
+                    error,
+                };
+                return Response.json(response, { status: 500 });
+            }
+        },
+    },
+
+    // Disable team mode on a workspace
+    "/api/workspaces/disable-team": {
+        async POST(req: Request) {
+            try {
+                const { workspaceId } = (await req.json()) as { workspaceId: string };
+
+                if (!workspaceId) {
+                    const response: Result = {
+                        success: false,
+                        code: ErrorCodes.BAD_REQUEST,
+                        message: "workspaceId is required",
+                    };
+                    return Response.json(response, { status: 400 });
+                }
+
+                await globalConfig.disableTeamMode({ workspaceId });
+
+                const response: Result<{ requiresReload: boolean }> = {
+                    success: true,
+                    data: { requiresReload: true },
+                };
+                return Response.json(response);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                const response: Result = {
+                    success: false,
+                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message: `Failed to disable team mode: ${message}`,
+                    error,
+                };
+                return Response.json(response, { status: 500 });
+            }
+        },
+    },
+
     // Update workspace name
     "/api/workspaces/rename": {
         async POST(req: Request) {
@@ -188,6 +264,110 @@ export const workspacesRoutes = {
                     success: false,
                     code: ErrorCodes.INTERNAL_SERVER_ERROR,
                     message: `Failed to rename workspace: ${message}`,
+                    error,
+                };
+                return Response.json(response, { status: 500 });
+            }
+        },
+    },
+
+    // Clone a GitHub repo as a new team workspace
+    "/api/workspaces/create-from-github": {
+        async POST(req: Request) {
+            try {
+                const body = (await req.json()) as {
+                    repoFullName: string;
+                    displayName: string;
+                    orgId: string;
+                    orgWorkspaceId: string;
+                    installationId: string;
+                    githubInstallationId: number;
+                    defaultBranch: string;
+                    authToken: string;
+                };
+
+                const {
+                    repoFullName,
+                    displayName,
+                    orgId,
+                    orgWorkspaceId,
+                    installationId,
+                    githubInstallationId,
+                    defaultBranch,
+                    authToken,
+                } = body;
+
+                if (!repoFullName || !authToken || !orgWorkspaceId) {
+                    const response: Result = {
+                        success: false,
+                        code: ErrorCodes.BAD_REQUEST,
+                        message: "repoFullName, authToken, and orgWorkspaceId are required",
+                    };
+                    return Response.json(response, { status: 400 });
+                }
+
+                console.log("[create-from-github] Starting:", { repoFullName, orgWorkspaceId, defaultBranch, authTokenLength: authToken.length });
+
+                // Create workspace directory (clean up any partial clone from a previous attempt)
+                const home = process.env.HOME || "";
+                const teamWsDir = path.join(
+                    home,
+                    "Library/Application Support/com.firstloop.nomendex/team-workspaces",
+                    orgWorkspaceId,
+                );
+                console.log("[create-from-github] Cleaning up directory:", teamWsDir);
+                await rm(teamWsDir, { recursive: true, force: true });
+                await mkdir(teamWsDir, { recursive: true });
+
+                const repoUrl = `https://github.com/${repoFullName}.git`;
+                const branch = defaultBranch || "main";
+                const auth: AuthConfig = { mode: "token", token: authToken };
+
+                // Clone the repo (handles init, fetch, checkout, and upstream in one step)
+                console.log("[create-from-github] Cloning repo:", repoUrl, "branch:", branch);
+                const gitClient = createGitClient({ dir: teamWsDir });
+                await gitClient.clone({ url: repoUrl, auth, ref: branch, singleBranch: true });
+                console.log("[create-from-github] Clone complete");
+
+                // Register in global config
+                console.log("[create-from-github] Registering workspace in global config");
+                const workspace: WorkspaceInfo = {
+                    id: crypto.randomUUID(),
+                    path: teamWsDir,
+                    name: displayName || repoFullName,
+                    createdAt: new Date().toISOString(),
+                    lastAccessedAt: new Date().toISOString(),
+                    teamMode: "team",
+                    orgId,
+                    orgWorkspaceId,
+                    repoFullName,
+                    installationId,
+                    githubInstallationId,
+                    defaultBranch: branch,
+                };
+
+                const config = await globalConfig.load();
+                config.workspaces.push(workspace);
+                config.activeWorkspaceId = workspace.id;
+                await globalConfig.save(config);
+
+                // Reinitialize workspace services for the new workspace
+                console.log("[create-from-github] Reinitializing workspace services...");
+                await initializeWorkspaceServices();
+                console.log("[create-from-github] Done!");
+
+                const response: Result<WorkspaceInfo> = {
+                    success: true,
+                    data: workspace,
+                };
+                return Response.json(response);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error("[create-from-github] Error:", message, error instanceof Error ? error.stack : "");
+                const response: Result = {
+                    success: false,
+                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
+                    message: `Failed to create workspace from GitHub: ${message}`,
                     error,
                 };
                 return Response.json(response, { status: 500 });

@@ -1,11 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 
+export type TeamMode = "solo" | "team";
+
 export interface WorkspaceInfo {
     id: string;
     path: string;
     name: string;
     createdAt: string;
     lastAccessedAt: string;
+    teamVaultId?: string;
+    teamMode: TeamMode;
+    orgId?: string;
+    orgWorkspaceId?: string;
+    repoFullName?: string;
+    installationId?: string;
+    githubInstallationId?: number;
+    defaultBranch?: string;
 }
 
 export interface GlobalConfig {

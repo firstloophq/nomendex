@@ -1,26 +1,38 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { FolderOpen, Plus, ChevronDown, Check, Settings } from "lucide-react";
+import { FolderOpen, Plus, ChevronDown, Check, Settings, Github } from "lucide-react";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { useTheme } from "@/hooks/useTheme";
+import { useTeamAuth } from "@/contexts/AuthContext";
 import { FolderPickerDialog } from "./FolderPickerDialog";
 import { WorkspaceManager } from "./WorkspaceManager";
 import { WorkspaceWarningDialog } from "./WorkspaceWarningDialog";
+import { GitHubRepoPickerDialog } from "./GitHubRepoPickerDialog";
 
 export function WorkspaceSwitcher() {
     const { workspaces, activeWorkspace, loading, switchWorkspace, addWorkspace } =
         useWorkspaceSwitcher();
     const { currentTheme } = useTheme();
+    const { isSignedIn } = useTeamAuth();
     const [folderPickerOpen, setFolderPickerOpen] = useState(false);
     const [managerOpen, setManagerOpen] = useState(false);
     const [warningDialogOpen, setWarningDialogOpen] = useState(false);
     const [pendingPath, setPendingPath] = useState<string | null>(null);
+    const [gitHubPickerOpen, setGitHubPickerOpen] = useState(false);
+
+    // Split workspaces into solo and team
+    const { soloWorkspaces, teamWorkspaces } = useMemo(() => {
+        const solo = workspaces.filter((ws) => !ws.repoFullName);
+        const team = workspaces.filter((ws) => !!ws.repoFullName);
+        return { soloWorkspaces: solo, teamWorkspaces: team };
+    }, [workspaces]);
 
     // Check if we're running in native macOS app
     const isNativeApp = Boolean(
@@ -94,7 +106,11 @@ export function WorkspaceSwitcher() {
                     e.currentTarget.style.backgroundColor = "transparent";
                 }}
             >
-                <FolderOpen className="size-4 shrink-0" />
+                {activeWorkspace?.repoFullName ? (
+                    <Github className="size-4 shrink-0" />
+                ) : (
+                    <FolderOpen className="size-4 shrink-0" />
+                )}
                 <span className="truncate flex-1 text-left text-sm">
                     {activeWorkspace?.name || "No Workspace"}
                 </span>
@@ -108,7 +124,8 @@ export function WorkspaceSwitcher() {
                     borderColor: currentTheme.styles.borderDefault,
                 }}
             >
-                {workspaces.map((ws) => (
+                {/* Solo workspaces */}
+                {soloWorkspaces.map((ws) => (
                     <DropdownMenuItem
                         key={ws.id}
                         onClick={() => switchWorkspace(ws.id)}
@@ -122,7 +139,35 @@ export function WorkspaceSwitcher() {
                         )}
                     </DropdownMenuItem>
                 ))}
-                {workspaces.length > 0 && <DropdownMenuSeparator />}
+
+                {/* Team workspaces */}
+                {teamWorkspaces.length > 0 && (
+                    <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel
+                            className="text-xs font-medium"
+                            style={{ color: currentTheme.styles.contentSecondary }}
+                        >
+                            Team
+                        </DropdownMenuLabel>
+                        {teamWorkspaces.map((ws) => (
+                            <DropdownMenuItem
+                                key={ws.id}
+                                onClick={() => switchWorkspace(ws.id)}
+                                className="cursor-pointer"
+                                style={{ color: currentTheme.styles.contentPrimary }}
+                            >
+                                <Github className="size-4 mr-2 shrink-0" />
+                                <span className="truncate flex-1">{ws.name}</span>
+                                {ws.id === activeWorkspace?.id && (
+                                    <Check className="size-4 ml-2 shrink-0" />
+                                )}
+                            </DropdownMenuItem>
+                        ))}
+                    </>
+                )}
+
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                     onClick={handleAddWorkspace}
                     className="cursor-pointer"
@@ -131,6 +176,16 @@ export function WorkspaceSwitcher() {
                     <Plus className="size-4 mr-2 shrink-0" />
                     <span>Add Workspace...</span>
                 </DropdownMenuItem>
+                {isSignedIn && (
+                    <DropdownMenuItem
+                        onClick={() => setGitHubPickerOpen(true)}
+                        className="cursor-pointer"
+                        style={{ color: currentTheme.styles.contentPrimary }}
+                    >
+                        <Github className="size-4 mr-2 shrink-0" />
+                        <span>Create from GitHub...</span>
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                     onClick={() => setManagerOpen(true)}
                     className="cursor-pointer"
@@ -159,6 +214,11 @@ export function WorkspaceSwitcher() {
                 onOpenChange={setWarningDialogOpen}
                 onConfirm={handleWarningConfirm}
                 selectedPath={pendingPath || ""}
+            />
+
+            <GitHubRepoPickerDialog
+                open={gitHubPickerOpen}
+                onOpenChange={setGitHubPickerOpen}
             />
         </DropdownMenu>
     );

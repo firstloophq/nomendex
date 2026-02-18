@@ -89,6 +89,14 @@ export const workspaceRoutes = {
     "/api/theme": {
         async GET() {
             try {
+                if (!hasActiveWorkspace()) {
+                    const response: Result<{ themeName: string }> = {
+                        success: true,
+                        data: { themeName: "Light" },
+                    };
+                    return Response.json(response);
+                }
+
                 const file = Bun.file(`${getNomendexPath()}/theme.json`);
                 const exists = await file.exists();
 

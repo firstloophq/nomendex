@@ -1,10 +1,225 @@
 import { useState, useEffect, useCallback } from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Github, LogIn, Loader2, Plus } from "lucide-react";
+import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { Button } from "./ui/button";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
+import { useTeamAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
 import { FolderPickerDialog } from "./FolderPickerDialog";
 import { WorkspaceWarningDialog } from "./WorkspaceWarningDialog";
+import { GitHubRepoPickerDialog } from "./GitHubRepoPickerDialog";
+
+const TEAM_BACKEND_URL = "http://localhost:4444";
+
+interface OrgWorkspace {
+    id: string;
+    orgId: string;
+    installationId: string;
+    repoFullName: string;
+    displayName: string;
+    defaultBranch: string;
+}
+
+interface Org {
+    id: string;
+    name: string;
+}
+
+/**
+ * Shows the user's org workspaces when signed in.
+ * Lets them clone an existing workspace or add a new one from GitHub.
+ */
+function SignedInOnboarding(props: { currentTheme: ReturnType<typeof useTheme>["currentTheme"] }) {
+    const { currentTheme } = props;
+    const { getToken } = useTeamAuth();
+    const [_orgs, setOrgs] = useState<Org[]>([]);
+    const [orgWorkspaces, setOrgWorkspaces] = useState<OrgWorkspace[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [joining, setJoining] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [gitHubPickerOpen, setGitHubPickerOpen] = useState(false);
+
+    const fetchWithAuth = useCallback(async (url: string, options?: RequestInit) => {
+        const token = await getToken();
+        if (!token) throw new Error("Not authenticated");
+        return fetch(url, {
+            ...options,
+            headers: {
+                ...options?.headers,
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+        });
+    }, [getToken]);
+
+    // Fetch orgs and their workspaces
+    useEffect(() => {
+        let cancelled = false;
+
+        async function load() {
+            setLoading(true);
+            setError(null);
+            try {
+                const orgsRes = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/orgs`);
+                if (!orgsRes.ok) throw new Error("Failed to fetch orgs");
+                const orgsData = (await orgsRes.json()) as Org[];
+                if (cancelled) return;
+                setOrgs(orgsData);
+
+                // Fetch workspaces for each org
+                const allWorkspaces: OrgWorkspace[] = [];
+                for (const org of orgsData) {
+                    const wsRes = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/orgs/${org.id}/workspaces`);
+                    if (wsRes.ok) {
+                        const wsData = (await wsRes.json()) as OrgWorkspace[];
+                        allWorkspaces.push(...wsData);
+                    }
+                }
+                if (cancelled) return;
+                setOrgWorkspaces(allWorkspaces);
+            } catch {
+                if (!cancelled) setError("Failed to load workspaces");
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+
+        load();
+        return () => { cancelled = true; };
+    }, [fetchWithAuth]);
+
+    const handleJoinWorkspace = async (ws: OrgWorkspace) => {
+        setJoining(ws.id);
+        setError(null);
+        try {
+            // Get installation token
+            const tokenRes = await fetchWithAuth(
+                `${TEAM_BACKEND_URL}/api/github/installations/${ws.installationId}/token`,
+                { method: "POST" },
+            );
+            if (!tokenRes.ok) throw new Error("Failed to get installation token");
+            const { token: authToken } = (await tokenRes.json()) as { token: string };
+
+            // Clone locally
+            const cloneRes = await fetch("/api/workspaces/create-from-github", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    repoFullName: ws.repoFullName,
+                    displayName: ws.displayName || ws.repoFullName,
+                    orgId: ws.orgId,
+                    orgWorkspaceId: ws.id,
+                    installationId: ws.installationId,
+                    githubInstallationId: 0,
+                    defaultBranch: ws.defaultBranch || "main",
+                    authToken,
+                }),
+            });
+
+            const cloneData = (await cloneRes.json()) as { success: boolean; message?: string };
+            if (!cloneData.success) {
+                throw new Error(cloneData.message || "Failed to clone workspace");
+            }
+
+            window.location.reload();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to join workspace");
+        } finally {
+            setJoining(null);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center gap-4 w-full max-w-md">
+                <Loader2 className="size-6 animate-spin" style={{ color: currentTheme.styles.contentSecondary }} />
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-center gap-6 w-full max-w-md">
+            {error && (
+                <div
+                    className="text-sm p-3 rounded-md border w-full"
+                    style={{
+                        color: currentTheme.styles.semanticDestructive,
+                        borderColor: currentTheme.styles.semanticDestructive,
+                        backgroundColor: `${currentTheme.styles.semanticDestructive}10`,
+                    }}
+                >
+                    {error}
+                </div>
+            )}
+
+            {orgWorkspaces.length > 0 ? (
+                <>
+                    <div className="w-full">
+                        <h2 className="text-lg font-semibold mb-1">Your Workspaces</h2>
+                        <p className="text-sm mb-4" style={{ color: currentTheme.styles.contentSecondary }}>
+                            Select a workspace to get started
+                        </p>
+                        <div className="space-y-2">
+                            {orgWorkspaces.map((ws) => (
+                                <button
+                                    key={ws.id}
+                                    onClick={() => handleJoinWorkspace(ws)}
+                                    disabled={joining !== null}
+                                    className="w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left focus:outline-none focus:ring-2 focus:ring-offset-1"
+                                    style={{
+                                        borderColor: currentTheme.styles.borderDefault,
+                                        backgroundColor: currentTheme.styles.surfaceSecondary,
+                                    }}
+                                >
+                                    <Github className="size-5 shrink-0" style={{ color: currentTheme.styles.contentSecondary }} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">
+                                            {ws.displayName || ws.repoFullName}
+                                        </p>
+                                        <p className="text-xs truncate" style={{ color: currentTheme.styles.contentTertiary }}>
+                                            {ws.repoFullName}
+                                        </p>
+                                    </div>
+                                    {joining === ws.id && (
+                                        <Loader2 className="size-4 animate-spin shrink-0" style={{ color: currentTheme.styles.contentSecondary }} />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <Button
+                        onClick={() => setGitHubPickerOpen(true)}
+                        variant="outline"
+                        className="gap-2"
+                    >
+                        <Plus className="size-4" />
+                        Add Workspace from GitHub
+                    </Button>
+                </>
+            ) : (
+                <>
+                    <p style={{ color: currentTheme.styles.contentSecondary }}>
+                        No team workspaces yet. Add a repository from GitHub to get started.
+                    </p>
+                    <Button
+                        onClick={() => setGitHubPickerOpen(true)}
+                        size="lg"
+                        className="gap-2"
+                    >
+                        <Github className="size-4" />
+                        Add Workspace from GitHub
+                    </Button>
+                </>
+            )}
+
+            <GitHubRepoPickerDialog
+                open={gitHubPickerOpen}
+                onOpenChange={setGitHubPickerOpen}
+            />
+        </div>
+    );
+}
 
 export function WorkspaceOnboarding() {
     const { addWorkspace } = useWorkspaceSwitcher();
@@ -36,11 +251,9 @@ export function WorkspaceOnboarding() {
 
     const handleChooseFolder = () => {
         if (isNativeApp) {
-            // Use native folder picker in macOS app
             const webkit = window.webkit as { messageHandlers?: { chooseDataRoot?: { postMessage: (data: Record<string, never>) => void } } } | undefined;
             webkit?.messageHandlers?.chooseDataRoot?.postMessage({});
         } else {
-            // Use web-based folder picker in browser/dev mode
             setFolderPickerOpen(true);
         }
     };
@@ -66,23 +279,53 @@ export function WorkspaceOnboarding() {
                 color: currentTheme.styles.contentPrimary,
             }}
         >
-            <div className="flex flex-col items-center gap-4 text-center max-w-md">
-                <div
-                    className="p-4 rounded-full"
-                    style={{ backgroundColor: currentTheme.styles.surfaceAccent }}
-                >
-                    <FolderOpen className="size-12" style={{ color: currentTheme.styles.contentPrimary }} />
-                </div>
-                <h1 className="text-2xl font-semibold">Welcome to Nomendex</h1>
-                <p style={{ color: currentTheme.styles.contentSecondary }}>
-                    Choose a folder to use as your workspace. Your todos, notes, and settings will be stored there.
-                </p>
+            {/* Sign-in area in top-right */}
+            <div className="absolute top-4 right-4">
+                <SignedOut>
+                    <SignInButton mode="modal">
+                        <button
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors hover:opacity-80"
+                            style={{ color: currentTheme.styles.contentSecondary }}
+                        >
+                            <LogIn className="size-3.5" />
+                            Sign In
+                        </button>
+                    </SignInButton>
+                </SignedOut>
+                <SignedIn>
+                    <UserButton />
+                </SignedIn>
             </div>
 
-            <Button onClick={handleChooseFolder} size="lg" className="gap-2">
-                <FolderOpen className="size-4" />
-                Choose Workspace Folder
-            </Button>
+            <div className="flex flex-col items-center gap-4 text-center max-w-md">
+                <h1 className="text-2xl font-semibold">Welcome to Nomendex</h1>
+            </div>
+
+            {/* Signed in: show org workspaces */}
+            <SignedIn>
+                <SignedInOnboarding currentTheme={currentTheme} />
+            </SignedIn>
+
+            {/* Signed out: show folder picker */}
+            <SignedOut>
+                <div className="flex flex-col items-center gap-4 text-center max-w-md">
+                    <div
+                        className="p-4 rounded-full"
+                        style={{ backgroundColor: currentTheme.styles.surfaceAccent }}
+                    >
+                        <FolderOpen className="size-12" style={{ color: currentTheme.styles.contentPrimary }} />
+                    </div>
+                    <p style={{ color: currentTheme.styles.contentSecondary }}>
+                        Choose a folder to use as your workspace. Your todos, notes, and settings will be stored there.
+                    </p>
+                </div>
+
+                <Button onClick={handleChooseFolder} size="lg" className="gap-2">
+                    <FolderOpen className="size-4" />
+                    Choose Workspace Folder
+                </Button>
+            </SignedOut>
+
 
             <p
                 className="text-sm text-center max-w-sm"

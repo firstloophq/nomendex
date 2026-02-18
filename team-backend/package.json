@@ -1,0 +1,26 @@
+{
+  "name": "nomendex-team-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "build": "bun run tsc --noEmit",
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate dev",
+    "db:push": "bunx prisma db push"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^1.2.2",
+    "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "dotenv": "^17.3.1",
+    "hono": "^4.7.4",
+    "zod": "4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prisma": "^7.0.0",
+    "typescript": "^5.7.3"
+  }
+}

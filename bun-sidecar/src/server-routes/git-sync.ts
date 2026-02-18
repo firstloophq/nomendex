@@ -55,6 +55,29 @@ async function getAuthConfig(): Promise<AuthConfig | null> {
     return null;
 }
 
+// Extract an auth token from the request body (if provided).
+// This allows callers (e.g. GitHub App installation token flow) to override the
+// default auth config on a per-request basis. Backward-compatible: if the body
+// doesn't contain `authToken`, returns null.
+async function getAuthConfigFromBody(req: Request): Promise<AuthConfig | null> {
+    try {
+        const body = (await req.clone().json()) as { authToken?: string };
+        if (body?.authToken) {
+            return { mode: "token", token: body.authToken };
+        }
+    } catch {
+        // No JSON body or no authToken field
+    }
+    return null;
+}
+
+// Resolve auth: try body token first, then fall back to default
+async function resolveAuth(req: Request): Promise<AuthConfig | null> {
+    const bodyAuth = await getAuthConfigFromBody(req);
+    if (bodyAuth) return bodyAuth;
+    return getAuthConfig();
+}
+
 interface GitStatusResponse {
     success: boolean;
     initialized: boolean;
@@ -339,10 +362,10 @@ export const gitSetupRemoteRoute: RouteHandler<GitSyncResponse> = {
 
 // Pull from remote
 export const gitPullRoute: RouteHandler<GitSyncResponse> = {
-    POST: async (_req) => {
+    POST: async (req) => {
         try {
             const git = getGitClient();
-            const auth = await getAuthConfig();
+            const auth = await resolveAuth(req);
             logger.info("Pulling from remote", { path: getRootPath() });
 
             if (!auth) {
@@ -478,10 +501,10 @@ export const gitCommitRoute: RouteHandler<GitSyncResponse> = {
 
 // Push to remote
 export const gitPushRoute: RouteHandler<GitSyncResponse> = {
-    POST: async (_req) => {
+    POST: async (req) => {
         try {
             const git = getGitClient();
-            const auth = await getAuthConfig();
+            const auth = await resolveAuth(req);
             logger.info("Pushing to remote", { path: getRootPath() });
 
             if (!auth) {
@@ -591,10 +614,10 @@ interface GitFetchStatusResponse {
 
 // Fetch from remote and check for incoming changes
 export const gitFetchStatusRoute: RouteHandler<GitFetchStatusResponse> = {
-    POST: async (_req) => {
+    POST: async (req) => {
         try {
             const git = getGitClient();
-            const auth = await getAuthConfig();
+            const auth = await resolveAuth(req);
             logger.info("Fetching status from remote", { path: getRootPath() });
 
             if (!auth) {

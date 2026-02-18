@@ -207,7 +207,7 @@ export function createGitClient(config: GitClientConfig) {
     const createAuthCallbacks = (auth: AuthConfig) => {
         if (auth.mode === "token") {
             return {
-                onAuth: () => ({ username: auth.token }),
+                onAuth: () => ({ username: "x-access-token", password: auth.token }),
             };
         }
 
@@ -240,6 +240,23 @@ export function createGitClient(config: GitClientConfig) {
     };
 
     return {
+        /**
+         * Clone a remote repository
+         */
+        async clone(opts: { url: string; auth: AuthConfig; ref?: string; singleBranch?: boolean }): Promise<void> {
+            logger.info("Cloning repository", { url: opts.url, ref: opts.ref, dir });
+            await git.clone({
+                fs,
+                http,
+                dir,
+                url: opts.url,
+                ref: opts.ref,
+                singleBranch: opts.singleBranch ?? true,
+                ...createAuthCallbacks(opts.auth),
+            });
+            logger.info("Clone completed", { dir });
+        },
+
         /**
          * Initialize a new git repository
          */

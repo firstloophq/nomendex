@@ -62,6 +62,10 @@ import "@/components/prosemirror/search.css";
 import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/components/prosemirror/spellcheck";
 import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
 import "@/components/prosemirror/spellcheck/spellcheck.css";
+import { useCollab } from "@/contexts/CollabContext";
+import * as Y from "yjs";
+import { ySyncPlugin, yCursorPlugin, yUndoPlugin, prosemirrorToYXmlFragment } from "y-prosemirror";
+import "@/styles/collab-cursors.css";
 
 interface NotesViewProps {
     noteFileName: string;
@@ -83,6 +87,7 @@ export function NotesView(props: NotesViewProps) {
         throw new Error("tabId is required");
     }
     const { activeTab, setTabName, openTab } = useWorkspaceContext();
+    const collab = useCollab();
     const { loading, error, setLoading, setError } = usePlugin();
     const [note, setNote] = useState<Note | null>(null);
     const [content, setContent] = useState("");
@@ -670,7 +675,26 @@ export function NotesView(props: NotesViewProps) {
             viewRef.current.destroy();
             viewRef.current = null;
         }
-        const doc = tableMarkdownParser.parse(contentToUse) || tableSchema.nodes.doc.createAndFill();
+
+        // In team mode with collab, use Y.js for document state
+        const isCollabMode = !!collab;
+        let yXmlFragment: Y.XmlFragment | null = null;
+
+        if (isCollabMode && collab) {
+            yXmlFragment = collab.ydoc.getXmlFragment(`note:${noteFileName}`);
+
+            // Bootstrap: if the Y.XmlFragment is empty, populate from the local markdown
+            if (yXmlFragment.length === 0 && contentToUse.trim().length > 0) {
+                const pmDoc = tableMarkdownParser.parse(contentToUse);
+                if (pmDoc) {
+                    prosemirrorToYXmlFragment(pmDoc, yXmlFragment);
+                }
+            }
+        }
+
+        const doc = isCollabMode
+            ? undefined // ySyncPlugin manages the doc from the Y.XmlFragment
+            : (tableMarkdownParser.parse(contentToUse) || tableSchema.nodes.doc.createAndFill());
 
         // Custom keymap for tab indentation in lists
         const listIndentKeymap = keymap({
@@ -698,20 +722,39 @@ export function NotesView(props: NotesViewProps) {
         // Spellcheck plugin for spell checking
         const spellcheckPlugin = createSpellcheckPlugin();
 
-        let state = EditorState.create({
-            doc,
-            plugins: [
-                ...getTablePlugins(), // Table navigation must come BEFORE exampleSetup
-                todoKeymap, // Todo Enter handling must come BEFORE exampleSetup's Enter handler
+        // Build plugin list: in team mode, add y-prosemirror plugins and disable history
+        const plugins = collab && yXmlFragment
+            ? [
+                ...getTablePlugins(),
+                todoKeymap,
+                ySyncPlugin(yXmlFragment),
+                yCursorPlugin(collab.awareness),
+                yUndoPlugin(),
+                ...exampleSetup({ schema: tableSchema, floatingMenu: false, history: false }),
+                listIndentKeymap,
+                todoPlugin,
+                wikiLinkPlugin,
+                tagLinkPlugin,
+                tagDecorationPlugin,
+                searchPlugin,
+                spellcheckPlugin,
+            ]
+            : [
+                ...getTablePlugins(),
+                todoKeymap,
                 ...exampleSetup({ schema: tableSchema, floatingMenu: false }),
-                listIndentKeymap, // Add our custom keymap after exampleSetup
-                todoPlugin, // Render and handle todo checkboxes
-                wikiLinkPlugin, // Wiki link suggestions
-                tagLinkPlugin, // Tag suggestions
-                tagDecorationPlugin, // Tag decorations and atomic deletion
-                searchPlugin, // Search highlighting
-                spellcheckPlugin, // Spellcheck
-            ],
+                listIndentKeymap,
+                todoPlugin,
+                wikiLinkPlugin,
+                tagLinkPlugin,
+                tagDecorationPlugin,
+                searchPlugin,
+                spellcheckPlugin,
+            ];
+
+        let state = EditorState.create({
+            ...(doc ? { doc } : { schema: tableSchema }),
+            plugins,
         });
 
         // Apply table fixes to ensure proper table structure
@@ -726,19 +769,31 @@ export function NotesView(props: NotesViewProps) {
             state = state.apply(normalizeTransaction);
         }
 
-        const view = new EditorView(editorRef.current, {
+        // Use `let` so dispatchTransaction can reference viewInstance before
+        // the EditorView constructor returns. ySyncPlugin dispatches during
+        // construction, which would hit the TDZ with `const view = new ...`.
+        let viewInstance: EditorView | null = null;
+
+        const editorView = new EditorView(editorRef.current, {
             state,
             editable: () => !isLocked,
             dispatchTransaction(transaction) {
-                const newState = view.state.apply(transaction);
-                view.updateState(newState);
+                // viewInstance is set right after construction completes.
+                // ySyncPlugin may call dispatchTransaction during EditorView
+                // construction, so we fall back to `viewInstance` (which is
+                // null only on the very first synchronous call — but ySyncPlugin
+                // sets it via the constructor's return).
+                const v = viewInstance;
+                if (!v) return;
+                const newState = v.state.apply(transaction);
+                v.updateState(newState);
 
                 // Check if selection changed
                 if (transaction.selectionSet) {
                     // Update active heading based on cursor position
                     setTimeout(() => updateActiveHeadingFromCursorRef.current(), 0);
                     // Save cursor position for persistence
-                    saveCursor(view);
+                    saveCursor(v);
                 }
 
                 const markdown = tableMarkdownSerializer.serialize(newState.doc);
@@ -758,7 +813,8 @@ export function NotesView(props: NotesViewProps) {
                     return false;
                 },
                 blur: () => {
-                    const markdown = tableMarkdownSerializer.serialize(view.state.doc);
+                    if (!viewInstance) return false;
+                    const markdown = tableMarkdownSerializer.serialize(viewInstance.state.doc);
                     saveImmediately(markdown);
                     return false; // Let other handlers run
                 },
@@ -868,18 +924,19 @@ export function NotesView(props: NotesViewProps) {
             },
         });
 
-        viewRef.current = view;
+        viewInstance = editorView;
+        viewRef.current = editorView;
         initializedContentRef.current = contentToUse;
         currentNoteFileNameRef.current = noteFileName;
 
         // Register Cmd+Enter handler for todo toggle in native Mac app
-        const unregisterCmdEnter = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
-            return toggleTodoAtLine(view.state, view.dispatch);
+        const unregisterCmdEnter = registerProseMirrorCmdEnter(editorView.dom as HTMLElement, () => {
+            return toggleTodoAtLine(editorView.state, editorView.dispatch);
         });
 
         // Helper to scroll to a specific line number with context above
         const scrollToLineNumber = (lineNum: number) => {
-            const doc = view.state.doc;
+            const doc = editorView.state.doc;
             const linePositions: number[] = [0]; // Position of each line start (1-indexed, so [0] is unused)
 
             // Build array of line start positions
@@ -899,17 +956,17 @@ export function NotesView(props: NotesViewProps) {
             const targetPos = linePositions[lineNum] ?? linePositions[linePositions.length - 1] ?? 0;
 
             // First scroll the context line into view at the top
-            const scrollTr = view.state.tr.setSelection(
-                TextSelection.create(view.state.doc, scrollTargetPos)
+            const scrollTr = editorView.state.tr.setSelection(
+                TextSelection.create(editorView.state.doc, scrollTargetPos)
             );
-            view.dispatch(scrollTr.scrollIntoView());
+            editorView.dispatch(scrollTr.scrollIntoView());
 
             // Then set cursor at the actual target line (without scrolling again)
             requestAnimationFrame(() => {
-                const cursorTr = view.state.tr.setSelection(
-                    TextSelection.create(view.state.doc, targetPos)
+                const cursorTr = editorView.state.tr.setSelection(
+                    TextSelection.create(editorView.state.doc, targetPos)
                 );
-                view.dispatch(cursorTr);
+                editorView.dispatch(cursorTr);
             });
         };
 
@@ -917,13 +974,13 @@ export function NotesView(props: NotesViewProps) {
         if (autoFocus) {
             requestAnimationFrame(() => {
                 try {
-                    view.focus();
+                    editorView.focus();
                     // If scrollToLine is specified, scroll to that line
                     if (scrollToLine && scrollToLine > 0) {
                         scrollToLineNumber(scrollToLine);
                     } else {
                         // Try to restore saved cursor position, otherwise place at start
-                        restoreCursor(view);
+                        restoreCursor(editorView);
                     }
                 } catch {
                     // no-op if focusing fails
@@ -936,7 +993,7 @@ export function NotesView(props: NotesViewProps) {
                     if (scrollToLine && scrollToLine > 0) {
                         scrollToLineNumber(scrollToLine);
                     } else {
-                        restoreCursor(view);
+                        restoreCursor(editorView);
                     }
                 } catch {
                     // no-op
@@ -962,11 +1019,13 @@ export function NotesView(props: NotesViewProps) {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isRichTextMode, noteFileName, note, updateContent, saveImmediately]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
+    }, [isRichTextMode, noteFileName, note, updateContent, saveImmediately, collab]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
 
     // Update editor content when content changes externally (only after initial load)
+    // In collab mode, Y.js handles doc sync, so skip external content updates.
     useEffect(() => {
         if (!viewRef.current || !isRichTextMode || !note) return;
+        if (collab) return; // Y.js manages document state in team mode
 
         // Skip if this is the content we just initialized with
         if (content === initializedContentRef.current) return;
@@ -1033,7 +1092,7 @@ export function NotesView(props: NotesViewProps) {
             viewRef.current.updateState(newState);
             initializedContentRef.current = content;
         }
-    }, [content, isRichTextMode, note]);
+    }, [content, isRichTextMode, note, collab]);
 
     // Move ProseMirror menubar into the header toolbar container
     useEffect(() => {

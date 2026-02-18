@@ -15,6 +15,7 @@ import { McpServersPage } from "./pages/McpServersPage";
 import { McpServerFormPage } from "./pages/McpServerFormPage";
 import { NewAgentPage } from "./pages/NewAgentPage";
 import { TestEditorPage } from "./features/test-editor";
+import { TeamSettingsPage } from "./pages/TeamSettingsPage";
 import { Toaster } from "@/components/ui/sonner";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import { KeyboardShortcutsProvider } from "./contexts/KeyboardShortcutsContext";
@@ -26,6 +27,8 @@ import { TabSwitcherMenu } from "./components/TabSwitcherMenu";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
 import { WorkspaceOnboarding } from "./components/WorkspaceOnboarding";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AuthProvider } from "./contexts/AuthContext";
+import { CollabProviderGate } from "./contexts/CollabContext";
 
 // Bridge component for native Mac app keyboard handling
 function NativeKeyboardBridge() {
@@ -85,7 +88,11 @@ function WorkspaceGuard({ children }: { children: React.ReactNode }) {
         return <WorkspaceOnboarding />;
     }
 
-    return <>{children}</>;
+    return (
+        <CollabProviderGate>
+            {children}
+        </CollabProviderGate>
+    );
 }
 
 export function App() {
@@ -97,8 +104,9 @@ export function App() {
                 <UpdateNotificationBridge />
                 <BrowserRouter>
                     <RoutingProvider>
-                        <WorkspaceGuard>
-                            <WorkspaceProvider>
+                        <AuthProvider>
+                            <WorkspaceGuard>
+                                <WorkspaceProvider>
                                 <SkillUpdatesBridge />
                                 <KeyboardShortcutsProvider>
                                     <GHSyncProvider>
@@ -117,6 +125,7 @@ export function App() {
                                                 <Route path="/mcp-servers/:serverId/edit" element={<McpServerFormPage />} />
                                                 <Route path="/sync" element={<SyncPage />} />
                                                 <Route path="/sync/resolve" element={<ConflictResolvePage />} />
+                                                <Route path="/team" element={<TeamSettingsPage />} />
                                                 <Route path="/test-editor" element={<TestEditorPage />} />
 
                                                 {/* Catch-all redirect to root */}
@@ -128,8 +137,9 @@ export function App() {
                                         </CommandDialogProvider>
                                     </GHSyncProvider>
                                 </KeyboardShortcutsProvider>
-                            </WorkspaceProvider>
-                        </WorkspaceGuard>
+                                </WorkspaceProvider>
+                            </WorkspaceGuard>
+                        </AuthProvider>
                     </RoutingProvider>
                 </BrowserRouter>
                 <Toaster position="top-right" richColors />

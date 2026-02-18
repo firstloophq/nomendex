@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useWorkspaceContext } from "./WorkspaceContext";
 import { GitAuthMode } from "@/types/Workspace";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
+import { useTeamAuth } from "@/contexts/AuthContext";
+
+const TEAM_BACKEND_URL = "http://localhost:4444";
 
 interface SyncStatus {
     checking: boolean;
@@ -41,6 +45,13 @@ const CHANGE_DEBOUNCE_MS = 5000; // 5 seconds
 export function GHSyncProvider(props: { children: React.ReactNode }) {
     const { children } = props;
     const { gitAuthMode, setGitAuthMode, autoSync } = useWorkspaceContext();
+    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { getToken } = useTeamAuth();
+    const isTeamMode = activeWorkspace?.teamMode === "team";
+    // GitHub-backed team workspaces use installation tokens for git sync
+    const hasGitHubInstallation = Boolean(activeWorkspace?.installationId);
+    // Only skip sync when in team mode WITHOUT a GitHub installation (Y.js only)
+    const skipSync = isTeamMode && !hasGitHubInstallation;
     const [isReady, setIsReady] = useState(false);
     const [status, setStatus] = useState<SyncStatus>({
         checking: false,
@@ -63,6 +74,62 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
     const changeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const changeWatchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const syncRef = useRef<(() => Promise<void>) | null>(null);
+
+    // Cached installation token for GitHub-backed workspaces
+    const installationTokenRef = useRef<{ token: string; expiresAt: Date } | null>(null);
+
+    // Fetch a fresh installation access token from team-backend
+    const getInstallationToken = useCallback(async (): Promise<string | null> => {
+        if (!hasGitHubInstallation || !activeWorkspace?.installationId) return null;
+
+        // Return cached token if still valid (with 5 minute buffer)
+        const cached = installationTokenRef.current;
+        if (cached && new Date(cached.expiresAt).getTime() > Date.now() + 5 * 60 * 1000) {
+            return cached.token;
+        }
+
+        try {
+            const clerkToken = await getToken();
+            if (!clerkToken) return null;
+
+            const res = await fetch(
+                `${TEAM_BACKEND_URL}/api/github/installations/${activeWorkspace.installationId}/token`,
+                {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${clerkToken}` },
+                },
+            );
+
+            if (!res.ok) return null;
+
+            const data = (await res.json()) as { token: string; expiresAt: string };
+            installationTokenRef.current = {
+                token: data.token,
+                expiresAt: new Date(data.expiresAt),
+            };
+            return data.token;
+        } catch {
+            return null;
+        }
+    }, [hasGitHubInstallation, activeWorkspace?.installationId, getToken]);
+
+    // Helper to create fetch options with optional authToken for GitHub-backed workspaces
+    const makeSyncFetchOptions = useCallback(async (method: string): Promise<RequestInit> => {
+        if (!hasGitHubInstallation) {
+            return { method };
+        }
+
+        const authToken = await getInstallationToken();
+        if (!authToken) {
+            return { method };
+        }
+
+        return {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ authToken }),
+        };
+    }, [hasGitHubInstallation, getInstallationToken]);
 
     // Check if GitHub PAT is set
     const checkPAT = useCallback(async (): Promise<boolean> => {
@@ -158,7 +225,8 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
         setStatus(s => ({ ...s, checking: true, error: null }));
 
         try {
-            const response = await fetch("/api/git/fetch-status", { method: "POST" });
+            const fetchOpts = await makeSyncFetchOptions("POST");
+            const response = await fetch("/api/git/fetch-status", fetchOpts);
             if (response.ok) {
                 const data = await response.json();
 
@@ -189,7 +257,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 error: error instanceof Error ? error.message : "Failed to check for changes",
             }));
         }
-    }, [isReady, status.hasMergeConflict]);
+    }, [isReady, status.hasMergeConflict, makeSyncFetchOptions]);
 
     // Sync (commit, pull, then push)
     const sync = useCallback(async () => {
@@ -210,8 +278,9 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 throw new Error(data.error || "Commit failed");
             }
 
-            // Then pull
-            const pullResponse = await fetch("/api/git/pull", { method: "POST" });
+            // Then pull (with optional authToken for GitHub-backed workspaces)
+            const pullOpts = await makeSyncFetchOptions("POST");
+            const pullResponse = await fetch("/api/git/pull", pullOpts);
             const pullData = await pullResponse.json();
 
             if (!pullResponse.ok) {
@@ -223,8 +292,9 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 throw new Error(pullData.error || "Pull failed");
             }
 
-            // Then push
-            const pushResponse = await fetch("/api/git/push", { method: "POST" });
+            // Then push (with optional authToken for GitHub-backed workspaces)
+            const pushOpts = await makeSyncFetchOptions("POST");
+            const pushResponse = await fetch("/api/git/push", pushOpts);
             if (!pushResponse.ok) {
                 const data = await pushResponse.json();
                 throw new Error(data.error || "Push failed");
@@ -246,33 +316,36 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 error: error instanceof Error ? error.message : "Sync failed",
             }));
         }
-    }, [isReady, status.hasMergeConflict]);
+    }, [isReady, status.hasMergeConflict, makeSyncFetchOptions]);
 
     // Keep syncRef updated
     useEffect(() => {
         syncRef.current = sync;
     }, [sync]);
 
-    // Initial check on mount
+    // Initial check on mount — skip when sync is disabled
     useEffect(() => {
+        if (skipSync) return;
         recheckSetup().then(() => {
             // checkForChanges will be triggered by isReady changing
         });
-    }, [recheckSetup]);
+    }, [recheckSetup, skipSync]);
 
-    // Start polling when ready
+    // Start polling when ready — skip when sync is disabled
     // In local mode, we don't need a PAT — system credentials are used
-    const authReady = gitAuthMode === "local" || setupStatus.hasPAT;
+    // In GitHub-backed team mode, installation tokens are handled automatically
+    const authReady = hasGitHubInstallation || gitAuthMode === "local" || setupStatus.hasPAT;
     useEffect(() => {
+        if (skipSync) return;
         if (isReady && authReady) {
             checkForChanges();
         }
-    }, [isReady, authReady, checkForChanges]);
+    }, [isReady, authReady, checkForChanges, skipSync]);
 
     // Scheduled polling for remote changes (configurable interval)
-    // Also pauses when there's an active merge conflict
+    // Also pauses when there's an active merge conflict or when sync is disabled
     useEffect(() => {
-        if (!isReady || !autoSync.enabled || autoSync.paused || status.hasMergeConflict) {
+        if (skipSync || !isReady || !autoSync.enabled || autoSync.paused || status.hasMergeConflict) {
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
                 pollIntervalRef.current = null;
@@ -291,12 +364,12 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 pollIntervalRef.current = null;
             }
         };
-    }, [isReady, autoSync.enabled, autoSync.paused, autoSync.intervalSeconds, status.hasMergeConflict, checkForChanges]);
+    }, [skipSync, isReady, autoSync.enabled, autoSync.paused, autoSync.intervalSeconds, status.hasMergeConflict, checkForChanges]);
 
     // File watching with debounce (polls git status every 3 seconds, debounces sync by 5 seconds)
-    // Also pauses when there's an active merge conflict
+    // Also pauses when there's an active merge conflict or when sync is disabled
     useEffect(() => {
-        if (!isReady || !autoSync.enabled || !autoSync.syncOnChanges || autoSync.paused || status.hasMergeConflict) {
+        if (skipSync || !isReady || !autoSync.enabled || !autoSync.syncOnChanges || autoSync.paused || status.hasMergeConflict) {
             if (changeDebounceRef.current) {
                 clearTimeout(changeDebounceRef.current);
                 changeDebounceRef.current = null;
@@ -362,7 +435,7 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
                 changeWatchRef.current = null;
             }
         };
-    }, [isReady, autoSync.enabled, autoSync.syncOnChanges, autoSync.paused, status.hasMergeConflict]);
+    }, [skipSync, isReady, autoSync.enabled, autoSync.syncOnChanges, autoSync.paused, status.hasMergeConflict]);
 
     // Re-check ready state when navigating (in case user sets up git)
     useEffect(() => {
