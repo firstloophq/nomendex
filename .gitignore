@@ -75,5 +75,11 @@ bun.lockb
 *.pem
 *.key
 
+# Playwright CLI snapshots/screenshots
+.playwright-cli/
+
+# Spec/issue artifact images
+docs/specs/team/issues/artifacts/**/*.png
+
 # Nomendex workspace data
 .nomendex/
