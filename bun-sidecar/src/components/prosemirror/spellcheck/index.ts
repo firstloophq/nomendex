@@ -11,6 +11,10 @@ export interface SpellcheckPluginState {
 
 export const spellcheckPluginKey = new PluginKey<SpellcheckPluginState>("spellcheck");
 
+function asDecorationSet(value: unknown): DecorationSet {
+    return value instanceof DecorationSet ? value : DecorationSet.empty;
+}
+
 // Singleton dictionary instance
 let dictionaryInstance: SpellcheckEngine | null = null;
 let dictionaryLoading: Promise<SpellcheckEngine | null> | null = null;
@@ -60,6 +64,41 @@ function isWordMisspelled(word: string, dictionary: SpellcheckEngine | null): bo
     return !dictionary.check(word);
 }
 
+function isValidInlineRange(
+    doc: Parameters<typeof DecorationSet.create>[0],
+    from: number,
+    to: number
+): { from: number; to: number } | null {
+    const maxPos = doc.content.size;
+    const safeFrom = Math.max(1, Math.floor(from));
+    const safeTo = Math.max(1, Math.floor(to));
+
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    if (safeFrom > maxPos || safeTo > maxPos) return null;
+    if (safeFrom >= safeTo) return null;
+
+    try {
+        const fromPos = doc.resolve(safeFrom);
+        const toPos = doc.resolve(safeTo);
+
+        if (
+            fromPos.depth === 0 ||
+            toPos.depth === 0 ||
+            !fromPos.parent.isTextblock ||
+            !toPos.parent.isTextblock ||
+            fromPos.depth !== toPos.depth ||
+            fromPos.parent !== toPos.parent ||
+            fromPos.parentOffset >= toPos.parentOffset
+        ) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return { from: safeFrom, to: safeTo };
+}
+
 // Get suggestions for a misspelled word
 export function getSuggestions(word: string, dictionary: SpellcheckEngine | null): string[] {
     if (!dictionary) return [];
@@ -85,19 +124,23 @@ function createDecorations(
 
         const words = extractWords(text);
 
-        words.forEach(({ word, start, end }) => {
-            if (isWordMisspelled(word, dictionary)) {
-                const from = pos + start;
-                const to = pos + end;
+        for (const { word, start, end } of words) {
+            if (!isWordMisspelled(word, dictionary)) continue;
 
-                decorations.push(
-                    Decoration.inline(from, to, {
-                        class: "misspelled-word",
-                        "data-word": word,
-                    })
-                );
+            const from = pos + start;
+            const to = pos + end;
+            const safeRange = isValidInlineRange(doc, from, to);
+            if (!safeRange) {
+                continue;
             }
-        });
+
+            decorations.push(
+                Decoration.inline(safeRange.from, safeRange.to, {
+                    class: "misspelled-word",
+                    "data-word": word,
+                })
+            );
+        }
     });
 
     return DecorationSet.create(doc, decorations);
@@ -127,7 +170,7 @@ export async function runSpellcheck(view: EditorView): Promise<{ misspelledCount
 
         // Count misspelled words
         const pluginState = spellcheckPluginKey.getState(view.state);
-        const misspelledCount = pluginState?.decorations.find().length ?? 0;
+        const misspelledCount = asDecorationSet(pluginState?.decorations).find().length;
 
         toast.dismiss(loadingToast);
 
@@ -168,6 +211,16 @@ export function createSpellcheckPlugin(): Plugin<SpellcheckPluginState> {
                 };
             },
             apply(tr, value, _oldState, newState) {
+                const currentState = value ?? {
+                    decorations: DecorationSet.empty,
+                    dictionary: null,
+                    isLoading: false,
+                };
+                const safeCurrentState = {
+                    ...currentState,
+                    decorations: asDecorationSet(currentState.decorations),
+                };
+
                 const meta = tr.getMeta(spellcheckPluginKey) as
                     | { type: "runSpellcheck"; dictionary: SpellcheckEngine }
                     | { type: "clear" }
@@ -177,26 +230,26 @@ export function createSpellcheckPlugin(): Plugin<SpellcheckPluginState> {
                 if (meta) {
                     if (meta.type === "runSpellcheck") {
                         return {
-                            ...value,
+                            ...safeCurrentState,
                             dictionary: meta.dictionary,
                             decorations: createDecorations(newState.doc, meta.dictionary),
                         };
                     }
                     if (meta.type === "clear") {
                         return {
-                            ...value,
+                            ...safeCurrentState,
                             decorations: DecorationSet.empty,
                         };
                     }
                     if (meta.type === "removeAt") {
                         // Remove decorations that overlap with the specified range
-                        const filtered = value.decorations.find(meta.from, meta.to);
-                        let newDecorations = value.decorations;
+                        const filtered = safeCurrentState.decorations.find(meta.from, meta.to);
+                        let newDecorations = safeCurrentState.decorations;
                         for (const deco of filtered) {
                             newDecorations = newDecorations.remove([deco]);
                         }
                         return {
-                            ...value,
+                            ...safeCurrentState,
                             decorations: newDecorations.map(tr.mapping, tr.doc),
                         };
                     }
@@ -205,15 +258,15 @@ export function createSpellcheckPlugin(): Plugin<SpellcheckPluginState> {
                 // Map decorations through the transaction - this preserves decorations
                 // and automatically removes/adjusts ones in the edited region
                 return {
-                    ...value,
-                    decorations: value.decorations.map(tr.mapping, tr.doc),
+                    ...safeCurrentState,
+                    decorations: safeCurrentState.decorations.map(tr.mapping, tr.doc),
                 };
             },
         },
         props: {
             decorations(state) {
                 const pluginState = this.getState(state);
-                return pluginState?.decorations;
+                return asDecorationSet(pluginState?.decorations);
             },
         },
     });

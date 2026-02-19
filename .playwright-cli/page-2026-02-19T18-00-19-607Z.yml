@@ -1,0 +1,33 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Collaborative Editor Test" [level=1] [ref=e6]
+        - paragraph [ref=e7]: "doc: user-testing-1-numbered-lists | user: user-b"
+      - button "Clear all" [ref=e8]
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e13]:
+          - navigation "breadcrumb" [ref=e14]:
+            - list [ref=e15]:
+              - listitem [ref=e16]:
+                - generic [ref=e17]: collab-test
+          - generic [ref=e18]: user-testing-1-numbered-lists
+        - generic [ref=e19]:
+          - button "Add to project" [ref=e21]:
+            - img [ref=e22]
+            - text: Add to project
+          - button "Add tag" [ref=e25]:
+            - img [ref=e26]
+            - text: Add tag
+      - paragraph [ref=e36]
+  - generic [ref=e37]:
+    - heading "Command Palette" [level=2] [ref=e38]
+    - paragraph [ref=e39]: Search for a command to run...
+  - generic [ref=e40]:
+    - heading "Command Palette" [level=2] [ref=e41]
+    - paragraph [ref=e42]: Search for a command to run...
+  - generic [ref=e43]:
+    - heading "Command Palette" [level=2] [ref=e44]
+    - paragraph [ref=e45]: Search for a command to run...
+  - region "Notifications alt+T"

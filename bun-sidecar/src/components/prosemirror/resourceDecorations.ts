@@ -6,6 +6,35 @@ import type { Node as PMNode } from "prosemirror-model";
 // Matches plugin://id URIs, e.g., todo://task-123
 const URI_RE = /\b([a-zA-Z][a-zA-Z0-9_-]+):\/\/([^\s\]\)]+)\b/g;
 
+function safeRange(doc: PMNode, from: number, to: number): { from: number; to: number } | null {
+    const maxPos = doc.content.size;
+    const safeFrom = Math.max(1, Math.floor(from));
+    const safeTo = Math.max(1, Math.floor(to));
+
+    if (safeFrom > maxPos || safeTo > maxPos) return null;
+    if (safeFrom >= safeTo) return null;
+
+    try {
+        const fromPos = doc.resolve(safeFrom);
+        const toPos = doc.resolve(safeTo);
+        if (
+            fromPos.depth === 0 ||
+            toPos.depth === 0 ||
+            !fromPos.parent.isTextblock ||
+            !toPos.parent.isTextblock ||
+            fromPos.depth !== toPos.depth ||
+            fromPos.parent !== toPos.parent ||
+            fromPos.parentOffset >= toPos.parentOffset
+        ) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return { from: safeFrom, to: safeTo };
+}
+
 function buildDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];
 
@@ -25,7 +54,10 @@ function buildDecorations(doc: PMNode): DecorationSet {
       const id = m[2];
       const from = pos + m.index;
       const to = from + full.length;
-      const deco = Decoration.inline(from, to, {
+      const range = safeRange(doc, from, to);
+      if (!range) continue;
+
+      const deco = Decoration.inline(range.from, range.to, {
         class: "pm-resource-uri",
         title: `${plugin}://${id}`,
         "data-plugin": plugin,
@@ -52,13 +84,13 @@ export function resourceDecorationsPlugin() {
         if (tr.docChanged) {
           return { decos: buildDecorations(newState.doc) };
         }
-        return prev;
+        return prev ?? { decos: buildDecorations(newState.doc) };
       },
     },
     props: {
       decorations(state) {
         const pluginState = resourceDecorationsKey.getState(state);
-        return pluginState?.decos || null;
+        return pluginState?.decos || DecorationSet.empty;
       },
     },
   });

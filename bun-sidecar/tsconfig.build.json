@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "debug": ["./src/polyfills/debug.ts"],
+      "@crdt/lib": ["./src/types/crdt-lib"],
+      "@crdt/lib/server": ["./src/types/crdt-server"]
+    }
+  }
+}

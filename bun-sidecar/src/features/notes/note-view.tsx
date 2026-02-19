@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { todosAPI } from "@/hooks/useTodosAPI";
-import { EditorState, Selection, NodeSelection, TextSelection } from "prosemirror-state";
+import { EditorState, Selection, NodeSelection, TextSelection, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
 import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
@@ -63,8 +63,17 @@ import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/compon
 import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
 import "@/components/prosemirror/spellcheck/spellcheck.css";
 import { useCollab } from "@/contexts/CollabContext";
-import * as Y from "yjs";
-import { ySyncPlugin, yCursorPlugin, yUndoPlugin, prosemirrorToYXmlFragment } from "y-prosemirror";
+import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
+import {
+    createCRDTPlugin,
+    applyRemoteOps,
+    undoCommand,
+    redoCommand,
+    createCursorPlugin,
+    updateRemoteCursors,
+    awarenessToRemoteCursor,
+} from "@crdt/lib";
+import type { Operation, CRDTPluginState, RemoteCursor, ClientId } from "@crdt/lib";
 import "@/styles/collab-cursors.css";
 
 interface NotesViewProps {
@@ -79,6 +88,172 @@ interface Heading {
     level: number;
     text: string;
     id: string;
+}
+
+const BOOTSTRAP_CLAIM_KEY_PREFIX = "nomendex:crdt-bootstrap";
+const BOOTSTRAP_CLAIM_TTL_MS = 4000;
+
+function tryClaimBootstrap(params: { docId: string; clientId: string }): boolean {
+    if (typeof window === "undefined") return true;
+
+    const key = `${BOOTSTRAP_CLAIM_KEY_PREFIX}:${params.docId}`;
+    const now = Date.now();
+
+    try {
+        const existingRaw = window.localStorage.getItem(key);
+        if (existingRaw) {
+            const existing = JSON.parse(existingRaw) as { clientId?: string; claimedAt?: number };
+            if (
+                typeof existing.claimedAt === "number" &&
+                now - existing.claimedAt < BOOTSTRAP_CLAIM_TTL_MS &&
+                existing.clientId &&
+                existing.clientId !== params.clientId
+            ) {
+                return false;
+            }
+        }
+
+        const claimRaw = JSON.stringify({ clientId: params.clientId, claimedAt: now });
+        window.localStorage.setItem(key, claimRaw);
+
+        const confirmedRaw = window.localStorage.getItem(key);
+        if (!confirmedRaw) return false;
+
+        const confirmed = JSON.parse(confirmedRaw) as { clientId?: string; claimedAt?: number };
+        return (
+            confirmed.clientId === params.clientId &&
+            typeof confirmed.claimedAt === "number" &&
+            now - confirmed.claimedAt < BOOTSTRAP_CLAIM_TTL_MS
+        );
+    } catch {
+        // If storage is unavailable, fall back to optimistic bootstrap.
+        return true;
+    }
+}
+
+function summarizeTransactionForDebug(transaction: { docChanged: boolean; selectionSet: boolean; steps: unknown[] }) {
+    const stepDetails = transaction.steps.map((step) => summarizeStepForDebug(step));
+    return {
+        docChanged: transaction.docChanged,
+        selectionSet: transaction.selectionSet,
+        stepTypes: stepDetails.map((step) => String(step.kindHint ?? "unknown")),
+        stepDetails,
+    };
+}
+
+function summarizeStepForDebug(step: unknown): Record<string, unknown> {
+    if (!step || typeof step !== "object") {
+        return { kindHint: typeof step };
+    }
+
+    const s = step as {
+        constructor?: { name?: string };
+        jsonID?: unknown;
+        toJSON?: () => unknown;
+        from?: unknown;
+        to?: unknown;
+        gapFrom?: unknown;
+        gapTo?: unknown;
+        slice?: unknown;
+    };
+
+    const summary: Record<string, unknown> = {
+        constructor: s.constructor?.name ?? null,
+        jsonID: typeof s.jsonID === "string" ? s.jsonID : null,
+        hasSlice: s.slice !== undefined,
+    };
+
+    if (typeof s.from === "number") summary.from = s.from;
+    if (typeof s.to === "number") summary.to = s.to;
+    if (typeof s.gapFrom === "number") summary.gapFrom = s.gapFrom;
+    if (typeof s.gapTo === "number") summary.gapTo = s.gapTo;
+
+    try {
+        if (typeof s.toJSON === "function") {
+            const json = s.toJSON();
+            if (json && typeof json === "object") {
+                const j = json as {
+                    stepType?: unknown;
+                    from?: unknown;
+                    to?: unknown;
+                    gapFrom?: unknown;
+                    gapTo?: unknown;
+                };
+                if (typeof j.stepType === "string") summary.toJSONStepType = j.stepType;
+                if (summary.from === undefined && typeof j.from === "number") summary.from = j.from;
+                if (summary.to === undefined && typeof j.to === "number") summary.to = j.to;
+                if (summary.gapFrom === undefined && typeof j.gapFrom === "number") summary.gapFrom = j.gapFrom;
+                if (summary.gapTo === undefined && typeof j.gapTo === "number") summary.gapTo = j.gapTo;
+            }
+        }
+    } catch {
+        summary.toJSONStepType = "[toJSON-throws]";
+    }
+
+    summary.kindHint = summary.toJSONStepType
+        ?? summary.jsonID
+        ?? summary.constructor
+        ?? "UnknownStep";
+
+    return summary;
+}
+
+function summarizeDocShapeForDebug(doc: unknown): Record<string, unknown> {
+    if (!doc || typeof doc !== "object") return { kind: typeof doc };
+
+    const d = doc as {
+        type?: { name?: string };
+        childCount?: number;
+        child?: (index: number) => unknown;
+    };
+
+    const topLevel: Array<Record<string, unknown>> = [];
+    const childCount = typeof d.childCount === "number" ? d.childCount : null;
+    if (childCount !== null && typeof d.child === "function") {
+        const limit = Math.min(childCount, 12);
+        for (let i = 0; i < limit; i++) {
+            const childNode = d.child(i) as {
+                type?: { name?: string };
+                childCount?: number;
+                child?: (index: number) => unknown;
+            };
+            const nestedTypes: Array<string> = [];
+            if (typeof childNode.childCount === "number" && typeof childNode.child === "function") {
+                const nestedLimit = Math.min(childNode.childCount, 6);
+                for (let j = 0; j < nestedLimit; j++) {
+                    const nested = childNode.child(j) as { type?: { name?: string } };
+                    nestedTypes.push(nested.type?.name ?? "unknown");
+                }
+            }
+
+            topLevel.push({
+                index: i,
+                type: childNode.type?.name ?? "unknown",
+                childCount: typeof childNode.childCount === "number" ? childNode.childCount : null,
+                childTypes: nestedTypes,
+            });
+        }
+    }
+
+    return {
+        type: d.type?.name ?? "unknown",
+        childCount,
+        topLevel,
+    };
+}
+
+function summarizeErrorForDebug(error: unknown): Record<string, unknown> {
+    if (error instanceof Error) {
+        return {
+            name: error.name,
+            message: error.message,
+            stack: error.stack ?? null,
+        };
+    }
+
+    return {
+        message: String(error),
+    };
 }
 
 export function NotesView(props: NotesViewProps) {
@@ -132,6 +307,9 @@ export function NotesView(props: NotesViewProps) {
     const { isLocked: isFileLocked } = useFileLocks();
     const isLocked = isFileLocked(noteFileName);
 
+    const hasNote = Boolean(note);
+    const hasCollab = Boolean(collab);
+
     useEffect(() => {
         const view = viewRef.current;
         if (!view) return;
@@ -139,6 +317,46 @@ export function NotesView(props: NotesViewProps) {
             editable: () => !isLocked,
         });
     }, [isLocked]);
+
+    useEffect(() => {
+        if (!collab) return;
+
+        const onWindowError = (event: ErrorEvent) => {
+            crdtDebugLog({
+                event: "runtime_error",
+                level: "error",
+                data: {
+                    noteFileName,
+                    message: event.message,
+                    filename: event.filename,
+                    lineno: event.lineno,
+                    colno: event.colno,
+                    error: summarizeErrorForDebug(event.error),
+                    docShape: summarizeDocShapeForDebug(viewRef.current?.state.doc ?? null),
+                },
+            });
+        };
+
+        const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+            crdtDebugLog({
+                event: "runtime_unhandled_rejection",
+                level: "error",
+                data: {
+                    noteFileName,
+                    reason: summarizeErrorForDebug(event.reason),
+                    docShape: summarizeDocShapeForDebug(viewRef.current?.state.doc ?? null),
+                },
+            });
+        };
+
+        window.addEventListener("error", onWindowError);
+        window.addEventListener("unhandledrejection", onUnhandledRejection);
+
+        return () => {
+            window.removeEventListener("error", onWindowError);
+            window.removeEventListener("unhandledrejection", onUnhandledRejection);
+        };
+    }, [collab, noteFileName]);
 
     // Subscribe to wiki link click events and navigate
     useEffect(() => {
@@ -209,6 +427,23 @@ export function NotesView(props: NotesViewProps) {
             });
         });
     }, [noteFileName, content]);
+
+    // Subscribe to clear content events for test/editor automation flows.
+    useEffect(() => {
+        return subscribe("notes:clearContent", ({ noteFileName: targetFileName }) => {
+            if (targetFileName !== noteFileName) return;
+            const view = viewRef.current;
+            if (!view) return;
+
+            const emptyParagraph = tableSchema.nodes.paragraph.createAndFill();
+            if (!emptyParagraph) return;
+
+            // Drive clear through a concrete PM transaction so CRDT captures and rebroadcasts it.
+            const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, emptyParagraph);
+            view.dispatch(tr);
+            view.focus();
+        });
+    }, [noteFileName]);
 
     // Subscribe to run spellcheck events
     useEffect(() => {
@@ -676,25 +911,22 @@ export function NotesView(props: NotesViewProps) {
             viewRef.current = null;
         }
 
-        // In team mode with collab, use Y.js for document state
+        // In team mode with collab, use CRDT for document state
         const isCollabMode = !!collab;
-        let yXmlFragment: Y.XmlFragment | null = null;
+        const collabDocId = `note:${noteFileName}`;
+        crdtDebugLog({
+            event: "note_editor_init",
+            data: {
+                noteFileName,
+                tabId,
+                docId: collabDocId,
+                isCollabMode,
+                collabClientId: collab?.clientId ?? null,
+            },
+        });
 
-        if (isCollabMode && collab) {
-            yXmlFragment = collab.ydoc.getXmlFragment(`note:${noteFileName}`);
-
-            // Bootstrap: if the Y.XmlFragment is empty, populate from the local markdown
-            if (yXmlFragment.length === 0 && contentToUse.trim().length > 0) {
-                const pmDoc = tableMarkdownParser.parse(contentToUse);
-                if (pmDoc) {
-                    prosemirrorToYXmlFragment(pmDoc, yXmlFragment);
-                }
-            }
-        }
-
-        const doc = isCollabMode
-            ? undefined // ySyncPlugin manages the doc from the Y.XmlFragment
-            : (tableMarkdownParser.parse(contentToUse) || tableSchema.nodes.doc.createAndFill());
+        // In both solo and collab modes, parse the doc from markdown
+        const doc = tableMarkdownParser.parse(contentToUse) || tableSchema.nodes.doc.createAndFill();
 
         // Custom keymap for tab indentation in lists
         const listIndentKeymap = keymap({
@@ -722,14 +954,89 @@ export function NotesView(props: NotesViewProps) {
         // Spellcheck plugin for spell checking
         const spellcheckPlugin = createSpellcheckPlugin();
 
-        // Build plugin list: in team mode, add y-prosemirror plugins and disable history
-        const plugins = collab && yXmlFragment
+        // Build CRDT plugin + cursor plugin + undo/redo keymap for collab mode
+        let crdtPlugin: Plugin<CRDTPluginState> | null = null;
+        let cursorPlugin: Plugin | null = null;
+        // Gate bootstrap ops: suppress onLocalOps until initial sync completes,
+        // so only the first client bootstraps the doc on the server.
+        let syncComplete = false;
+        let pendingLocalOps: Operation[] = [];
+
+        if (isCollabMode && collab) {
+            crdtPlugin = createCRDTPlugin({
+                clientId: collab.clientId,
+                schema: tableSchema,
+                onLocalOps: (ops: ReadonlyArray<Operation>) => {
+                    if (ops.length === 0) return;
+                    crdtDebugLog({
+                        event: "local_ops_captured",
+                        data: {
+                            docId: collabDocId,
+                            syncComplete,
+                            count: ops.length,
+                            ops: summarizeOpsForDebug(ops),
+                        },
+                    });
+
+                    // During initial sync, queue local ops so they can be flushed
+                    // after sync completes instead of being dropped.
+                    if (!syncComplete) {
+                        pendingLocalOps.push(...ops);
+                        crdtDebugLog({
+                            event: "local_ops_queued_presync",
+                            data: {
+                                docId: collabDocId,
+                                queuedCount: pendingLocalOps.length,
+                            },
+                        });
+                        return;
+                    }
+
+                    collab.sendOps({
+                        docId: collabDocId,
+                        ops: ops as ReadonlyArray<Operation>,
+                    });
+                    crdtDebugLog({
+                        event: "local_ops_sent",
+                        data: {
+                            docId: collabDocId,
+                            count: ops.length,
+                            ops: summarizeOpsForDebug(ops),
+                        },
+                    });
+                },
+            });
+            cursorPlugin = createCursorPlugin({ localClientId: collab.clientId });
+        }
+
+        // CRDT undo/redo keymap (replaces default history in collab mode)
+        const crdtUndoRedoKeymap = crdtPlugin ? keymap({
+            "Mod-z": (_state, _dispatch, view) => {
+                if (!view || !crdtPlugin) return false;
+                const result = undoCommand({ state: view.state, plugin: crdtPlugin });
+                if (!result) return false;
+                view.updateState(result.state);
+                return true;
+            },
+            "Mod-Shift-z": (_state, _dispatch, view) => {
+                if (!view || !crdtPlugin) return false;
+                const result = redoCommand({ state: view.state, plugin: crdtPlugin });
+                if (!result) return false;
+                view.updateState(result.state);
+                return true;
+            },
+        }) : null;
+
+        // Build plugin list: in collab mode, add CRDT plugins and disable built-in history
+        const collabPlugins = crdtPlugin
+            ? [crdtPlugin, ...(cursorPlugin ? [cursorPlugin] : []), ...(crdtUndoRedoKeymap ? [crdtUndoRedoKeymap] : [])]
+            : [];
+
+        const plugins = isCollabMode
             ? [
                 ...getTablePlugins(),
                 todoKeymap,
-                ySyncPlugin(yXmlFragment),
-                yCursorPlugin(collab.awareness),
-                yUndoPlugin(),
+                ...collabPlugins,
                 ...exampleSetup({ schema: tableSchema, floatingMenu: false, history: false }),
                 listIndentKeymap,
                 todoPlugin,
@@ -753,7 +1060,7 @@ export function NotesView(props: NotesViewProps) {
             ];
 
         let state = EditorState.create({
-            ...(doc ? { doc } : { schema: tableSchema }),
+            doc: doc!,
             plugins,
         });
 
@@ -774,19 +1081,80 @@ export function NotesView(props: NotesViewProps) {
         // construction, which would hit the TDZ with `const view = new ...`.
         let viewInstance: EditorView | null = null;
 
+        const updateEditorStateSafely = (view: EditorView, nextState: EditorState, source: string): boolean => {
+            const shouldRestoreFocus = view.hasFocus();
+            try {
+                view.updateState(nextState);
+                return true;
+            } catch (updateError) {
+                crdtDebugLog({
+                    event: "editor_updatestate_failed",
+                    level: "error",
+                    data: {
+                        source,
+                        docId: collabDocId,
+                        error: summarizeErrorForDebug(updateError),
+                    },
+                });
+
+                try {
+                    const recoveredState = EditorState.create({
+                        doc: nextState.doc,
+                        plugins: view.state.plugins,
+                        selection: nextState.selection,
+                    });
+                    view.updateState(recoveredState);
+                    if (shouldRestoreFocus && !view.hasFocus()) {
+                        view.focus();
+                    }
+
+                    crdtDebugLog({
+                        event: "editor_updatestate_recovered",
+                        data: {
+                            source,
+                            docId: collabDocId,
+                        },
+                    });
+                    return true;
+                } catch (recoveryError) {
+                    crdtDebugLog({
+                        event: "editor_updatestate_recovery_failed",
+                        level: "error",
+                        data: {
+                            source,
+                            docId: collabDocId,
+                            error: summarizeErrorForDebug(recoveryError),
+                        },
+                    });
+                    return false;
+                }
+            }
+        };
+
         const editorView = new EditorView(editorRef.current, {
             state,
             editable: () => !isLocked,
             dispatchTransaction(transaction) {
-                // viewInstance is set right after construction completes.
-                // ySyncPlugin may call dispatchTransaction during EditorView
-                // construction, so we fall back to `viewInstance` (which is
-                // null only on the very first synchronous call — but ySyncPlugin
-                // sets it via the constructor's return).
                 const v = viewInstance;
                 if (!v) return;
                 const newState = v.state.apply(transaction);
-                v.updateState(newState);
+                const updated = updateEditorStateSafely(v, newState, "local_dispatch");
+                if (!updated) {
+                    return;
+                }
+                if (transaction.docChanged || transaction.selectionSet) {
+                    crdtDebugLog({
+                        event: "pm_dispatch",
+                        data: {
+                            docId: collabDocId,
+                            selection: {
+                                from: newState.selection.from,
+                                to: newState.selection.to,
+                            },
+                            transaction: summarizeTransactionForDebug(transaction),
+                        },
+                    });
+                }
 
                 // Check if selection changed
                 if (transaction.selectionSet) {
@@ -794,6 +1162,20 @@ export function NotesView(props: NotesViewProps) {
                     setTimeout(() => updateActiveHeadingFromCursorRef.current(), 0);
                     // Save cursor position for persistence
                     saveCursor(v);
+
+                    // Send cursor awareness in collab mode
+                    if (collab) {
+                        const { from, to } = newState.selection;
+                        collab.sendAwareness({
+                            docId: collabDocId,
+                            state: {
+                                cursor: { anchor: from, head: to },
+                                viewingDocId: collabDocId,
+                                user: collab.userInfo,
+                                lastUpdated: Date.now(),
+                            },
+                        });
+                    }
                 }
 
                 const markdown = tableMarkdownSerializer.serialize(newState.doc);
@@ -810,6 +1192,25 @@ export function NotesView(props: NotesViewProps) {
                         event.preventDefault();
                         return true;
                     }
+                    return false;
+                },
+                keydown: (view, event) => {
+                    crdtDebugLog({
+                        event: "editor_keydown",
+                        data: {
+                            docId: collabDocId,
+                            key: event.key,
+                            code: event.code,
+                            metaKey: event.metaKey,
+                            ctrlKey: event.ctrlKey,
+                            shiftKey: event.shiftKey,
+                            altKey: event.altKey,
+                            selection: {
+                                from: view.state.selection.from,
+                                to: view.state.selection.to,
+                            },
+                        },
+                    });
                     return false;
                 },
                 blur: () => {
@@ -934,6 +1335,204 @@ export function NotesView(props: NotesViewProps) {
             return toggleTodoAtLine(editorView.state, editorView.dispatch);
         });
 
+        // Subscribe to remote CRDT ops and awareness updates in collab mode
+        let unsubscribeDoc: (() => void) | null = null;
+        let unsubscribeAwareness: (() => void) | null = null;
+
+        if (isCollabMode && collab && crdtPlugin) {
+            const docId = collabDocId;
+            const capturedCrdtPlugin = crdtPlugin;
+            const remoteCursors = new Map<ClientId, RemoteCursor>();
+            let receivedRemoteOps = false;
+            let bootstrapQueued = false;
+            let bootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+            const clearBootstrapRetry = () => {
+                if (bootstrapRetryTimer) {
+                    clearTimeout(bootstrapRetryTimer);
+                    bootstrapRetryTimer = null;
+                }
+            };
+
+            const maybeBootstrap = () => {
+                if (bootstrapQueued) {
+                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "already_queued" } });
+                    return;
+                }
+                if (receivedRemoteOps) {
+                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "received_remote_ops" } });
+                    return;
+                }
+                if (pendingLocalOps.length > 0) {
+                    crdtDebugLog({
+                        event: "bootstrap_skip",
+                        data: { docId, reason: "pending_local_ops", pendingCount: pendingLocalOps.length },
+                    });
+                    return;
+                }
+                if (!editorView || editorView.isDestroyed) {
+                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "editor_unavailable" } });
+                    return;
+                }
+                if (!tryClaimBootstrap({ docId, clientId: collab.clientId })) {
+                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "claim_denied" } });
+                    return;
+                }
+
+                bootstrapQueued = true;
+                const currentDoc = editorView.state.doc;
+                const tr = editorView.state.tr.replaceWith(0, currentDoc.content.size, currentDoc.content);
+                editorView.dispatch(tr);
+                crdtDebugLog({
+                    event: "bootstrap_dispatched",
+                    data: { docId, size: currentDoc.content.size },
+                });
+            };
+
+            // Subscribe to remote doc ops
+            unsubscribeDoc = collab.subscribeDoc({
+                docId,
+                onOps: ({ ops }) => {
+                    if (!editorView || editorView.isDestroyed) return;
+                    // Filter to only CRDT tree operations (not field/set ops)
+                    const treeOps = ops.filter(
+                        (op): op is Operation => op.type !== "field" && op.type !== "set"
+                    );
+                    if (treeOps.length === 0) return;
+                    receivedRemoteOps = true;
+                    clearBootstrapRetry();
+                    crdtDebugLog({
+                        event: "remote_ops_received",
+                        data: {
+                            docId,
+                            rawCount: ops.length,
+                            treeCount: treeOps.length,
+                            ops: summarizeOpsForDebug(treeOps),
+                        },
+                    });
+                    try {
+                        const result = applyRemoteOps({
+                            state: editorView.state,
+                            plugin: capturedCrdtPlugin,
+                            ops: treeOps,
+                        });
+
+                        try {
+                            result.state.doc.check();
+                        } catch (validationError) {
+                            crdtDebugLog({
+                                event: "remote_ops_invalid_doc",
+                                level: "error",
+                                data: {
+                                    docId,
+                                    error: summarizeErrorForDebug(validationError),
+                                    ops: summarizeOpsForDebug(treeOps),
+                                    docShape: summarizeDocShapeForDebug(result.state.doc),
+                                },
+                            });
+                            return;
+                        }
+
+                        const updated = updateEditorStateSafely(editorView, result.state, "remote_sync");
+                        if (!updated) {
+                            return;
+                        }
+                        crdtDebugLog({
+                            event: "remote_ops_applied",
+                            data: {
+                                docId,
+                                selection: {
+                                    from: result.state.selection.from,
+                                    to: result.state.selection.to,
+                                },
+                                docShape: summarizeDocShapeForDebug(result.state.doc),
+                            },
+                        });
+                    } catch (applyError) {
+                        crdtDebugLog({
+                            event: "remote_ops_apply_failed",
+                            level: "error",
+                            data: {
+                                docId,
+                                error: summarizeErrorForDebug(applyError),
+                                ops: summarizeOpsForDebug(treeOps),
+                                beforeDocShape: summarizeDocShapeForDebug(editorView.state.doc),
+                            },
+                        });
+                    }
+                },
+                onSyncComplete: () => {
+                    syncComplete = true;
+                    crdtDebugLog({
+                        event: "sync_complete",
+                        data: {
+                            docId,
+                            receivedRemoteOps,
+                            pendingLocalOps: pendingLocalOps.length,
+                            bootstrapQueued,
+                        },
+                    });
+
+                    if (pendingLocalOps.length > 0) {
+                        const opsToFlush = pendingLocalOps;
+                        pendingLocalOps = [];
+                        collab.sendOps({
+                            docId,
+                            ops: opsToFlush as ReadonlyArray<Operation>,
+                        });
+                        crdtDebugLog({
+                            event: "presync_ops_flushed",
+                            data: {
+                                docId,
+                                count: opsToFlush.length,
+                                ops: summarizeOpsForDebug(opsToFlush),
+                            },
+                        });
+                    }
+
+                    maybeBootstrap();
+
+                    if (!receivedRemoteOps && !bootstrapQueued && pendingLocalOps.length === 0) {
+                        crdtDebugLog({
+                            event: "bootstrap_retry_scheduled",
+                            data: { docId, delayMs: BOOTSTRAP_CLAIM_TTL_MS + 250 },
+                        });
+                        bootstrapRetryTimer = setTimeout(() => {
+                            maybeBootstrap();
+                        }, BOOTSTRAP_CLAIM_TTL_MS + 250);
+                    }
+                },
+            });
+
+            // Subscribe to remote awareness updates (cursors)
+            unsubscribeAwareness = collab.subscribeAwareness({
+                docId,
+                onAwareness: ({ clientId: remoteClientId, state: awarenessState }) => {
+                    if (!editorView || editorView.isDestroyed) return;
+                    if (remoteClientId === collab.clientId) return; // Skip self
+                    const cursor = awarenessToRemoteCursor({
+                        clientId: remoteClientId,
+                        state: awarenessState,
+                    });
+                    if (cursor) {
+                        remoteCursors.set(remoteClientId, cursor);
+                    } else {
+                        remoteCursors.delete(remoteClientId);
+                    }
+                    updateRemoteCursors({
+                        view: editorView,
+                        cursors: remoteCursors,
+                    });
+                },
+            });
+
+            const previousUnsubscribeDoc = unsubscribeDoc;
+            unsubscribeDoc = () => {
+                clearBootstrapRetry();
+                previousUnsubscribeDoc?.();
+            };
+        }
+
         // Helper to scroll to a specific line number with context above
         const scrollToLineNumber = (lineNum: number) => {
             const doc = editorView.state.doc;
@@ -1006,6 +1605,8 @@ export function NotesView(props: NotesViewProps) {
 
         return () => {
             unregisterCmdEnter();
+            unsubscribeDoc?.();
+            unsubscribeAwareness?.();
             if (viewRef.current) {
                 viewRef.current.destroy();
                 viewRef.current = null;
@@ -1019,13 +1620,13 @@ export function NotesView(props: NotesViewProps) {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isRichTextMode, noteFileName, note, updateContent, saveImmediately, collab]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
+    }, [isRichTextMode, noteFileName, hasNote, updateContent, saveImmediately, collab?.clientId]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
 
     // Update editor content when content changes externally (only after initial load)
-    // In collab mode, Y.js handles doc sync, so skip external content updates.
+    // In collab mode, CRDT handles doc sync, so skip external content updates.
     useEffect(() => {
-        if (!viewRef.current || !isRichTextMode || !note) return;
-        if (collab) return; // Y.js manages document state in team mode
+        if (!viewRef.current || !isRichTextMode || !hasNote) return;
+        if (hasCollab) return; // CRDT manages document state in team mode
 
         // Skip if this is the content we just initialized with
         if (content === initializedContentRef.current) return;
@@ -1092,7 +1693,7 @@ export function NotesView(props: NotesViewProps) {
             viewRef.current.updateState(newState);
             initializedContentRef.current = content;
         }
-    }, [content, isRichTextMode, note, collab]);
+    }, [content, isRichTextMode, hasNote, hasCollab]);
 
     // Move ProseMirror menubar into the header toolbar container
     useEffect(() => {

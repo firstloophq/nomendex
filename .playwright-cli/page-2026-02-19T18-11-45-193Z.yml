@@ -1,0 +1,16 @@
+- generic [ref=e2]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - heading "Collaborative Editor Test" [level=1] [ref=e6]
+      - paragraph [ref=e7]: "doc: user-testing-1-numbered-lists-keystroke | user: user-b"
+    - button "Clear all" [ref=e8]
+  - generic [ref=e16]:
+    - heading "Command Palette" [level=2] [ref=e17]
+    - paragraph [ref=e18]: Search for a command to run...
+  - generic [ref=e19]:
+    - heading "Command Palette" [level=2] [ref=e20]
+    - paragraph [ref=e21]: Search for a command to run...
+  - generic [ref=e22]:
+    - heading "Command Palette" [level=2] [ref=e23]
+    - paragraph [ref=e24]: Search for a command to run...
+  - region "Notifications alt+T"

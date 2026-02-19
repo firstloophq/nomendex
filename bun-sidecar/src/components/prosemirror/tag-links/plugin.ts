@@ -1,6 +1,6 @@
 import { Plugin, PluginKey, EditorState } from "prosemirror-state";
 import { EditorView, DecorationSet, Decoration } from "prosemirror-view";
-import type { Node as PMNode } from "prosemirror-model";
+import { Node as PMNode } from "prosemirror-model";
 
 /**
  * Plugin state for tag suggestions
@@ -17,6 +17,46 @@ export const tagLinkPluginKey = new PluginKey<TagLinkPluginState>("tagLink");
 // Regex to find completed tags in document (for decoration)
 // Matches #tag followed by word boundary (space, punctuation, end of line)
 const COMPLETED_TAG_REGEX = /(?:^|[\s\[\(])#([a-zA-Z_][a-zA-Z0-9_-]*)/g;
+type PositionRange = { from: number; to: number };
+
+function safePositionRange(doc: PMNode, from: number, to: number): PositionRange | null {
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+        return null;
+    }
+
+    const max = doc.content.size;
+    const resolvedFrom = Math.floor(from);
+    const resolvedTo = Math.floor(to);
+    const safeFrom = Math.min(Math.max(1, resolvedFrom), max);
+    const safeTo = Math.min(Math.max(1, resolvedTo), max);
+
+    if (safeFrom >= safeTo) {
+        return null;
+    }
+
+    try {
+        const fromPos = doc.resolve(safeFrom);
+        const toPos = doc.resolve(safeTo);
+
+        if (fromPos.depth === 0 || toPos.depth === 0) {
+            return null;
+        }
+
+        if (
+            !fromPos.parent.isTextblock ||
+            !toPos.parent.isTextblock ||
+            fromPos.depth !== toPos.depth ||
+            fromPos.parent !== toPos.parent ||
+            fromPos.parentOffset >= toPos.parentOffset
+        ) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return { from: safeFrom, to: safeTo };
+}
 
 /**
  * Find all completed tags in a text block and return their positions
@@ -54,9 +94,10 @@ function buildTagDecorations(doc: PMNode): DecorationSet {
     doc.descendants((node, pos) => {
         const tags = findTagsInNode(node, pos);
         for (const { from, to } of tags) {
-            decorations.push(
-                Decoration.inline(from, to, { class: "tag-link" })
-            );
+            const safeRange = safePositionRange(doc, from, to);
+            if (!safeRange) continue;
+
+            decorations.push(Decoration.inline(safeRange.from, safeRange.to, { class: "tag-link" }));
         }
     });
 
@@ -65,6 +106,12 @@ function buildTagDecorations(doc: PMNode): DecorationSet {
 
 // Plugin key for tag decorations (separate from suggestion state)
 export const tagDecorationPluginKey = new PluginKey<DecorationSet>("tagDecoration");
+const DEFAULT_TAG_LINK_STATE: TagLinkPluginState = {
+    active: false,
+    range: null,
+    query: "",
+    selectedIndex: 0,
+};
 
 /**
  * Create the tag decoration plugin (highlights completed tags)
@@ -82,13 +129,15 @@ export function createTagDecorationPlugin(): Plugin<DecorationSet> {
                 if (tr.docChanged) {
                     return buildTagDecorations(tr.doc);
                 }
-                return decorations.map(tr.mapping, tr.doc);
+                return decorations instanceof DecorationSet
+                    ? decorations.map(tr.mapping, tr.doc)
+                    : buildTagDecorations(tr.doc);
             },
         },
 
         props: {
             decorations(state) {
-                return tagDecorationPluginKey.getState(state);
+                return tagDecorationPluginKey.getState(state) ?? DecorationSet.empty;
             },
 
             handleKeyDown(view, event) {
@@ -156,11 +205,21 @@ function findTagTrigger(
     if (!match) return null;
 
     const query = match[1] || "";
+    // Keep bare "#" available for markdown heading input rules.
+    // Tag suggestions activate only after at least one tag character.
+    if (query.length === 0) {
+        return null;
+    }
+
     // Calculate start position: account for the space/bracket before # if present
     const start = $from.pos - query.length - 1; // -1 for the #
+    const safeRange = safePositionRange(state.doc, start, $from.pos);
+    if (!safeRange) {
+        return null;
+    }
 
     return {
-        range: { from: start, to: $from.pos },
+        range: safeRange,
         query,
     };
 }
@@ -178,31 +237,22 @@ export function createTagLinkPlugin(options: TagLinkPluginOptions): Plugin<TagLi
 
         state: {
             init(): TagLinkPluginState {
-                return {
-                    active: false,
-                    range: null,
-                    query: "",
-                    selectedIndex: 0,
-                };
+                return { ...DEFAULT_TAG_LINK_STATE };
             },
 
             apply(tr, prev, _oldState, newState): TagLinkPluginState {
+                const previousState = prev ?? DEFAULT_TAG_LINK_STATE;
                 // Check for explicit metadata to close the popup
                 const meta = tr.getMeta(tagLinkPluginKey);
                 if (meta?.close) {
-                    const newPluginState: TagLinkPluginState = {
-                        active: false,
-                        range: null,
-                        query: "",
-                        selectedIndex: 0,
-                    };
+                    const newPluginState: TagLinkPluginState = { ...DEFAULT_TAG_LINK_STATE };
                     options.onStateChange?.(newPluginState);
                     return newPluginState;
                 }
 
                 if (meta?.setSelectedIndex !== undefined) {
                     const newPluginState: TagLinkPluginState = {
-                        ...prev,
+                        ...previousState,
                         selectedIndex: meta.setSelectedIndex,
                     };
                     options.onStateChange?.(newPluginState);
@@ -211,7 +261,7 @@ export function createTagLinkPlugin(options: TagLinkPluginOptions): Plugin<TagLi
 
                 // Check if selection changed or document changed
                 if (!tr.selectionSet && !tr.docChanged) {
-                    return prev;
+                    return previousState;
                 }
 
                 // Find trigger pattern
@@ -222,25 +272,23 @@ export function createTagLinkPlugin(options: TagLinkPluginOptions): Plugin<TagLi
                         active: true,
                         range: trigger.range,
                         query: trigger.query,
-                        selectedIndex: prev.query !== trigger.query ? 0 : prev.selectedIndex,
+                        selectedIndex:
+                            previousState.query !== trigger.query
+                                ? 0
+                                : previousState.selectedIndex,
                     };
                     options.onStateChange?.(newPluginState);
                     return newPluginState;
                 }
 
                 // No trigger found
-                if (prev.active) {
-                    const newPluginState: TagLinkPluginState = {
-                        active: false,
-                        range: null,
-                        query: "",
-                        selectedIndex: 0,
-                    };
+                if (previousState.active) {
+                    const newPluginState: TagLinkPluginState = { ...DEFAULT_TAG_LINK_STATE };
                     options.onStateChange?.(newPluginState);
                     return newPluginState;
                 }
 
-                return prev;
+                return previousState;
             },
         },
 
@@ -294,10 +342,13 @@ export function createTagLinkPlugin(options: TagLinkPluginOptions): Plugin<TagLi
                     return DecorationSet.empty;
                 }
 
+                const range = safePositionRange(state.doc, pluginState.range.from, pluginState.range.to);
+                if (!range) return DecorationSet.empty;
+
                 // Highlight the #query portion
                 const deco = Decoration.inline(
-                    pluginState.range.from,
-                    pluginState.range.to,
+                    range.from,
+                    range.to,
                     { class: "tag-link-trigger" }
                 );
 

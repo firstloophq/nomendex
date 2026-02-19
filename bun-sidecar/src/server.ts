@@ -21,6 +21,8 @@ import { versionRoutes } from "./server-routes/version-routes";
 import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
 import { projectsRoutes } from "./server-routes/projects-routes";
+import { createCRDTWebSocketHandler } from "@crdt/lib/server";
+import type { WSClient } from "@crdt/lib/server";
 
 // Terminal WebSocket data type
 interface TerminalWSData {
@@ -28,8 +30,17 @@ interface TerminalWSData {
     sessionId: string;
 }
 
+// CRDT WebSocket data type
+interface CRDTWSData {
+    isCRDT: true;
+    clientId: string;
+}
+
 // Union type for all WebSocket data types
-type WSData = TerminalWSData | Record<string, never>;
+type WSData = TerminalWSData | CRDTWSData | Record<string, never>;
+
+// Create the CRDT WebSocket handler at module level
+const crdtHandler = createCRDTWebSocketHandler({ serverClientId: "sidecar-server" });
 
 interface TerminalSession {
     proc: Subprocess;
@@ -126,6 +137,24 @@ const server = serve<WSData>({
                 }
 
                 serverLogger.error("Terminal WebSocket upgrade failed");
+                return new Response("Upgrade failed", { status: 500 });
+            },
+        },
+
+        // CRDT WebSocket route handler
+        "/ws/crdt": {
+            GET: (req, server) => {
+                const url = new URL(req.url);
+                const clientId = url.searchParams.get("clientId") || `anon-${Date.now()}`;
+
+                serverLogger.info("CRDT WebSocket upgrade request received", { clientId });
+
+                if (server.upgrade(req, { data: { isCRDT: true, clientId } })) {
+                    serverLogger.info("CRDT WebSocket upgrade successful", { clientId });
+                    return;
+                }
+
+                serverLogger.error("CRDT WebSocket upgrade failed");
                 return new Response("Upgrade failed", { status: 500 });
             },
         },
@@ -270,6 +299,15 @@ const server = serve<WSData>({
                         // Write the message to the PTY
                         session.terminal.write(_message);
                     }
+                }
+            } else if (_ws.data && "isCRDT" in _ws.data && _ws.data.isCRDT) {
+                // Delegate to CRDT handler
+                if (typeof _message === "string") {
+                    const client: WSClient = {
+                        id: (_ws.data as CRDTWSData).clientId,
+                        send: (msg: string) => _ws.send(msg),
+                    };
+                    crdtHandler.handleMessage({ client, message: _message });
                 }
             } else {
                 const msgLen = typeof _message === "string" ? _message.length : (_message as ArrayBuffer).byteLength;
@@ -434,6 +472,14 @@ const server = serve<WSData>({
                 if (!isNewSession && session.history) {
                     _ws.send(session.history);
                 }
+            } else if (_ws.data && "isCRDT" in _ws.data && _ws.data.isCRDT) {
+                const crdtData = _ws.data as CRDTWSData;
+                serverLogger.info("CRDT WebSocket client connected", { clientId: crdtData.clientId });
+                const client: WSClient = {
+                    id: crdtData.clientId,
+                    send: (msg: string) => _ws.send(msg),
+                };
+                crdtHandler.handleOpen({ client });
             } else {
                 serverLogger.info("WebSocket client connected");
             }
@@ -459,6 +505,18 @@ const server = serve<WSData>({
 
                 // Note: We don't kill the PTY here to allow reconnection
                 // PTY will only be killed when it exits naturally or on server shutdown
+            } else if (_ws.data && "isCRDT" in _ws.data && _ws.data.isCRDT) {
+                const crdtData = _ws.data as CRDTWSData;
+                serverLogger.info("CRDT WebSocket client disconnected", {
+                    clientId: crdtData.clientId,
+                    code: _code,
+                    message: _message,
+                });
+                const client: WSClient = {
+                    id: crdtData.clientId,
+                    send: (msg: string) => _ws.send(msg),
+                };
+                crdtHandler.handleClose({ client });
             } else {
                 serverLogger.info("WebSocket client disconnected", { code: _code, message: _message });
             }

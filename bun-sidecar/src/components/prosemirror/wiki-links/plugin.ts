@@ -1,6 +1,6 @@
 import { Plugin, PluginKey, EditorState } from "prosemirror-state";
-import { EditorView, DecorationSet, Decoration } from "prosemirror-view";
-import { Schema } from "prosemirror-model";
+import { EditorView, DecorationSet } from "prosemirror-view";
+import { Node as PMNode, Schema } from "prosemirror-model";
 
 /**
  * Plugin state for wiki link suggestions
@@ -13,6 +13,57 @@ export interface WikiLinkPluginState {
 }
 
 export const wikiLinkPluginKey = new PluginKey<WikiLinkPluginState>("wikiLink");
+const DEFAULT_STATE: WikiLinkPluginState = {
+    active: false,
+    range: null,
+    query: "",
+    selectedIndex: 0,
+};
+
+function defaultState(): WikiLinkPluginState {
+    return { ...DEFAULT_STATE };
+}
+
+type PositionRange = { from: number; to: number };
+
+function safePositionRange(doc: PMNode, from: number, to: number): PositionRange | null {
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+        return null;
+    }
+
+    const max = doc.content.size;
+    const resolvedFrom = Math.floor(from);
+    const resolvedTo = Math.floor(to);
+    const safeFrom = Math.min(Math.max(1, resolvedFrom), max);
+    const safeTo = Math.min(Math.max(1, resolvedTo), max);
+
+    if (safeFrom >= safeTo) {
+        return null;
+    }
+
+    try {
+        const fromPos = doc.resolve(safeFrom);
+        const toPos = doc.resolve(safeTo);
+
+        if (fromPos.depth === 0 || toPos.depth === 0) {
+            return null;
+        }
+
+        if (
+            !fromPos.parent.isTextblock ||
+            !toPos.parent.isTextblock ||
+            fromPos.depth !== toPos.depth ||
+            fromPos.parent !== toPos.parent ||
+            fromPos.parentOffset >= toPos.parentOffset
+        ) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    return { from: safeFrom, to: safeTo };
+}
 
 /**
  * Find the [[query]] pattern before the cursor
@@ -38,10 +89,14 @@ function findWikiLinkTrigger(
     if (!match) return null;
 
     const query = match[1];
+    if (query.length === 0) return null;
+
     const start = $from.pos - query.length - 2; // -2 for [[
+    const safeRange = safePositionRange(state.doc, start, $from.pos);
+    if (!safeRange) return null;
 
     return {
-        range: { from: start, to: $from.pos },
+        range: safeRange,
         query,
     };
 }
@@ -60,31 +115,22 @@ export function createWikiLinkPlugin(options: WikiLinkPluginOptions): Plugin<Wik
 
         state: {
             init(): WikiLinkPluginState {
-                return {
-                    active: false,
-                    range: null,
-                    query: "",
-                    selectedIndex: 0,
-                };
+                return defaultState();
             },
 
             apply(tr, prev, _oldState, newState): WikiLinkPluginState {
+                const previousState = prev ?? DEFAULT_STATE;
                 // Check for explicit metadata to close the popup
                 const meta = tr.getMeta(wikiLinkPluginKey);
                 if (meta?.close) {
-                    const newPluginState: WikiLinkPluginState = {
-                        active: false,
-                        range: null,
-                        query: "",
-                        selectedIndex: 0,
-                    };
+                    const newPluginState = defaultState();
                     options.onStateChange?.(newPluginState);
                     return newPluginState;
                 }
 
                 if (meta?.setSelectedIndex !== undefined) {
                     const newPluginState: WikiLinkPluginState = {
-                        ...prev,
+                        ...previousState,
                         selectedIndex: meta.setSelectedIndex,
                     };
                     options.onStateChange?.(newPluginState);
@@ -93,7 +139,7 @@ export function createWikiLinkPlugin(options: WikiLinkPluginOptions): Plugin<Wik
 
                 // Check if selection changed or document changed
                 if (!tr.selectionSet && !tr.docChanged) {
-                    return prev;
+                    return previousState;
                 }
 
                 // Find trigger pattern
@@ -104,25 +150,23 @@ export function createWikiLinkPlugin(options: WikiLinkPluginOptions): Plugin<Wik
                         active: true,
                         range: trigger.range,
                         query: trigger.query,
-                        selectedIndex: prev.query !== trigger.query ? 0 : prev.selectedIndex,
+                        selectedIndex:
+                            previousState.query !== trigger.query
+                                ? 0
+                                : previousState.selectedIndex,
                     };
                     options.onStateChange?.(newPluginState);
                     return newPluginState;
                 }
 
                 // No trigger found
-                if (prev.active) {
-                    const newPluginState: WikiLinkPluginState = {
-                        active: false,
-                        range: null,
-                        query: "",
-                        selectedIndex: 0,
-                    };
+                if (previousState.active) {
+                    const newPluginState = defaultState();
                     options.onStateChange?.(newPluginState);
                     return newPluginState;
                 }
 
-                return prev;
+                return previousState;
             },
         },
 
@@ -171,19 +215,11 @@ export function createWikiLinkPlugin(options: WikiLinkPluginOptions): Plugin<Wik
 
             // Add decorations for the [[ trigger text
             decorations(state) {
-                const pluginState = wikiLinkPluginKey.getState(state);
-                if (!pluginState?.active || !pluginState.range) {
-                    return DecorationSet.empty;
-                }
-
-                // Highlight the [[query portion
-                const deco = Decoration.inline(
-                    pluginState.range.from,
-                    pluginState.range.to,
-                    { class: "wiki-link-trigger" }
-                );
-
-                return DecorationSet.create(state.doc, [deco]);
+                void state;
+                // Trigger decorations are currently disabled because invalid
+                // DecorationGroup state can be produced during rapid typing
+                // before initial collab sync, causing editor update crashes.
+                return DecorationSet.empty;
             },
         },
     });

@@ -50,8 +50,8 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
     const isTeamMode = activeWorkspace?.teamMode === "team";
     // GitHub-backed team workspaces use installation tokens for git sync
     const hasGitHubInstallation = Boolean(activeWorkspace?.installationId);
-    // Only skip sync when in team mode WITHOUT a GitHub installation (Y.js only)
-    const skipSync = isTeamMode && !hasGitHubInstallation;
+    // Team mode uses CRDT collab — skip git sync entirely
+    const skipSync = isTeamMode;
     const [isReady, setIsReady] = useState(false);
     const [status, setStatus] = useState<SyncStatus>({
         checking: false,

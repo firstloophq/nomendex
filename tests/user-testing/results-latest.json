@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-02-19T18:18:37.061Z",
+  "results": [
+    {
+      "id": "2-headers",
+      "pass": false,
+      "details": "header counts A={\"h1\":1,\"h2\":1,\"h3\":1,\"h4\":1,\"h5\":1,\"h6\":1} B={\"h1\":0,\"h2\":0,\"h3\":0,\"h4\":1,\"h5\":1,\"h6\":1}",
+      "screenshots": {
+        "a": "/Users/jacobcolling/nomendex/bun-sidecar/docs/specs/team/issues/artifacts/crdt-playwright/2-headers-a-1771525116981-773217.png",
+        "b": "/Users/jacobcolling/nomendex/bun-sidecar/docs/specs/team/issues/artifacts/crdt-playwright/2-headers-b-1771525116981-773217.png"
+      }
+    }
+  ]
+}

@@ -632,7 +632,7 @@ export const todoPlugin = new Plugin({
     init: (_, state) => buildTodoDecorations(state.doc),
     apply(tr, decorationSet, _oldState, newState) {
       if (!tr.docChanged) {
-        return decorationSet;
+        return decorationSet ?? buildTodoDecorations(newState.doc);
       }
 
       return buildTodoDecorations(newState.doc);
@@ -640,7 +640,7 @@ export const todoPlugin = new Plugin({
   },
   props: {
     decorations(state) {
-      return todoPluginKey.getState(state) ?? null;
+      return todoPluginKey.getState(state) ?? DecorationSet.empty;
     },
     handleClick(view, pos, event) {
       return handleTodoClick(view, pos, event as MouseEvent);
