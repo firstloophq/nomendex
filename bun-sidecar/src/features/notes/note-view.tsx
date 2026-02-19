@@ -1040,7 +1040,11 @@ export function NotesView(props: NotesViewProps) {
 
         // Build plugin list: in collab mode, add CRDT plugins and disable built-in history
         const collabPlugins = crdtPlugin
-            ? [crdtPlugin, ...(crdtUndoRedoKeymap ? [crdtUndoRedoKeymap] : [])]
+            ? [
+                crdtPlugin,
+                ...(cursorPlugin ? [cursorPlugin] : []),
+                ...(crdtUndoRedoKeymap ? [crdtUndoRedoKeymap] : []),
+            ]
             : [];
 
         const plugins = isCollabMode
@@ -2127,7 +2131,11 @@ export function NotesView(props: NotesViewProps) {
                                         }
                                     />
                                     {/* Wiki link popup */}
-                                    {viewRef.current && wikiLinkState.active && (
+                                    {viewRef.current &&
+                                        wikiLinkState.active &&
+                                        viewRef.current.hasFocus() &&
+                                        typeof document !== "undefined" &&
+                                        document.hasFocus() && (
                                         <WikiLinkPopup
                                             view={viewRef.current}
                                             pluginState={wikiLinkState}
