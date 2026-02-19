@@ -21,6 +21,7 @@ import { versionRoutes } from "./server-routes/version-routes";
 import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
 import { projectsRoutes } from "./server-routes/projects-routes";
+import { canvasRoutes } from "./server-routes/canvas-routes";
 import { createCRDTRelay, createCRDTWebSocketHandler } from "@crdt/lib/server";
 import type { WSClient } from "@crdt/lib/server";
 import { globalConfig } from "./storage/global-config";
@@ -261,6 +262,7 @@ const server = serve<WSData>({
         ...logsRoutes,
         ...dictionariesRoutes,
         ...projectsRoutes,
+        ...canvasRoutes,
         // WebSocket route handler
         "/ws": {
             GET: (req, server) => {

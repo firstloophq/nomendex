@@ -5,6 +5,13 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Nomendex</title>
         <link rel="stylesheet" href="./output.css" />
+        <script>
+            // tldraw extracts globalThis.structuredClone without binding,
+            // which can cause "Illegal invocation" in some environments.
+            if (typeof structuredClone === "function") {
+                globalThis.structuredClone = structuredClone.bind(globalThis);
+            }
+        </script>
         <script type="module" src="./frontend.tsx" async></script>
     </head>
     <body>

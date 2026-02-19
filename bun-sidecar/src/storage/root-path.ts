@@ -7,6 +7,7 @@ interface PathCache {
     nomendexPath: string;
     todosPath: string;
     notesPath: string;
+    canvasesPath: string;
     agentsPath: string;
     skillsPath: string;
     uploadsPath: string;
@@ -54,6 +55,7 @@ export async function initializePaths(): Promise<void> {
         nomendexPath,
         todosPath: path.join(workspace.path, "todos"),
         notesPath,
+        canvasesPath: path.join(workspace.path, "canvases"),
         agentsPath: path.join(workspace.path, "agents"),
         skillsPath: path.join(workspace.path, ".claude", "skills"),
         uploadsPath: path.join(workspace.path, "uploads"),
@@ -109,6 +111,15 @@ export function getTodosPath(): string {
 export function getNotesPath(): string {
     if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
     return paths.notesPath;
+}
+
+/**
+ * Get the canvases path of the active workspace.
+ * @throws Error if no workspace is active
+ */
+export function getCanvasesPath(): string {
+    if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
+    return paths.canvasesPath;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Result, ErrorCodes } from "../types/Result";
 import { WorkspaceState, WorkspaceStateSchema } from "../types/Workspace";
-import { getNomendexPath, getRootPath, getNotesPath, getTodosPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, initializePaths } from "../storage/root-path";
+import { getNomendexPath, getRootPath, getNotesPath, getTodosPath, getCanvasesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, initializePaths } from "../storage/root-path";
 
 const ThemeRequestSchema = z.object({
     themeName: z.string(),
@@ -169,6 +169,7 @@ export const workspaceRoutes = {
                     root: getRootPath(),
                     notes: getNotesPath(),
                     todos: getTodosPath(),
+                    canvases: getCanvasesPath(),
                     uploads: getUploadsPath(),
                     skills: getSkillsPath(),
                 };

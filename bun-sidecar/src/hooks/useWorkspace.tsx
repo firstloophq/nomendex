@@ -204,6 +204,11 @@ export function useWorkspace(_initialRoute?: RouteParams) {
             return existingProps.tagName === props.tagName;
         }
 
+        // For canvas: match on canvasId
+        if (pluginMeta.id === "canvas" && props.canvasId) {
+            return existingProps.canvasId === props.canvasId;
+        }
+
         // For chat: match on sessionId
         if (pluginMeta.id === "chat" && view === "chat") {
             // If opening an existing chat (has sessionId), match on sessionId

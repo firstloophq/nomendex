@@ -3,6 +3,7 @@ import { initializePaths, hasActiveWorkspace, getActiveWorkspacePath } from "@/s
 import { initializeTodosService } from "@/features/todos/fx";
 import { initializeNotesService } from "@/features/notes/fx";
 import { initializeProjectsService } from "@/features/projects/fx";
+import { initializeCanvasService } from "@/features/canvas/fx";
 import { secrets } from "@/lib/secrets";
 import { onStartup } from "@/onStartup";
 
@@ -59,6 +60,7 @@ export async function initializeWorkspaceServices(): Promise<void> {
             await initializeTodosService();
             await initializeNotesService();
             await initializeProjectsService();
+            await initializeCanvasService();
             startupLog.info("Feature services initialized");
         } catch (error) {
             startupLog.error("Failed to initialize feature services", {

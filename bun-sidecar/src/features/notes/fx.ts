@@ -61,7 +61,7 @@ function serializeFrontMatter(frontMatter: Record<string, unknown> | undefined, 
     }
 }
 // Folders that should always be hidden from the notes browser
-const ALWAYS_HIDDEN_FOLDERS = ["todos", ".nomendex", ".git", ".github"];
+const ALWAYS_HIDDEN_FOLDERS = ["todos", "canvases", ".nomendex", ".git", ".github"];
 // Files that should always be hidden from the notes browser
 const ALWAYS_HIDDEN_FILES = [".DS_Store"];
 

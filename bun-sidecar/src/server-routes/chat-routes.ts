@@ -1,5 +1,5 @@
 import { query, type SDKMessage, type McpServerConfig, type HookCallback, type PreToolUseHookInput } from "@anthropic-ai/claude-agent-sdk";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, realpathSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { getRootPath, getNomendexPath, getUploadsPath } from "@/storage/root-path";
@@ -242,13 +242,173 @@ setInterval(() => {
 function getSessionsFile(): string {
     return join(getNomendexPath(), "chat-sessions.jsonl");
 }
-// Claude sessions directory - computed from workspace path
-function getClaudeSessionsDir(): string {
+
+type ClaudeSessionFileInfo = {
+    sessionId: string;
+    filePath: string;
+    mtimeMs: number;
+};
+
+function toLegacyClaudeProjectDirName(workspacePath: string): string {
+    // Legacy mapping used in this codebase: only path separators are rewritten.
+    return workspacePath.replace(/\//g, "-");
+}
+
+function toNormalizedClaudeProjectDirName(workspacePath: string): string {
+    // Claude normalizes several punctuation chars (for example spaces and dots) to "-".
+    return workspacePath.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
+function getWorkspacePathCandidates(): string[] {
     const workspacePath = getRootPath();
-    // Convert path to Claude-compatible format (replace / with -)
-    // Claude keeps the leading dash, e.g., /Users/foo -> -Users-foo
-    const pathPart = workspacePath.replace(/\//g, "-");
-    return `${process.env.HOME}/.claude/projects/${pathPart}`;
+    const candidates = new Set<string>([workspacePath]);
+    try {
+        candidates.add(realpathSync(workspacePath));
+    } catch {
+        // Ignore realpath resolution failures and continue with the configured path.
+    }
+    return Array.from(candidates);
+}
+
+function getClaudeSessionsDirCandidates(): string[] {
+    const home = process.env.HOME || "";
+    const dirs = new Set<string>();
+
+    for (const workspacePath of getWorkspacePathCandidates()) {
+        dirs.add(join(home, ".claude", "projects", toLegacyClaudeProjectDirName(workspacePath)));
+        dirs.add(join(home, ".claude", "projects", toNormalizedClaudeProjectDirName(workspacePath)));
+    }
+
+    return Array.from(dirs);
+}
+
+function resolveSessionFilePath(sessionId: string): string | null {
+    for (const claudeDir of getClaudeSessionsDirCandidates()) {
+        const sessionFile = join(claudeDir, `${sessionId}.jsonl`);
+        if (existsSync(sessionFile)) {
+            return sessionFile;
+        }
+    }
+    return null;
+}
+
+function getSessionHistoryFiles(): Map<string, ClaudeSessionFileInfo> {
+    const filesBySessionId = new Map<string, ClaudeSessionFileInfo>();
+
+    for (const claudeDir of getClaudeSessionsDirCandidates()) {
+        if (!existsSync(claudeDir)) continue;
+
+        let entries: Array<{ isFile: () => boolean; name: string }>;
+        try {
+            entries = readdirSync(claudeDir, {
+                withFileTypes: true,
+                encoding: "utf8",
+            }) as Array<{ isFile: () => boolean; name: string }>;
+        } catch (error) {
+            chatLogger.warn("Failed to read Claude sessions directory", {
+                claudeDir,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            continue;
+        }
+
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+
+            const sessionId = entry.name.slice(0, -".jsonl".length);
+            const filePath = join(claudeDir, entry.name);
+
+            let mtimeMs = 0;
+            try {
+                mtimeMs = statSync(filePath).mtimeMs;
+            } catch {
+                // Keep mtime as 0 when stat fails.
+            }
+
+            const existing = filesBySessionId.get(sessionId);
+            if (!existing || mtimeMs > existing.mtimeMs) {
+                filesBySessionId.set(sessionId, {
+                    sessionId,
+                    filePath,
+                    mtimeMs,
+                });
+            }
+        }
+    }
+
+    return filesBySessionId;
+}
+
+function extractTextFromUserMessage(message: SDKMessage): string {
+    if (!("message" in message) || !message.message) {
+        return "";
+    }
+
+    const messagePayload = message.message as { content?: Array<{ type?: string; text?: string }> } | undefined;
+    if (!messagePayload?.content || !Array.isArray(messagePayload.content)) {
+        return "";
+    }
+
+    return messagePayload.content
+        .filter((block) => block.type === "text" && typeof block.text === "string")
+        .map((block) => block.text || "")
+        .join("\n")
+        .trim();
+}
+
+async function buildSessionMetadataFromHistoryFile(
+    sessionId: string,
+    filePath: string,
+    mtimeMs: number
+): Promise<SessionMetadata> {
+    const fallbackDate = new Date(mtimeMs || Date.now()).toISOString();
+
+    try {
+        // Read only a small file prefix to avoid expensive full-history parsing on large sessions.
+        const head = await Bun.file(filePath).slice(0, 64 * 1024).text();
+        const lines = head.split("\n").filter((line) => line.trim());
+
+        let rawTitle = "";
+        for (const line of lines) {
+            try {
+                const parsed = JSON.parse(line) as SDKMessage;
+                if (parsed.type !== "user") continue;
+                const text = extractTextFromUserMessage(parsed);
+                if (text) {
+                    rawTitle = text;
+                    break;
+                }
+            } catch {
+                // Ignore malformed prefix lines and continue scanning.
+            }
+        }
+
+        const title = rawTitle
+            ? (rawTitle.length > 60 ? `${rawTitle.slice(0, 60)}...` : rawTitle)
+            : `Session ${sessionId.slice(0, 8)}`;
+
+        return {
+            id: sessionId,
+            title,
+            createdAt: fallbackDate,
+            updatedAt: fallbackDate,
+            // We intentionally do not count full messages during recovery to keep this path cheap.
+            messageCount: 0,
+        };
+    } catch (error) {
+        chatLogger.warn("Failed to recover session metadata from history file", {
+            sessionId,
+            filePath,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+            id: sessionId,
+            title: `Session ${sessionId.slice(0, 8)}`,
+            createdAt: fallbackDate,
+            updatedAt: fallbackDate,
+            messageCount: 0,
+        };
+    }
 }
 
 async function readJSONL<T>(filePath: string): Promise<T[]> {
@@ -977,7 +1137,7 @@ export const chatRoutes = {
         async GET() {
             try {
                 const allSessions = await readJSONL<SessionMetadata>(getSessionsFile());
-                const claudeDir = getClaudeSessionsDir();
+                const historyFilesBySessionId = getSessionHistoryFiles();
 
                 // Deduplicate by ID, keeping the most recent entry
                 const sessionsMap = new Map<string, SessionMetadata>();
@@ -988,30 +1148,45 @@ export const chatRoutes = {
                     }
                 }
 
+                // Recover metadata for session files that exist but are missing from metadata JSONL.
+                const missingMetadataSessions = Array.from(historyFilesBySessionId.values())
+                    .filter(({ sessionId }) => !sessionsMap.has(sessionId));
+                if (missingMetadataSessions.length > 0) {
+                    chatLogger.info("Recovering missing session metadata from history files", {
+                        count: missingMetadataSessions.length,
+                    });
+                    for (const { sessionId, filePath, mtimeMs } of missingMetadataSessions) {
+                        const recovered = await buildSessionMetadataFromHistoryFile(sessionId, filePath, mtimeMs);
+                        sessionsMap.set(sessionId, recovered);
+                    }
+
+                    // Persist recovered metadata so it survives restarts.
+                    const recoveredSessions = Array.from(sessionsMap.values());
+                    const recoveredContent = recoveredSessions.map((s) => JSON.stringify(s)).join("\n") + (recoveredSessions.length > 0 ? "\n" : "");
+                    await Bun.write(getSessionsFile(), recoveredContent);
+                }
+
                 // Filter to only sessions with existing history files in this workspace
                 const validSessions: SessionMetadata[] = [];
                 const staleSessions: string[] = [];
 
                 for (const session of sessionsMap.values()) {
-                    const historyFile = join(claudeDir, `${session.id}.jsonl`);
-                    if (existsSync(historyFile)) {
+                    if (historyFilesBySessionId.has(session.id)) {
                         validSessions.push(session);
                     } else {
                         staleSessions.push(session.id);
                         chatLogger.info("Session history not found, marking as stale", {
                             sessionId: session.id,
-                            expectedPath: historyFile
+                            candidateDirs: getClaudeSessionsDirCandidates(),
                         });
                     }
                 }
 
-                // Clean up stale sessions from the metadata file (async, fire-and-forget)
+                // Keep stale metadata for safety; automatic deletion can hide sessions if path
+                // normalization changes.
                 if (staleSessions.length > 0) {
-                    chatLogger.info("Cleaning up stale sessions", { count: staleSessions.length });
-                    const cleanedSessions = allSessions.filter(s => !staleSessions.includes(s.id));
-                    const content = cleanedSessions.map(s => JSON.stringify(s)).join("\n") + (cleanedSessions.length > 0 ? "\n" : "");
-                    Bun.write(getSessionsFile(), content).catch(err => {
-                        chatLogger.error("Failed to clean up stale sessions", { error: err });
+                    chatLogger.info("Sessions missing history files", {
+                        count: staleSessions.length,
                     });
                 }
 
@@ -1139,8 +1314,8 @@ export const chatRoutes = {
                     }
 
                     // Then search message content
-                    const sessionFile = join(getClaudeSessionsDir(), `${session.id}.jsonl`);
-                    if (!existsSync(sessionFile)) continue;
+                    const sessionFile = resolveSessionFilePath(session.id);
+                    if (!sessionFile) continue;
 
                     try {
                         const messages = await readJSONL<SDKMessage>(sessionFile);
@@ -1148,8 +1323,9 @@ export const chatRoutes = {
                         let matchSnippet: { before: string; match: string; after: string } | undefined;
 
                         for (const msg of messages) {
-                            if (msg.type === "user" && "content" in msg) {
-                                const content = String(msg.content);
+                            if (msg.type === "user") {
+                                const content = extractTextFromUserMessage(msg);
+                                if (!content) continue;
                                 const idx = content.toLowerCase().indexOf(searchLower);
                                 if (idx !== -1) {
                                     found = true;
@@ -1206,21 +1382,21 @@ export const chatRoutes = {
                 const pathParts = url.pathname.split("/");
                 // Session ID is at the end: /api/chat/sessions/history/{sessionId}
                 const sessionId = pathParts[pathParts.length - 1];
-                const claudeDir = getClaudeSessionsDir();
-                const sessionFile = join(claudeDir, `${sessionId}.jsonl`);
+                const claudeDirs = getClaudeSessionsDirCandidates();
+                const sessionFile = resolveSessionFilePath(sessionId);
 
                 chatLogger.info("Loading session history", {
                     sessionId,
-                    claudeDir,
                     sessionFile,
-                    dirExists: existsSync(claudeDir),
-                    fileExists: existsSync(sessionFile)
+                    claudeDirs,
+                    existingClaudeDirs: claudeDirs.filter((dir) => existsSync(dir)),
+                    fileExists: !!sessionFile
                 });
 
-                if (!existsSync(sessionFile)) {
-                    chatLogger.warn("Session file not found", { sessionFile });
+                if (!sessionFile) {
+                    chatLogger.warn("Session file not found", { sessionId, claudeDirs });
                     return Response.json(
-                        { error: "Session not found", sessionFile },
+                        { error: "Session not found", sessionId },
                         { status: 404 }
                     );
                 }

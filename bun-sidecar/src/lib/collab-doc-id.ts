@@ -112,6 +112,17 @@ export function buildKanbanCardDocId(params: {
     });
 }
 
+export function buildCanvasDocId(params: {
+    scope: WorkspaceCollabScope;
+    canvasId: string;
+}): string {
+    return buildWorkspaceScopedDocId({
+        scope: params.scope,
+        namespace: "canvas",
+        resourceId: params.canvasId,
+    });
+}
+
 export function todoIdFromKanbanCardDocId(params: {
     docId: string;
 }): string {

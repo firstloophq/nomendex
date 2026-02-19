@@ -1,5 +1,5 @@
 import { startupLog } from "./lib/logger";
-import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, getActiveWorkspacePath } from "./storage/root-path";
+import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getCanvasesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, getActiveWorkspacePath } from "./storage/root-path";
 import { mkdir, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { initializeBacklinksWithData } from "./features/notes/backlinks-service";
@@ -78,12 +78,13 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
 
     const todosOk = await ensureDirectory({ path: getTodosPath(), label: "Todos" });
     const notesOk = await ensureDirectory({ path: getNotesPath(), label: "Notes" });
+    const canvasesOk = await ensureDirectory({ path: getCanvasesPath(), label: "Canvases" });
     const uploadsOk = await ensureDirectory({ path: getUploadsPath(), label: "Uploads" });
     const nomendexOk = await ensureDirectory({ path: getNomendexPath(), label: ".nomendex" });
     const skillsOk = await ensureDirectory({ path: getSkillsPath(), label: ".claude/skills" });
 
     // Log summary of directory creation
-    const allDirsOk = todosOk && notesOk && uploadsOk && nomendexOk && skillsOk;
+    const allDirsOk = todosOk && notesOk && canvasesOk && uploadsOk && nomendexOk && skillsOk;
     if (!allDirsOk) {
         startupLog.warn("Some directories failed to create - app may have reduced functionality");
     }
