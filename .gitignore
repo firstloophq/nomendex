@@ -80,6 +80,7 @@ bun.lockb
 
 # Spec/issue artifact images
 docs/specs/team/issues/artifacts/**/*.png
+bun-sidecar/docs/specs/team/issues/artifacts/**/*.png
 
 # Nomendex workspace data
 .nomendex/
