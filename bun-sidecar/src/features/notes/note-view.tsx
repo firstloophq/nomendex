@@ -435,6 +435,17 @@ export function NotesView(props: NotesViewProps) {
             const view = viewRef.current;
             if (!view) return;
 
+            const top = view.state.doc.firstChild;
+            const isAlreadyEmptyParagraph = Boolean(
+                view.state.doc.childCount === 1
+                && top
+                && top.type.name === "paragraph"
+                && top.textContent.trim().length === 0
+            );
+            if (isAlreadyEmptyParagraph) {
+                return;
+            }
+
             const emptyParagraph = tableSchema.nodes.paragraph.createAndFill();
             if (!emptyParagraph) return;
 
@@ -1029,7 +1040,7 @@ export function NotesView(props: NotesViewProps) {
 
         // Build plugin list: in collab mode, add CRDT plugins and disable built-in history
         const collabPlugins = crdtPlugin
-            ? [crdtPlugin, ...(cursorPlugin ? [cursorPlugin] : []), ...(crdtUndoRedoKeymap ? [crdtUndoRedoKeymap] : [])]
+            ? [crdtPlugin, ...(crdtUndoRedoKeymap ? [crdtUndoRedoKeymap] : [])]
             : [];
 
         const plugins = isCollabMode
