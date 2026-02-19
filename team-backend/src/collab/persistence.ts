@@ -1,4 +1,4 @@
-import type { RecordOp } from "@crdt/lib";
+import type { RecordOp } from "@crdt/lib/server";
 import { prisma } from "../db";
 import {
   buildSnapshotKey,
@@ -232,4 +232,3 @@ export async function saveCollabSnapshot(params: {
     }),
   ]);
 }
-

@@ -5,7 +5,7 @@ import {
   getDoc,
   receive,
   type RecordOp,
-} from "@crdt/lib";
+} from "@crdt/lib/server";
 import {
   createCRDTWebSocketHandler,
   type WSClient,
