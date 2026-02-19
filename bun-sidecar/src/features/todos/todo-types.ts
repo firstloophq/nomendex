@@ -9,6 +9,7 @@ export const TodoSchema = z.object({
     createdAt: z.string(),
     updatedAt: z.string(),
     archived: z.boolean().optional(),
+    deleted: z.boolean().optional(),
     project: z.string().optional(),
     order: z.number().optional(),
     tags: z.array(z.string()).optional(),

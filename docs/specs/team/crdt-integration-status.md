@@ -11,14 +11,14 @@
 
 We are replacing the Y.js-based real-time collaboration system with a custom CRDT library (`@crdt/lib`). The new system runs a local WebSocket CRDT server inside the bun-sidecar process (no external services needed for local testing) and uses ProseMirror plugins from the CRDT lib to capture/apply operations.
 
-The plan has 4 phases. Phases 1-2 are in progress. Phases 3-4 are deferred.
+The plan has 4 phases. Phases 1-2 are complete, Phase 4 has a shipped v1, and Phase 3 remains deferred.
 
 | Phase | Scope | Status |
 |---|---|---|
 | **Phase 1: Plumbing** | Package install, WS handler, CollabContext rewrite | Done |
 | **Phase 2: Notes Editor** | Replace Y.js PM plugins with CRDT plugins | Done (sync bugs remain) |
 | **Phase 3: Team Backend Relay** | Route CRDT ops through team-backend for remote sync | Not started |
-| **Phase 4: Todos / Kanban** | CRDT sync for todo items and kanban boards | Not started |
+| **Phase 4: Todos / Kanban** | CRDT sync for todo items and kanban boards | In progress (v1 shipped in team mode) |
 
 ---
 
@@ -106,6 +106,51 @@ Solution implemented:
    - If remote ops were received (`receivedRemoteOps === true`): server already has content, don't bootstrap.
    - If no remote ops received: this is the first client. Dispatch a self-replacing transaction (`replaceWith(0, size, content)`) to trigger `onLocalOps` and send the full doc to the server.
 
+### Phase 4: Todos / Kanban (Team Mode v1)
+
+#### 4.1 CRDT Kanban Hook and File Backing
+
+**Files**:
+- `bun-sidecar/src/features/todos/useKanban.ts`
+- `bun-sidecar/src/features/todos/browser-view.tsx`
+- `bun-sidecar/src/features/todos/archived-view.tsx`
+- `bun-sidecar/src/features/todos/CreateTodoCommandDialog.tsx`
+
+Key implementation details:
+- Team mode uses a custom local hook (`useKanban`) instead of `@crdt/lib`'s demo hook.
+- Each board is a CRDT board record scoped per workspace + project (`kanban:${workspaceId}:${projectKey}`).
+- Each todo card is its own CRDT record (`cardId = todo.id`), while board record stores layout/ordering.
+- On first sync of a board, file-backed todos are loaded and merged into CRDT state to prevent data loss.
+- Mutations in team mode remain file-backed for compatibility:
+  - `createTodo` persists file first, then creates CRDT card.
+  - `updateTodo` persists file, then updates/moves CRDT card.
+  - `reorderTodos` persists file ordering, then applies CRDT move operations.
+- Soft delete is implemented in v1 (`archived + deleted` flags), matching current team-mode behavior.
+
+#### 4.2 Presence and Editing Awareness
+
+**Files**:
+- `bun-sidecar/src/features/todos/useKanban.ts`
+- `bun-sidecar/src/features/todos/browser-view.tsx`
+- `bun-sidecar/src/features/todos/TodoCard.tsx`
+- `bun-sidecar/src/features/todos/TaskCardEditor.tsx`
+
+Presence model:
+- Awareness is sent on the board doc channel.
+- Focused card is represented as `viewingDocId = todoId`.
+- Editing state is represented with awareness `cursor` presence (sentinel value), and aggregated separately.
+- `useKanban` exposes:
+  - `presenceByDoc: Map<todoId, UserInfo[]>`
+  - `editingByDoc: Map<todoId, UserInfo[]>`
+  - `sendPresence({ todoId, editing })`
+
+UI behavior:
+- Kanban cards show viewer count and editing badge.
+- Cards get remote-presence outline tint when another user is focused/editing that card.
+- Task editor dialog shows remote editor avatars for the active card.
+
+For the full behavior and data flow, see `docs/features/todos-collaboration.md`.
+
 ---
 
 ## Known Issues / Active Bugs
@@ -168,6 +213,12 @@ These should be removed once the CRDT integration is confirmed stable.
 | `bun-sidecar/src/contexts/CollabContext.tsx` | Full rewrite: Y.js → CRDT transport + listener registries | 1.3 |
 | `bun-sidecar/src/contexts/GHSyncContext.tsx` | Disabled git sync in team mode (`skipSync = isTeamMode`) | 1.4 |
 | `bun-sidecar/src/features/notes/note-view.tsx` | Replaced Y.js PM plugins with CRDT plugins, bootstrap logic | 2.1-2.3 |
+| `bun-sidecar/src/features/todos/useKanban.ts` | **New** — team-mode kanban CRDT hook (board/card sync, bootstrap, presence) | 4.1-4.2 |
+| `bun-sidecar/src/features/todos/browser-view.tsx` | Team-mode data source switch + presence send/render integration | 4.1-4.2 |
+| `bun-sidecar/src/features/todos/archived-view.tsx` | Team-mode data source switch for archived todos | 4.1 |
+| `bun-sidecar/src/features/todos/TodoCard.tsx` | Presence badges and edit indicators on cards | 4.2 |
+| `bun-sidecar/src/features/todos/TaskCardEditor.tsx` | Presence avatars in editor dialog | 4.2 |
+| `docs/features/todos-collaboration.md` | **New** — v1 team-mode todos CRDT/presence architecture | 4.x |
 
 ---
 
@@ -204,8 +255,7 @@ These should be removed once the CRDT integration is confirmed stable.
 
 ## Next Steps
 
-1. **Test content sync** — restart app, open same note in two browser tabs, verify edits sync without divergence.
-2. **If divergence persists** — add logging to `onLocalOps` and `onOps` callbacks to inspect what ops are being sent/received. The issue is likely in the CRDT lib's PM layer not supporting Nomendex's schema fully.
-3. **Remove Y.js packages** — once sync is confirmed stable, remove `yjs`, `y-prosemirror`, `y-protocols`, `y-websocket` from `package.json`.
-4. **Phase 3: Team Backend Relay** — route CRDT ops through the team-backend server so clients on different machines can collaborate (currently only works within same bun-sidecar instance).
-5. **Phase 4: Todos/Kanban** — extend CRDT sync to todo items and kanban board state.
+1. **Notes hardening** — continue closing remaining notes sync edge cases (especially schema-heavy structures).
+2. **Phase 3: Team Backend Relay** — route CRDT ops through team-backend so collaboration works across machines/workers.
+3. **Todos/Kanban v2** — add full customizable column UX on top of the existing CRDT board layout model.
+4. **Remove Y.js packages** — once notes CRDT path is stable, remove `yjs`, `y-prosemirror`, `y-protocols`, `y-websocket`.

@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Save, ArrowLeft, Clock } from "lucide-react";
 import { Todo } from "./todo-types";
+import { useCollab } from "@/contexts/CollabContext";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 
 const statusOptions = [
     { value: "todo", label: "To Do", color: "bg-slate-100 text-slate-800" },
@@ -26,6 +28,9 @@ export function TodosView({ todoId, tabId }: { todoId: string; tabId: string }) 
 
     const { closeTab } = useWorkspaceContext();
     const { loading, setLoading } = usePlugin();
+    const collab = useCollab();
+    const { activeWorkspace } = useWorkspaceSwitcher();
+    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
 
     const todosAPI = useTodosAPI();
     const [todo, setTodo] = useState<Todo | null>(null);
@@ -57,6 +62,10 @@ export function TodosView({ todoId, tabId }: { todoId: string; tabId: string }) 
 
     async function saveTodo() {
         if (!todo || !todoId) return;
+        if (isTeamCollabMode) {
+            console.warn("Todo detail editor writes are disabled in team mode; use the kanban card editor");
+            return;
+        }
 
         setSaving(true);
         try {
@@ -140,9 +149,9 @@ export function TodosView({ todoId, tabId }: { todoId: string; tabId: string }) 
                     </div>
                 </div>
 
-                <Button onClick={saveTodo} disabled={saving} className="cursor-pointer">
+                <Button onClick={saveTodo} disabled={saving || isTeamCollabMode} className="cursor-pointer">
                     <Save className="w-4 h-4 mr-2" />
-                    {saving ? "Saving..." : "Save Changes"}
+                    {saving ? "Saving..." : (isTeamCollabMode ? "Use Board Editor" : "Save Changes")}
                 </Button>
             </div>
 

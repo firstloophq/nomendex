@@ -11,6 +11,9 @@ import { TagFilter } from "./TagFilter";
 import { Todo } from "./todo-types";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useCollab } from "@/contexts/CollabContext";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
+import { useKanban } from "./useKanban";
 import {
     DndContext,
     DragEndEvent,
@@ -37,7 +40,16 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
     const { setLoading } = usePlugin();
     const { activeTab, setTabName, openTab } = useWorkspaceContext();
 
+    const collab = useCollab();
+    const { activeWorkspace } = useWorkspaceSwitcher();
+    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+
     const todosAPI = useTodosAPI();
+    const kanban = useKanban({
+        project: filterProject ?? null,
+        enabled: isTeamCollabMode,
+    });
+    const todosDataAPI = isTeamCollabMode ? kanban : todosAPI;
     const [todos, setTodos] = useState<Todo[]>([]);
     const [availableTags, setAvailableTags] = useState<string[]>([]);
     const [availableProjects, setAvailableProjects] = useState<string[]>([]);
@@ -72,17 +84,29 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
         }
     }, [activeTab, filterProject, setTabName]);
 
+    useEffect(() => {
+        if (!isTeamCollabMode) return;
+        setTodos(kanban.archivedTodos);
+        setAvailableTags(kanban.tags);
+        setAvailableProjects(kanban.projects);
+    }, [isTeamCollabMode, kanban.archivedTodos, kanban.tags, kanban.projects]);
+
+    const getArchivedTodos = todosDataAPI.getArchivedTodos;
+    const getTags = todosDataAPI.getTags;
+    const getProjects = todosDataAPI.getProjects;
+
     const loadTodos = useMemo(
         () => async () => {
+            if (isTeamCollabMode) return;
             setLoading(true);
             try {
-                const archivedData = await todosAPI.getArchivedTodos({ project: filterProject || undefined });
+                const archivedData = await getArchivedTodos({ project: filterProject ?? undefined });
                 setTodos(archivedData);
 
                 // Load tags and projects
                 const [tags, projects] = await Promise.all([
-                    todosAPI.getTags(),
-                    todosAPI.getProjects()
+                    getTags(),
+                    getProjects(),
                 ]);
                 setAvailableTags(tags);
                 setAvailableProjects(projects);
@@ -92,12 +116,13 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                 setLoading(false);
             }
         },
-        [todosAPI, setLoading, filterProject]
+        [isTeamCollabMode, getArchivedTodos, getProjects, getTags, setLoading, filterProject]
     );
 
     useEffect(() => {
+        if (isTeamCollabMode) return;
         loadTodos();
-    }, [loadTodos]);
+    }, [isTeamCollabMode, loadTodos]);
 
 
     // Register keyboard shortcuts
@@ -120,7 +145,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
 
     const updateTodoStatus = useCallback(async (todoId: string, status: "todo" | "in_progress" | "done" | "later") => {
         try {
-            await todosAPI.updateTodo({
+            await todosDataAPI.updateTodo({
                 todoId,
                 updates: { status },
             });
@@ -128,7 +153,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
         } catch (error) {
             console.error("Failed to update todo status:", error);
         }
-    }, [todosAPI, loadTodos]);
+    }, [todosDataAPI, loadTodos]);
 
     // Shared delete function with optimistic update and toast (no confirmation dialog)
     const deleteTodoWithToast = useCallback(async (todo: Todo) => {
@@ -136,7 +161,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
         setTodos(prev => prev.filter(t => t.id !== todo.id));
 
         try {
-            await todosAPI.deleteTodo({ todoId: todo.id });
+            await todosDataAPI.deleteTodo({ todoId: todo.id });
 
             const truncatedTitle = todo.title.length > 30
                 ? todo.title.slice(0, 30) + "…"
@@ -147,7 +172,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                     onClick: async () => {
                         try {
                             // Recreate the todo (as archived)
-                            await todosAPI.createTodo({
+                            await todosDataAPI.createTodo({
                                 title: todo.title,
                                 description: todo.description,
                                 status: todo.status,
@@ -155,10 +180,10 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                                 tags: todo.tags,
                             });
                             // Re-archive it since this is the archived view
-                            const newTodos = await todosAPI.getTodos({});
+                            const newTodos = await todosDataAPI.getTodos({});
                             const recreatedTodo = newTodos.find(t => t.title === todo.title);
                             if (recreatedTodo) {
-                                await todosAPI.archiveTodo({ todoId: recreatedTodo.id });
+                                await todosDataAPI.archiveTodo({ todoId: recreatedTodo.id });
                             }
                             await loadTodos();
                             toast.success("Restored");
@@ -174,7 +199,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
             toast.error("Failed to delete");
             await loadTodos();
         }
-    }, [todosAPI, loadTodos]);
+    }, [todosDataAPI, loadTodos]);
 
     // Shared unarchive function with optimistic update and toast (for archived view)
     const unarchiveTodoWithToast = useCallback(async (todo: Todo) => {
@@ -182,7 +207,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
         setTodos(prev => prev.filter(t => t.id !== todo.id));
 
         try {
-            await todosAPI.unarchiveTodo({ todoId: todo.id });
+            await todosDataAPI.unarchiveTodo({ todoId: todo.id });
 
             const truncatedTitle = todo.title.length > 30
                 ? todo.title.slice(0, 30) + "…"
@@ -192,7 +217,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                     label: "Undo",
                     onClick: async () => {
                         try {
-                            await todosAPI.archiveTodo({ todoId: todo.id });
+                            await todosDataAPI.archiveTodo({ todoId: todo.id });
                             await loadTodos();
                             toast.success("Archived again");
                         } catch (error) {
@@ -207,7 +232,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
             toast.error("Failed to restore");
             await loadTodos();
         }
-    }, [todosAPI, loadTodos]);
+    }, [todosDataAPI, loadTodos]);
 
     const handleOpenTodo = async (todoId: string) => {
         const todo = todos.find((t) => t.id === todoId);
@@ -220,7 +245,7 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
     const handleSaveTodo = async (updatedTodo: Todo) => {
         setEditSaving(true);
         try {
-            await todosAPI.updateTodo({
+            await todosDataAPI.updateTodo({
                 todoId: updatedTodo.id,
                 updates: {
                     title: updatedTodo.title,
@@ -312,14 +337,14 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
                 }));
 
                 try {
-                    await todosAPI.reorderTodos({ reorders });
+                    await todosDataAPI.reorderTodos({ reorders });
                     await loadTodos();
                 } catch (error) {
                     console.error("Failed to reorder todos:", error);
                 }
             }
         }
-    }, [todos, todosAPI, updateTodoStatus, loadTodos]);
+    }, [todos, todosDataAPI, updateTodoStatus, loadTodos]);
 
     const handleTagToggle = (tag: string) => {
         setSelectedTags((prev) =>

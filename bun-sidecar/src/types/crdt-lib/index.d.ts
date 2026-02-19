@@ -17,6 +17,16 @@ export interface OperationId {
     readonly clock: number;
 }
 
+export interface Timestamp {
+    readonly clientId: ClientId;
+    readonly clock: number;
+}
+
+export interface LamportClock {
+    readonly clientId: ClientId;
+    readonly counter: number;
+}
+
 interface TextContent {
     readonly type: "text";
     readonly value: string;
@@ -92,7 +102,7 @@ export interface FieldOp {
     readonly id: OperationId;
     readonly fieldName: string;
     readonly value: string;
-    readonly timestamp: number;
+    readonly timestamp: Timestamp;
 }
 
 export interface SetOp {
@@ -155,6 +165,122 @@ export declare function createMultiDocTransport(params: {
     onDocSyncComplete?: (params: { docId: string }) => void;
     getAuthToken?: () => string | Promise<string>;
 }): MultiDocTransport;
+
+// --- Clock ---
+
+export declare function createClock(params: {
+    clientId: ClientId;
+}): LamportClock;
+
+export declare function receive(params: {
+    clock: LamportClock;
+    remoteCounter: number;
+}): LamportClock;
+
+// --- Record Docs / Board ---
+
+export interface CRDTRecord {
+    readonly fields: ReadonlyMap<string, unknown>;
+    readonly sets: ReadonlyMap<string, unknown>;
+    readonly body: unknown;
+    readonly appliedOps: ReadonlySet<string>;
+    readonly stateVector: StateVector;
+}
+
+export interface DocManager {
+    readonly docs: ReadonlyMap<string, CRDTRecord>;
+}
+
+export declare function createDocManager(): DocManager;
+
+export declare function applyDocOperation(params: {
+    manager: DocManager;
+    docId: string;
+    op: RecordOp;
+}): DocManager;
+
+export declare function getDoc(params: {
+    manager: DocManager;
+    docId: string;
+}): CRDTRecord | undefined;
+
+export interface CardApiState {
+    manager: DocManager;
+    clock: LamportClock;
+}
+
+export interface CardApiResult {
+    state: CardApiState;
+    ops?: ReadonlyArray<{ docId: string; op: RecordOp }>;
+}
+
+export declare function createCard(params: {
+    state: CardApiState;
+    cardId: string;
+    fields?: Record<string, string>;
+    tags?: ReadonlyArray<string>;
+    column?: string;
+    boardDocId?: string;
+}): CardApiResult;
+
+export declare function updateCardFields(params: {
+    state: CardApiState;
+    cardId: string;
+    fields: Record<string, string>;
+}): CardApiResult;
+
+export declare function addCardTags(params: {
+    state: CardApiState;
+    cardId: string;
+    tags: ReadonlyArray<string>;
+}): CardApiResult;
+
+export declare function removeCardTags(params: {
+    state: CardApiState;
+    cardId: string;
+    tags: ReadonlyArray<string>;
+}): CardApiResult;
+
+export declare function moveCard(params: {
+    state: CardApiState;
+    cardId: string;
+    column: string;
+    beforeCardId?: string;
+    afterCardId?: string;
+    boardDocId?: string;
+}): CardApiResult;
+
+export declare function addColumn(params: {
+    state: CardApiState;
+    column: string;
+    boardDocId?: string;
+}): CardApiResult;
+
+export declare function removeColumn(params: {
+    state: CardApiState;
+    column: string;
+    boardDocId?: string;
+}): CardApiResult;
+
+export declare function getBoardState(params: {
+    manager: DocManager;
+    boardDocId?: string;
+}): {
+    columns: ReadonlyArray<string>;
+    cardsByColumn: Record<string, ReadonlyArray<{ cardId: string; title: string; description: string; order: string }>>;
+};
+
+export declare function getCardDetail(params: {
+    manager: DocManager;
+    cardId: string;
+    boardDocId?: string;
+}): {
+    id: string;
+    fields: Record<string, string>;
+    tags: ReadonlyArray<string>;
+    body: string;
+    position: { column: string; order: string } | null;
+} | null;
 
 // --- ProseMirror CRDT Plugin ---
 

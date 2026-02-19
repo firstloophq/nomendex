@@ -10,6 +10,9 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCommandDialog } from "@/components/CommandDialogProvider";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useTodosAPI } from "@/hooks/useTodosAPI";
+import { useCollab } from "@/contexts/CollabContext";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
+import { useKanban } from "./useKanban";
 import { todosPluginSerial } from "./index";
 import { useNativeSubmit } from "@/hooks/useNativeKeyboardBridge";
 
@@ -49,7 +52,18 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
 
     const { closeDialog } = useCommandDialog();
     const { addNewTab, setActiveTabId } = useWorkspaceContext();
-    const api = useTodosAPI();
+    const collab = useCollab();
+    const { activeWorkspace } = useWorkspaceSwitcher();
+    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+
+    const restAPI = useTodosAPI();
+    const boardProject = project.trim() === "" ? "" : project.trim();
+    const kanban = useKanban({
+        project: boardProject,
+        enabled: isTeamCollabMode,
+    });
+    const writeAPI = isTeamCollabMode ? kanban : restAPI;
+
     const { currentTheme } = useTheme();
     const { styles } = currentTheme;
 
@@ -65,10 +79,12 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
     useEffect(() => {
         async function loadData() {
             try {
-                const [tagsData, projectsData] = await Promise.all([
-                    api.getTags(),
-                    api.getProjects()
-                ]);
+                const [tagsData, projectsData] = isTeamCollabMode
+                    ? [kanban.tags, kanban.projects]
+                    : await Promise.all([
+                        restAPI.getTags(),
+                        restAPI.getProjects(),
+                    ]);
                 setAvailableTags(tagsData);
                 setAvailableProjects(projectsData);
             } catch (error) {
@@ -76,7 +92,7 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
             }
         }
         loadData();
-    }, [api]);
+    }, [isTeamCollabMode, kanban.tags, kanban.projects, restAPI]);
 
     // Filter projects based on input
     const filteredProjects = availableProjects.filter(p =>
@@ -199,7 +215,7 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
 
         setIsCreating(true);
         try {
-            const newTodo = await api.createTodo({
+            const newTodo = await writeAPI.createTodo({
                 title: title.trim(),
                 description: description.trim() || undefined,
                 project: project.trim() || undefined,

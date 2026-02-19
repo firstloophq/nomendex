@@ -1,13 +1,16 @@
-import { Settings, Trash2, Archive, ArchiveRestore, Copy, CalendarDays } from "lucide-react";
+import { Settings, Trash2, Archive, ArchiveRestore, Copy, CalendarDays, Pencil } from "lucide-react";
 import { Todo } from "./todo-types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { parseLocalDateString } from "@/features/notes/date-utils";
+import type { UserInfo } from "@crdt/lib";
 
 export function TodoCard({
     todo,
     selected,
+    viewers,
+    editingViewers,
     onEdit,
     onDelete,
     onArchive,
@@ -15,6 +18,8 @@ export function TodoCard({
 }: {
     todo: Todo;
     selected?: boolean;
+    viewers?: ReadonlyArray<UserInfo>;
+    editingViewers?: ReadonlyArray<UserInfo>;
     onEdit?: (todo: Todo) => void;
     onDelete?: (todo: Todo) => void;
     onArchive?: (todo: Todo) => void;
@@ -36,12 +41,39 @@ export function TodoCard({
             toast("Failed to copy to clipboard");
         }
     };
+
+    const viewerCount = viewers?.length ?? 0;
+    const editorCount = editingViewers?.length ?? 0;
+    const viewerNames = viewers?.map((viewer) => viewer.name).join(", ") ?? "";
+    const editorNames = editingViewers?.map((viewer) => viewer.name).join(", ") ?? "";
+    const viewerColor = editingViewers?.[0]?.color ?? viewers?.[0]?.color;
+
     return (
         <Card className={`mb-2 hover:shadow-md transition-shadow duration-150 ${todo.archived ? 'opacity-60 bg-muted/30' : ''}`}>
             <CardHeader className="pb-1 pt-2 px-3">
                 <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-sm font-medium leading-tight flex-1">{todo.title}</CardTitle>
-                    {todo.archived && <span className="text-[10px] text-muted-foreground bg-muted px-1 rounded shrink-0">Archived</span>}
+                    <div className="flex items-center gap-1 shrink-0">
+                        {viewerCount > 0 && (
+                            <span
+                                className="inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-full text-[10px] font-semibold text-white"
+                                style={{ backgroundColor: viewerColor ?? "#64748b" }}
+                                title={viewerNames ? `Viewing: ${viewerNames}` : "Viewing"}
+                            >
+                                {viewerCount}
+                            </span>
+                        )}
+                        {editorCount > 0 && (
+                            <span
+                                className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700"
+                                title={editorNames ? `Editing: ${editorNames}` : "Editing"}
+                            >
+                                <Pencil className="size-2.5" />
+                                Edit
+                            </span>
+                        )}
+                        {todo.archived && <span className="text-[10px] text-muted-foreground bg-muted px-1 rounded">Archived</span>}
+                    </div>
                 </div>
                 {!hideProject && todo.project && <p className="text-[10px] text-blue-600">{todo.project}</p>}
                 {todo.tags && todo.tags.length > 0 && (

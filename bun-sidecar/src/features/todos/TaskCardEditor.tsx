@@ -14,6 +14,7 @@ import { parseDateFromInput, toLocalDateString, parseLocalDateString } from "@/f
 import { Todo } from "./todo-types";
 import type { Attachment } from "@/types/attachments";
 import { AttachmentThumbnail } from "@/components/AttachmentThumbnail";
+import type { UserInfo } from "@crdt/lib";
 
 interface TaskCardEditorProps {
     todo: Todo | null;
@@ -23,6 +24,7 @@ interface TaskCardEditorProps {
     saving: boolean;
     availableTags: string[];
     availableProjects: string[];
+    editingViewers?: ReadonlyArray<UserInfo>;
 }
 
 const statusConfig = [
@@ -32,7 +34,7 @@ const statusConfig = [
     { value: "later", label: "Later", icon: Clock },
 ] as const;
 
-export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, availableTags, availableProjects }: TaskCardEditorProps) {
+export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, availableTags, availableProjects, editingViewers = [] }: TaskCardEditorProps) {
     const [editedTodo, setEditedTodo] = useState<Todo | null>(null);
     const [statusOpen, setStatusOpen] = useState(false);
     const [statusHighlightIndex, setStatusHighlightIndex] = useState(-1);
@@ -283,6 +285,31 @@ export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, avail
             >
                 {/* Content Area */}
                 <div className="px-6 pt-6 pb-4 space-y-4">
+                    {editingViewers.length > 0 && (
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                            <span style={{ color: styles.contentSecondary }}>
+                                Collaborator editing now
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                                {editingViewers.slice(0, 3).map((viewer) => (
+                                    <span
+                                        key={`${viewer.name}-${viewer.color}`}
+                                        className="inline-flex items-center justify-center size-5 rounded-full text-[10px] font-semibold text-white"
+                                        style={{ backgroundColor: viewer.color }}
+                                        title={viewer.name}
+                                    >
+                                        {viewer.name.slice(0, 1).toUpperCase()}
+                                    </span>
+                                ))}
+                                {editingViewers.length > 3 && (
+                                    <span className="text-[10px]" style={{ color: styles.contentSecondary }}>
+                                        +{editingViewers.length - 3}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Title */}
                     <Input
                         value={editedTodo.title}

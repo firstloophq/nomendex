@@ -17,6 +17,9 @@ import { Todo } from "./todo-types";
 import type { Attachment } from "@/types/attachments";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useCollab } from "@/contexts/CollabContext";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
+import { useKanban } from "./useKanban";
 import {
     DndContext,
     DragEndEvent,
@@ -47,7 +50,17 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
     const { activeTab, setTabName, openTab, getProjectPreferences, setProjectPreferences } = useWorkspaceContext();
     const { currentTheme } = useTheme();
 
+    const collab = useCollab();
+    const { activeWorkspace } = useWorkspaceSwitcher();
+    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+
     const todosAPI = useTodosAPI();
+    const kanban = useKanban({
+        project: filterProject ?? null,
+        enabled: isTeamCollabMode,
+    });
+    const sendKanbanPresence = kanban.sendPresence;
+    const todosDataAPI = isTeamCollabMode ? kanban : todosAPI;
     const [todos, setTodos] = useState<Todo[]>([]);
     const [availableTags, setAvailableTags] = useState<string[]>([]);
     const [availableProjects, setAvailableProjects] = useState<string[]>([]);
@@ -104,10 +117,6 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         })
     );
 
-    useEffect(() => {
-        console.log("Current todos:", { todos });
-    }, [todos]);
-
     // Close all dialogs when tabs are being closed
     useEffect(() => {
         return subscribe("workspace:closeAllTabs", () => {
@@ -148,39 +157,73 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         }));
     }, [filterProject]);
 
+    useEffect(() => {
+        if (!isTeamCollabMode) return;
+        setTodos(kanban.activeTodos);
+        setAvailableTags(kanban.tags);
+        setAvailableProjects(kanban.projects);
+    }, [isTeamCollabMode, kanban.activeTodos, kanban.tags, kanban.projects]);
+
+    const presenceTodoId = useMemo(() => {
+        if (editDialogOpen && todoToEdit?.id) {
+            return todoToEdit.id;
+        }
+        return selectedTodoId;
+    }, [editDialogOpen, todoToEdit?.id, selectedTodoId]);
+
+    useEffect(() => {
+        if (!isTeamCollabMode) return;
+        sendKanbanPresence({
+            todoId: presenceTodoId,
+            editing: editDialogOpen && !!todoToEdit?.id,
+        });
+    }, [isTeamCollabMode, sendKanbanPresence, presenceTodoId, editDialogOpen, todoToEdit?.id]);
+
+    useEffect(() => {
+        if (!isTeamCollabMode) return;
+        return () => {
+            sendKanbanPresence({ todoId: null, editing: false });
+        };
+    }, [isTeamCollabMode, sendKanbanPresence]);
+
+    const getTags = todosDataAPI.getTags;
+    const getProjects = todosDataAPI.getProjects;
+    const getTodos = todosDataAPI.getTodos;
+
     const loadTags = useMemo(
         () => async () => {
             try {
-                const tags = await todosAPI.getTags();
+                const tags = await getTags();
                 setAvailableTags(tags);
             } catch (error) {
                 console.error("Failed to load tags:", error);
             }
         },
-        [todosAPI]
+        [getTags]
     );
 
     const loadProjects = useMemo(
         () => async () => {
             try {
-                const projects = await todosAPI.getProjects();
+                const projects = await getProjects();
                 setAvailableProjects(projects);
             } catch (error) {
                 console.error("Failed to load projects:", error);
             }
         },
-        [todosAPI]
+        [getProjects]
     );
 
     const loadTodos = useMemo(
         () => async () => {
+            if (isTeamCollabMode) return;
             setLoading(true);
             try {
                 // Always load only active (non-archived) todos for the browser view
-                const todosData = await todosAPI.getTodos({ project: filterProject ?? undefined });
+                const todosData = await getTodos({ project: filterProject ?? undefined });
 
                 // The getTodos API should already filter out archived items, but let's be explicit
-                const activeTodos = todosData.filter(t => !t.archived);
+                const activeTodos = todosData.filter(t => !t.archived && !t.deleted);
 
                 setTodos(activeTodos);
 
@@ -192,19 +235,20 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
                 setLoading(false);
             }
         },
-        [todosAPI, setLoading, filterProject, loadTags, loadProjects]
+        [isTeamCollabMode, getTodos, setLoading, filterProject, loadTags, loadProjects]
     );
 
     useEffect(() => {
+        if (isTeamCollabMode) return;
         loadTodos();
-    }, [loadTodos]);
+    }, [isTeamCollabMode, loadTodos]);
 
     async function createTodo() {
         if (!newTodo.title.trim()) return;
 
         setLoading(true);
         try {
-            const createdTodo = await todosAPI.createTodo({
+            const createdTodo = await todosDataAPI.createTodo({
                 title: newTodo.title,
                 description: newTodo.description || undefined,
                 project: newTodo.project || undefined,
@@ -250,7 +294,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
     const handleSaveTodo = async (updatedTodo: Todo) => {
         setEditSaving(true);
         try {
-            await todosAPI.updateTodo({
+            await todosDataAPI.updateTodo({
                 todoId: updatedTodo.id,
                 updates: {
                     title: updatedTodo.title,
@@ -286,7 +330,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
 
         setLoading(true);
         try {
-            await Promise.all(doneTodos.map(t => todosAPI.archiveTodo({ todoId: t.id })));
+            await Promise.all(doneTodos.map(t => todosDataAPI.archiveTodo({ todoId: t.id })));
             await loadTodos();
         } catch (error) {
             console.error("Failed to archive done todos:", error);
@@ -334,7 +378,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
 
                 // Then sync with server
                 try {
-                    await todosAPI.updateTodo({
+                    await todosDataAPI.updateTodo({
                         todoId: activeId,
                         updates: { status: newStatus },
                     });
@@ -393,12 +437,12 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
 
                 try {
                     // Update status first
-                    await todosAPI.updateTodo({
+                    await todosDataAPI.updateTodo({
                         todoId: activeId,
                         updates: { status: targetStatus },
                     });
                     // Then reorder
-                    await todosAPI.reorderTodos({ reorders });
+                    await todosDataAPI.reorderTodos({ reorders });
                 } catch (error) {
                     console.error("Failed to move todo:", error);
                     await loadTodos();
@@ -430,7 +474,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
                     setTodos(newTodos);
 
                     try {
-                        await todosAPI.reorderTodos({ reorders });
+                        await todosDataAPI.reorderTodos({ reorders });
                     } catch (error) {
                         console.error("Failed to reorder todos:", error);
                         await loadTodos();
@@ -443,7 +487,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             // Reload todos to ensure consistent state
             await loadTodos();
         }
-    }, [todos, todosAPI, loadTodos]);
+    }, [todos, todosDataAPI, loadTodos]);
 
     const handleTagToggle = (tag: string) => {
         setSelectedTags((prev) =>
@@ -548,7 +592,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         }
 
         try {
-            await todosAPI.deleteTodo({ todoId: todo.id });
+            await todosDataAPI.deleteTodo({ todoId: todo.id });
 
             const truncatedTitle = todo.title.length > 30
                 ? todo.title.slice(0, 30) + "…"
@@ -559,7 +603,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
                     onClick: async () => {
                         try {
                             // Recreate the todo
-                            await todosAPI.createTodo({
+                            await todosDataAPI.createTodo({
                                 title: todo.title,
                                 description: todo.description,
                                 status: todo.status,
@@ -582,7 +626,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             toast.error("Failed to delete");
             await loadTodos();
         }
-    }, [selectedTodoId, getTodoPosition, todosByStatus, todosAPI, loadTodos]);
+    }, [selectedTodoId, getTodoPosition, todosByStatus, todosDataAPI, loadTodos]);
 
     // Shared archive function with optimistic update and toast
     const archiveTodoWithToast = useCallback(async (todo: Todo) => {
@@ -606,7 +650,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         }
 
         try {
-            await todosAPI.archiveTodo({ todoId: todo.id });
+            await todosDataAPI.archiveTodo({ todoId: todo.id });
 
             const truncatedTitle = todo.title.length > 30
                 ? todo.title.slice(0, 30) + "…"
@@ -616,7 +660,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
                     label: "Undo",
                     onClick: async () => {
                         try {
-                            await todosAPI.unarchiveTodo({ todoId: todo.id });
+                            await todosDataAPI.unarchiveTodo({ todoId: todo.id });
                             await loadTodos();
                             setSelectedTodoId(todo.id);
                             toast.success("Restored");
@@ -632,7 +676,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             toast.error("Failed to archive");
             await loadTodos();
         }
-    }, [selectedTodoId, getTodoPosition, todosByStatus, todosAPI, loadTodos]);
+    }, [selectedTodoId, getTodoPosition, todosByStatus, todosDataAPI, loadTodos]);
 
     // Update selection when filtered todos change
     useEffect(() => {
@@ -757,12 +801,12 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         });
 
         try {
-            await todosAPI.reorderTodos({ reorders });
+            await todosDataAPI.reorderTodos({ reorders });
         } catch (error) {
             console.error("Failed to reorder todos:", error);
             await loadTodos();
         }
-    }, [selectedTodoId, getTodoPosition, todosByStatus, todosAPI, loadTodos]);
+    }, [selectedTodoId, getTodoPosition, todosByStatus, todosDataAPI, loadTodos]);
 
     const moveDown = useCallback(async () => {
         if (!selectedTodoId) return;
@@ -793,12 +837,12 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         });
 
         try {
-            await todosAPI.reorderTodos({ reorders });
+            await todosDataAPI.reorderTodos({ reorders });
         } catch (error) {
             console.error("Failed to reorder todos:", error);
             await loadTodos();
         }
-    }, [selectedTodoId, getTodoPosition, todosByStatus, todosAPI, loadTodos]);
+    }, [selectedTodoId, getTodoPosition, todosByStatus, todosDataAPI, loadTodos]);
 
     const moveRight = useCallback(async () => {
         if (!selectedTodoId) return;
@@ -816,7 +860,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         ));
 
         try {
-            await todosAPI.updateTodo({
+            await todosDataAPI.updateTodo({
                 todoId: selectedTodoId,
                 updates: { status: nextCol },
             });
@@ -824,7 +868,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             console.error("Failed to move todo:", error);
             await loadTodos();
         }
-    }, [selectedTodoId, getTodoPosition, columnOrder, todosAPI, loadTodos]);
+    }, [selectedTodoId, getTodoPosition, columnOrder, todosDataAPI, loadTodos]);
 
     const moveLeft = useCallback(async () => {
         if (!selectedTodoId) return;
@@ -842,7 +886,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
         ));
 
         try {
-            await todosAPI.updateTodo({
+            await todosDataAPI.updateTodo({
                 todoId: selectedTodoId,
                 updates: { status: prevCol },
             });
@@ -850,7 +894,7 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             console.error("Failed to move todo:", error);
             await loadTodos();
         }
-    }, [selectedTodoId, getTodoPosition, columnOrder, todosAPI, loadTodos]);
+    }, [selectedTodoId, getTodoPosition, columnOrder, todosDataAPI, loadTodos]);
 
     // Archive selected todo (keyboard shortcut handler - uses shared function)
     const archiveSelected = useCallback(async () => {
@@ -1118,12 +1162,16 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             transition,
             isDragging,
         } = useSortable({ id: todo.id });
+        const viewers = isTeamCollabMode ? (kanban.presenceByDoc.get(todo.id) ?? []) : [];
+        const editingViewers = isTeamCollabMode ? (kanban.editingByDoc.get(todo.id) ?? []) : [];
+        const presenceColor = editingViewers[0]?.color ?? viewers[0]?.color;
 
         const style = {
             transform: CSS.Transform.toString(transform),
             transition,
             opacity: isDragging ? 0.3 : 1,
             zIndex: isDragging ? 1 : 0,
+            boxShadow: !isSelected && presenceColor ? `0 0 0 1px ${presenceColor}66` : undefined,
         };
 
         // Show drop indicator when hovering over this card (but not when dragging this card)
@@ -1160,6 +1208,8 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
                     <TodoCard
                         todo={todo}
                         selected={isSelected}
+                        viewers={viewers}
+                        editingViewers={editingViewers}
                         onEdit={(t) => handleOpenTodo(t.id)}
                         onDelete={deleteTodoWithToast}
                         onArchive={archiveTodoWithToast}
@@ -1440,7 +1490,18 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
             </DndContext>
 
             {/* Edit Todo Modal */}
-            <TaskCardEditor todo={todoToEdit} open={editDialogOpen} onOpenChange={setEditDialogOpen} onSave={handleSaveTodo} saving={editSaving} availableTags={availableTags} availableProjects={availableProjects} />
+            <TaskCardEditor
+                todo={todoToEdit}
+                open={editDialogOpen}
+                onOpenChange={setEditDialogOpen}
+                onSave={handleSaveTodo}
+                saving={editSaving}
+                availableTags={availableTags}
+                availableProjects={availableProjects}
+                editingViewers={isTeamCollabMode && todoToEdit
+                    ? (kanban.editingByDoc.get(todoToEdit.id) ?? [])
+                    : []}
+            />
         </div>
     );
 }

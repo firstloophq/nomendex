@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { createMultiDocTransport } from "@crdt/lib";
 import type { MultiDocTransport, AwarenessState, UserInfo, RecordOp } from "@crdt/lib";
 import type { StateVector } from "@crdt/lib";
@@ -128,10 +128,10 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         () => queryIdentity.clientId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     );
     const effectiveUserName = queryIdentity.userName ?? userName ?? "Anonymous";
-    const userInfo: UserInfo = {
+    const userInfo: UserInfo = useMemo(() => ({
         name: effectiveUserName,
         color: generateColor(effectiveUserName || clientId),
-    };
+    }), [effectiveUserName, clientId]);
 
     // Listener registries (same pattern as CRDTProvider in @crdt/lib)
     const opsListenersRef = useRef(new Map<string, Set<OpsListener>>());
@@ -407,7 +407,7 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         });
     }, []);
 
-    const contextValue: CollabContextValue = {
+    const contextValue: CollabContextValue = useMemo(() => ({
         clientId,
         userInfo,
         isConnected,
@@ -415,7 +415,7 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         subscribeAwareness,
         sendAwareness,
         sendOps,
-    };
+    }), [clientId, userInfo, isConnected, subscribeDoc, subscribeAwareness, sendAwareness, sendOps]);
 
     return (
         <CollabContext.Provider value={contextValue}>
