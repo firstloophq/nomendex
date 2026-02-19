@@ -12,8 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useTheme } from "@/hooks/useTheme";
 import { useTeamAuth } from "@/contexts/AuthContext";
 import { Github, Loader2, Search, ExternalLink, Check } from "lucide-react";
-
-const TEAM_BACKEND_URL = "http://localhost:4444";
+import { getTeamBackendHttpUrl } from "@/lib/team-backend-config";
 
 interface Installation {
     id: string;
@@ -64,10 +63,11 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const fetchWithAuth = useCallback(async (url: string, options?: RequestInit) => {
+    const fetchWithAuth = useCallback(async (path: string, options?: RequestInit) => {
         const token = await getToken();
         if (!token) throw new Error("Not authenticated");
-        return fetch(url, {
+        const teamBackendUrl = await getTeamBackendHttpUrl();
+        return fetch(`${teamBackendUrl}${path}`, {
             ...options,
             headers: {
                 ...options?.headers,
@@ -82,7 +82,7 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/github/installations`);
+            const res = await fetchWithAuth("/api/github/installations");
             if (!res.ok) throw new Error("Failed to fetch installations");
             const data = (await res.json()) as Installation[];
             setInstallations(data);
@@ -107,7 +107,7 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
         setError(null);
         try {
             const res = await fetchWithAuth(
-                `${TEAM_BACKEND_URL}/api/github/installations/${installId}/repos`,
+                `/api/github/installations/${installId}/repos`,
             );
             if (!res.ok) throw new Error("Failed to fetch repos");
             const data = (await res.json()) as GitHubRepo[];
@@ -122,13 +122,13 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
     // Fetch orgs, auto-creating a default one if none exist
     const fetchOrgs = useCallback(async () => {
         try {
-            const res = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/orgs`);
+            const res = await fetchWithAuth("/api/orgs");
             if (!res.ok) throw new Error("Failed to fetch orgs");
             let data = (await res.json()) as Org[];
 
             // Auto-create a default org if the user has none
             if (data.length === 0) {
-                const createRes = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/orgs`, {
+                const createRes = await fetchWithAuth("/api/orgs", {
                     method: "POST",
                     body: JSON.stringify({ name: "My Team" }),
                 });
@@ -183,7 +183,8 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
             try {
                 const token = await getToken();
                 if (!token) return;
-                const res = await fetch(`${TEAM_BACKEND_URL}/api/github/installations`, {
+                const teamBackendUrl = await getTeamBackendHttpUrl();
+                const res = await fetch(`${teamBackendUrl}/api/github/installations`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 if (res.ok) {
@@ -205,7 +206,7 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
     const handleConnectGitHub = async () => {
         // Get state token from team-backend
         try {
-            const res = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/github/state-token`, {
+            const res = await fetchWithAuth("/api/github/state-token", {
                 method: "POST",
             });
             if (!res.ok) throw new Error("Failed to generate state token");
@@ -248,7 +249,7 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
             let orgWorkspaceId: string;
 
             const wsRes = await fetchWithAuth(
-                `${TEAM_BACKEND_URL}/api/orgs/${selectedOrg.id}/workspaces`,
+                `/api/orgs/${selectedOrg.id}/workspaces`,
                 {
                     method: "POST",
                     body: JSON.stringify({
@@ -264,7 +265,7 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
             if (wsRes.status === 409) {
                 // Repo already linked — find the existing org workspace
                 const listRes = await fetchWithAuth(
-                    `${TEAM_BACKEND_URL}/api/orgs/${selectedOrg.id}/workspaces`,
+                    `/api/orgs/${selectedOrg.id}/workspaces`,
                 );
                 if (!listRes.ok) throw new Error("Failed to fetch org workspaces");
                 const existing = (await listRes.json()) as Array<{ id: string; repoFullName: string }>;
@@ -281,7 +282,7 @@ export function GitHubRepoPickerDialog(props: GitHubRepoPickerDialogProps) {
 
             // 2. Get installation token for git operations
             const tokenRes = await fetchWithAuth(
-                `${TEAM_BACKEND_URL}/api/github/installations/${selectedInstallation.id}/token`,
+                `/api/github/installations/${selectedInstallation.id}/token`,
                 { method: "POST" },
             );
 

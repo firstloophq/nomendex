@@ -22,6 +22,16 @@ To run for production:
 bun start
 ```
 
+## Team Mode Runtime Config
+
+Team-mode backend/relay URLs are runtime-configured through sidecar env vars:
+
+- `TEAM_BACKEND_HTTP_URL` (REST base URL)
+- `TEAM_BACKEND_WS_URL` (optional explicit CRDT WS URL)
+- `CRDT_RELAY_ENABLED` (`true` to relay team CRDT docs to team-backend)
+
+See `bun-sidecar/.env.example`.
+
 ## Features
 
 - **Plugin Architecture** - Modular system for extending functionality

@@ -1,7 +1,9 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { websocket } from "hono/bun";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { authMiddleware, type AuthVariables } from "./auth";
+import { handleCollabWebSocketUpgrade } from "./collab/websocket";
 import meRoutes from "./routes/me";
 import orgsRoutes from "./routes/orgs";
 import membersRoutes from "./routes/members";
@@ -19,6 +21,7 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 
 // GitHub App callback (no auth — receives installation_id + state from GitHub redirect)
 app.get("/github/callback", (c) => handleGitHubCallback(c.req.raw));
+app.get("/ws/crdt", (c) => handleCollabWebSocketUpgrade(c));
 
 // Auth-protected API routes
 app.use("/api/*", authMiddleware);
@@ -45,4 +48,5 @@ console.log(`[team-backend] Starting on port ${port}`);
 export default {
   port,
   fetch: app.fetch,
+  websocket,
 };

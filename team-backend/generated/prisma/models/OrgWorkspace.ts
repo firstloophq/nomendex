@@ -250,6 +250,7 @@ export type OrgWorkspaceWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"OrgWorkspace"> | Date | string
   org?: Prisma.XOR<Prisma.OrgScalarRelationFilter, Prisma.OrgWhereInput>
   installation?: Prisma.XOR<Prisma.GitHubInstallationScalarRelationFilter, Prisma.GitHubInstallationWhereInput>
+  collabDocs?: Prisma.CollabDocListRelationFilter
 }
 
 export type OrgWorkspaceOrderByWithRelationInput = {
@@ -264,6 +265,7 @@ export type OrgWorkspaceOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   org?: Prisma.OrgOrderByWithRelationInput
   installation?: Prisma.GitHubInstallationOrderByWithRelationInput
+  collabDocs?: Prisma.CollabDocOrderByRelationAggregateInput
 }
 
 export type OrgWorkspaceWhereUniqueInput = Prisma.AtLeast<{
@@ -282,6 +284,7 @@ export type OrgWorkspaceWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeFilter<"OrgWorkspace"> | Date | string
   org?: Prisma.XOR<Prisma.OrgScalarRelationFilter, Prisma.OrgWhereInput>
   installation?: Prisma.XOR<Prisma.GitHubInstallationScalarRelationFilter, Prisma.GitHubInstallationWhereInput>
+  collabDocs?: Prisma.CollabDocListRelationFilter
 }, "id" | "orgId_repoFullName">
 
 export type OrgWorkspaceOrderByWithAggregationInput = {
@@ -326,6 +329,7 @@ export type OrgWorkspaceCreateInput = {
   updatedAt?: Date | string
   org: Prisma.OrgCreateNestedOneWithoutWorkspacesInput
   installation: Prisma.GitHubInstallationCreateNestedOneWithoutWorkspacesInput
+  collabDocs?: Prisma.CollabDocCreateNestedManyWithoutOrgWorkspaceInput
 }
 
 export type OrgWorkspaceUncheckedCreateInput = {
@@ -338,6 +342,7 @@ export type OrgWorkspaceUncheckedCreateInput = {
   displayName: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  collabDocs?: Prisma.CollabDocUncheckedCreateNestedManyWithoutOrgWorkspaceInput
 }
 
 export type OrgWorkspaceUpdateInput = {
@@ -350,6 +355,7 @@ export type OrgWorkspaceUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   org?: Prisma.OrgUpdateOneRequiredWithoutWorkspacesNestedInput
   installation?: Prisma.GitHubInstallationUpdateOneRequiredWithoutWorkspacesNestedInput
+  collabDocs?: Prisma.CollabDocUpdateManyWithoutOrgWorkspaceNestedInput
 }
 
 export type OrgWorkspaceUncheckedUpdateInput = {
@@ -362,6 +368,7 @@ export type OrgWorkspaceUncheckedUpdateInput = {
   displayName?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  collabDocs?: Prisma.CollabDocUncheckedUpdateManyWithoutOrgWorkspaceNestedInput
 }
 
 export type OrgWorkspaceCreateManyInput = {
@@ -457,6 +464,11 @@ export type OrgWorkspaceSumOrderByAggregateInput = {
   repoId?: Prisma.SortOrder
 }
 
+export type OrgWorkspaceScalarRelationFilter = {
+  is?: Prisma.OrgWorkspaceWhereInput
+  isNot?: Prisma.OrgWorkspaceWhereInput
+}
+
 export type OrgWorkspaceCreateNestedManyWithoutOrgInput = {
   create?: Prisma.XOR<Prisma.OrgWorkspaceCreateWithoutOrgInput, Prisma.OrgWorkspaceUncheckedCreateWithoutOrgInput> | Prisma.OrgWorkspaceCreateWithoutOrgInput[] | Prisma.OrgWorkspaceUncheckedCreateWithoutOrgInput[]
   connectOrCreate?: Prisma.OrgWorkspaceCreateOrConnectWithoutOrgInput | Prisma.OrgWorkspaceCreateOrConnectWithoutOrgInput[]
@@ -541,6 +553,20 @@ export type OrgWorkspaceUncheckedUpdateManyWithoutInstallationNestedInput = {
   deleteMany?: Prisma.OrgWorkspaceScalarWhereInput | Prisma.OrgWorkspaceScalarWhereInput[]
 }
 
+export type OrgWorkspaceCreateNestedOneWithoutCollabDocsInput = {
+  create?: Prisma.XOR<Prisma.OrgWorkspaceCreateWithoutCollabDocsInput, Prisma.OrgWorkspaceUncheckedCreateWithoutCollabDocsInput>
+  connectOrCreate?: Prisma.OrgWorkspaceCreateOrConnectWithoutCollabDocsInput
+  connect?: Prisma.OrgWorkspaceWhereUniqueInput
+}
+
+export type OrgWorkspaceUpdateOneRequiredWithoutCollabDocsNestedInput = {
+  create?: Prisma.XOR<Prisma.OrgWorkspaceCreateWithoutCollabDocsInput, Prisma.OrgWorkspaceUncheckedCreateWithoutCollabDocsInput>
+  connectOrCreate?: Prisma.OrgWorkspaceCreateOrConnectWithoutCollabDocsInput
+  upsert?: Prisma.OrgWorkspaceUpsertWithoutCollabDocsInput
+  connect?: Prisma.OrgWorkspaceWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.OrgWorkspaceUpdateToOneWithWhereWithoutCollabDocsInput, Prisma.OrgWorkspaceUpdateWithoutCollabDocsInput>, Prisma.OrgWorkspaceUncheckedUpdateWithoutCollabDocsInput>
+}
+
 export type OrgWorkspaceCreateWithoutOrgInput = {
   id?: string
   repoFullName: string
@@ -550,6 +576,7 @@ export type OrgWorkspaceCreateWithoutOrgInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   installation: Prisma.GitHubInstallationCreateNestedOneWithoutWorkspacesInput
+  collabDocs?: Prisma.CollabDocCreateNestedManyWithoutOrgWorkspaceInput
 }
 
 export type OrgWorkspaceUncheckedCreateWithoutOrgInput = {
@@ -561,6 +588,7 @@ export type OrgWorkspaceUncheckedCreateWithoutOrgInput = {
   displayName: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  collabDocs?: Prisma.CollabDocUncheckedCreateNestedManyWithoutOrgWorkspaceInput
 }
 
 export type OrgWorkspaceCreateOrConnectWithoutOrgInput = {
@@ -613,6 +641,7 @@ export type OrgWorkspaceCreateWithoutInstallationInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   org: Prisma.OrgCreateNestedOneWithoutWorkspacesInput
+  collabDocs?: Prisma.CollabDocCreateNestedManyWithoutOrgWorkspaceInput
 }
 
 export type OrgWorkspaceUncheckedCreateWithoutInstallationInput = {
@@ -624,6 +653,7 @@ export type OrgWorkspaceUncheckedCreateWithoutInstallationInput = {
   displayName: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  collabDocs?: Prisma.CollabDocUncheckedCreateNestedManyWithoutOrgWorkspaceInput
 }
 
 export type OrgWorkspaceCreateOrConnectWithoutInstallationInput = {
@@ -652,6 +682,70 @@ export type OrgWorkspaceUpdateManyWithWhereWithoutInstallationInput = {
   data: Prisma.XOR<Prisma.OrgWorkspaceUpdateManyMutationInput, Prisma.OrgWorkspaceUncheckedUpdateManyWithoutInstallationInput>
 }
 
+export type OrgWorkspaceCreateWithoutCollabDocsInput = {
+  id?: string
+  repoFullName: string
+  repoId: number
+  defaultBranch?: string
+  displayName: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  org: Prisma.OrgCreateNestedOneWithoutWorkspacesInput
+  installation: Prisma.GitHubInstallationCreateNestedOneWithoutWorkspacesInput
+}
+
+export type OrgWorkspaceUncheckedCreateWithoutCollabDocsInput = {
+  id?: string
+  orgId: string
+  installationId: string
+  repoFullName: string
+  repoId: number
+  defaultBranch?: string
+  displayName: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+export type OrgWorkspaceCreateOrConnectWithoutCollabDocsInput = {
+  where: Prisma.OrgWorkspaceWhereUniqueInput
+  create: Prisma.XOR<Prisma.OrgWorkspaceCreateWithoutCollabDocsInput, Prisma.OrgWorkspaceUncheckedCreateWithoutCollabDocsInput>
+}
+
+export type OrgWorkspaceUpsertWithoutCollabDocsInput = {
+  update: Prisma.XOR<Prisma.OrgWorkspaceUpdateWithoutCollabDocsInput, Prisma.OrgWorkspaceUncheckedUpdateWithoutCollabDocsInput>
+  create: Prisma.XOR<Prisma.OrgWorkspaceCreateWithoutCollabDocsInput, Prisma.OrgWorkspaceUncheckedCreateWithoutCollabDocsInput>
+  where?: Prisma.OrgWorkspaceWhereInput
+}
+
+export type OrgWorkspaceUpdateToOneWithWhereWithoutCollabDocsInput = {
+  where?: Prisma.OrgWorkspaceWhereInput
+  data: Prisma.XOR<Prisma.OrgWorkspaceUpdateWithoutCollabDocsInput, Prisma.OrgWorkspaceUncheckedUpdateWithoutCollabDocsInput>
+}
+
+export type OrgWorkspaceUpdateWithoutCollabDocsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  repoFullName?: Prisma.StringFieldUpdateOperationsInput | string
+  repoId?: Prisma.IntFieldUpdateOperationsInput | number
+  defaultBranch?: Prisma.StringFieldUpdateOperationsInput | string
+  displayName?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  org?: Prisma.OrgUpdateOneRequiredWithoutWorkspacesNestedInput
+  installation?: Prisma.GitHubInstallationUpdateOneRequiredWithoutWorkspacesNestedInput
+}
+
+export type OrgWorkspaceUncheckedUpdateWithoutCollabDocsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  orgId?: Prisma.StringFieldUpdateOperationsInput | string
+  installationId?: Prisma.StringFieldUpdateOperationsInput | string
+  repoFullName?: Prisma.StringFieldUpdateOperationsInput | string
+  repoId?: Prisma.IntFieldUpdateOperationsInput | number
+  defaultBranch?: Prisma.StringFieldUpdateOperationsInput | string
+  displayName?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
 export type OrgWorkspaceCreateManyOrgInput = {
   id?: string
   installationId: string
@@ -672,6 +766,7 @@ export type OrgWorkspaceUpdateWithoutOrgInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   installation?: Prisma.GitHubInstallationUpdateOneRequiredWithoutWorkspacesNestedInput
+  collabDocs?: Prisma.CollabDocUpdateManyWithoutOrgWorkspaceNestedInput
 }
 
 export type OrgWorkspaceUncheckedUpdateWithoutOrgInput = {
@@ -683,6 +778,7 @@ export type OrgWorkspaceUncheckedUpdateWithoutOrgInput = {
   displayName?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  collabDocs?: Prisma.CollabDocUncheckedUpdateManyWithoutOrgWorkspaceNestedInput
 }
 
 export type OrgWorkspaceUncheckedUpdateManyWithoutOrgInput = {
@@ -716,6 +812,7 @@ export type OrgWorkspaceUpdateWithoutInstallationInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   org?: Prisma.OrgUpdateOneRequiredWithoutWorkspacesNestedInput
+  collabDocs?: Prisma.CollabDocUpdateManyWithoutOrgWorkspaceNestedInput
 }
 
 export type OrgWorkspaceUncheckedUpdateWithoutInstallationInput = {
@@ -727,6 +824,7 @@ export type OrgWorkspaceUncheckedUpdateWithoutInstallationInput = {
   displayName?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  collabDocs?: Prisma.CollabDocUncheckedUpdateManyWithoutOrgWorkspaceNestedInput
 }
 
 export type OrgWorkspaceUncheckedUpdateManyWithoutInstallationInput = {
@@ -741,6 +839,35 @@ export type OrgWorkspaceUncheckedUpdateManyWithoutInstallationInput = {
 }
 
 
+/**
+ * Count Type OrgWorkspaceCountOutputType
+ */
+
+export type OrgWorkspaceCountOutputType = {
+  collabDocs: number
+}
+
+export type OrgWorkspaceCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  collabDocs?: boolean | OrgWorkspaceCountOutputTypeCountCollabDocsArgs
+}
+
+/**
+ * OrgWorkspaceCountOutputType without action
+ */
+export type OrgWorkspaceCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the OrgWorkspaceCountOutputType
+   */
+  select?: Prisma.OrgWorkspaceCountOutputTypeSelect<ExtArgs> | null
+}
+
+/**
+ * OrgWorkspaceCountOutputType without action
+ */
+export type OrgWorkspaceCountOutputTypeCountCollabDocsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.CollabDocWhereInput
+}
+
 
 export type OrgWorkspaceSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -754,6 +881,8 @@ export type OrgWorkspaceSelect<ExtArgs extends runtime.Types.Extensions.Internal
   updatedAt?: boolean
   org?: boolean | Prisma.OrgDefaultArgs<ExtArgs>
   installation?: boolean | Prisma.GitHubInstallationDefaultArgs<ExtArgs>
+  collabDocs?: boolean | Prisma.OrgWorkspace$collabDocsArgs<ExtArgs>
+  _count?: boolean | Prisma.OrgWorkspaceCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["orgWorkspace"]>
 
 export type OrgWorkspaceSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -800,6 +929,8 @@ export type OrgWorkspaceOmit<ExtArgs extends runtime.Types.Extensions.InternalAr
 export type OrgWorkspaceInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   org?: boolean | Prisma.OrgDefaultArgs<ExtArgs>
   installation?: boolean | Prisma.GitHubInstallationDefaultArgs<ExtArgs>
+  collabDocs?: boolean | Prisma.OrgWorkspace$collabDocsArgs<ExtArgs>
+  _count?: boolean | Prisma.OrgWorkspaceCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type OrgWorkspaceIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   org?: boolean | Prisma.OrgDefaultArgs<ExtArgs>
@@ -815,6 +946,7 @@ export type $OrgWorkspacePayload<ExtArgs extends runtime.Types.Extensions.Intern
   objects: {
     org: Prisma.$OrgPayload<ExtArgs>
     installation: Prisma.$GitHubInstallationPayload<ExtArgs>
+    collabDocs: Prisma.$CollabDocPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1222,6 +1354,7 @@ export interface Prisma__OrgWorkspaceClient<T, Null = never, ExtArgs extends run
   readonly [Symbol.toStringTag]: "PrismaPromise"
   org<T extends Prisma.OrgDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.OrgDefaultArgs<ExtArgs>>): Prisma.Prisma__OrgClient<runtime.Types.Result.GetResult<Prisma.$OrgPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   installation<T extends Prisma.GitHubInstallationDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.GitHubInstallationDefaultArgs<ExtArgs>>): Prisma.Prisma__GitHubInstallationClient<runtime.Types.Result.GetResult<Prisma.$GitHubInstallationPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+  collabDocs<T extends Prisma.OrgWorkspace$collabDocsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.OrgWorkspace$collabDocsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$CollabDocPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1653,6 +1786,30 @@ export type OrgWorkspaceDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Limit how many OrgWorkspaces to delete.
    */
   limit?: number
+}
+
+/**
+ * OrgWorkspace.collabDocs
+ */
+export type OrgWorkspace$collabDocsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the CollabDoc
+   */
+  select?: Prisma.CollabDocSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the CollabDoc
+   */
+  omit?: Prisma.CollabDocOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CollabDocInclude<ExtArgs> | null
+  where?: Prisma.CollabDocWhereInput
+  orderBy?: Prisma.CollabDocOrderByWithRelationInput | Prisma.CollabDocOrderByWithRelationInput[]
+  cursor?: Prisma.CollabDocWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.CollabDocScalarFieldEnum | Prisma.CollabDocScalarFieldEnum[]
 }
 
 /**

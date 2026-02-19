@@ -3,8 +3,7 @@ import { useWorkspaceContext } from "./WorkspaceContext";
 import { GitAuthMode } from "@/types/Workspace";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { useTeamAuth } from "@/contexts/AuthContext";
-
-const TEAM_BACKEND_URL = "http://localhost:4444";
+import { getTeamBackendHttpUrl } from "@/lib/team-backend-config";
 
 interface SyncStatus {
     checking: boolean;
@@ -91,9 +90,10 @@ export function GHSyncProvider(props: { children: React.ReactNode }) {
         try {
             const clerkToken = await getToken();
             if (!clerkToken) return null;
+            const teamBackendUrl = await getTeamBackendHttpUrl();
 
             const res = await fetch(
-                `${TEAM_BACKEND_URL}/api/github/installations/${activeWorkspace.installationId}/token`,
+                `${teamBackendUrl}/api/github/installations/${activeWorkspace.installationId}/token`,
                 {
                     method: "POST",
                     headers: { Authorization: `Bearer ${clerkToken}` },

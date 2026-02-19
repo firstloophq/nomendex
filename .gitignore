@@ -78,9 +78,9 @@ bun.lockb
 # Playwright CLI snapshots/screenshots
 .playwright-cli/
 
-# Spec/issue artifact images
-docs/specs/team/issues/artifacts/**/*.png
-bun-sidecar/docs/specs/team/issues/artifacts/**/*.png
+# Spec/issue artifacts (screenshots, repro files, etc.)
+docs/specs/team/issues/artifacts/
+bun-sidecar/docs/specs/team/issues/artifacts/
 
 # Nomendex workspace data
 .nomendex/

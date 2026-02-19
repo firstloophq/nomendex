@@ -8,8 +8,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { FolderPickerDialog } from "./FolderPickerDialog";
 import { WorkspaceWarningDialog } from "./WorkspaceWarningDialog";
 import { GitHubRepoPickerDialog } from "./GitHubRepoPickerDialog";
-
-const TEAM_BACKEND_URL = "http://localhost:4444";
+import { getTeamBackendHttpUrl } from "@/lib/team-backend-config";
 
 interface OrgWorkspace {
     id: string;
@@ -39,10 +38,11 @@ function SignedInOnboarding(props: { currentTheme: ReturnType<typeof useTheme>["
     const [error, setError] = useState<string | null>(null);
     const [gitHubPickerOpen, setGitHubPickerOpen] = useState(false);
 
-    const fetchWithAuth = useCallback(async (url: string, options?: RequestInit) => {
+    const fetchWithAuth = useCallback(async (path: string, options?: RequestInit) => {
         const token = await getToken();
         if (!token) throw new Error("Not authenticated");
-        return fetch(url, {
+        const teamBackendUrl = await getTeamBackendHttpUrl();
+        return fetch(`${teamBackendUrl}${path}`, {
             ...options,
             headers: {
                 ...options?.headers,
@@ -60,7 +60,7 @@ function SignedInOnboarding(props: { currentTheme: ReturnType<typeof useTheme>["
             setLoading(true);
             setError(null);
             try {
-                const orgsRes = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/orgs`);
+                const orgsRes = await fetchWithAuth("/api/orgs");
                 if (!orgsRes.ok) throw new Error("Failed to fetch orgs");
                 const orgsData = (await orgsRes.json()) as Org[];
                 if (cancelled) return;
@@ -69,7 +69,7 @@ function SignedInOnboarding(props: { currentTheme: ReturnType<typeof useTheme>["
                 // Fetch workspaces for each org
                 const allWorkspaces: OrgWorkspace[] = [];
                 for (const org of orgsData) {
-                    const wsRes = await fetchWithAuth(`${TEAM_BACKEND_URL}/api/orgs/${org.id}/workspaces`);
+                    const wsRes = await fetchWithAuth(`/api/orgs/${org.id}/workspaces`);
                     if (wsRes.ok) {
                         const wsData = (await wsRes.json()) as OrgWorkspace[];
                         allWorkspaces.push(...wsData);
@@ -94,7 +94,7 @@ function SignedInOnboarding(props: { currentTheme: ReturnType<typeof useTheme>["
         try {
             // Get installation token
             const tokenRes = await fetchWithAuth(
-                `${TEAM_BACKEND_URL}/api/github/installations/${ws.installationId}/token`,
+                `/api/github/installations/${ws.installationId}/token`,
                 { method: "POST" },
             );
             if (!tokenRes.ok) throw new Error("Failed to get installation token");

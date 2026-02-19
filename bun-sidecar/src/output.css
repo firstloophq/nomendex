@@ -29,6 +29,8 @@
     --color-purple-500: oklch(62.7% 0.265 303.9);
     --color-purple-600: oklch(55.8% 0.288 302.321);
     --color-purple-800: oklch(43.8% 0.218 303.724);
+    --color-rose-100: oklch(94.1% 0.03 12.58);
+    --color-rose-700: oklch(51.4% 0.222 16.935);
     --color-slate-100: oklch(96.8% 0.007 247.896);
     --color-slate-600: oklch(44.6% 0.043 257.281);
     --color-slate-800: oklch(27.9% 0.041 260.031);
@@ -1689,6 +1691,9 @@
       background-color: color-mix(in oklab, var(--color-red-500) 15%, transparent);
     }
   }
+  .bg-rose-100 {
+    background-color: var(--color-rose-100);
+  }
   .bg-slate-100 {
     background-color: var(--color-slate-100);
   }
@@ -2050,11 +2055,17 @@
   .text-red-700 {
     color: var(--color-red-700);
   }
+  .text-rose-700 {
+    color: var(--color-rose-700);
+  }
   .text-slate-600 {
     color: var(--color-slate-600);
   }
   .text-slate-800 {
     color: var(--color-slate-800);
+  }
+  .text-white {
+    color: var(--color-white);
   }
   .text-yellow-600 {
     color: var(--color-yellow-600);

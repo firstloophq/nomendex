@@ -388,7 +388,10 @@ export const ModelName = {
   Org: 'Org',
   OrgMembership: 'OrgMembership',
   GitHubInstallation: 'GitHubInstallation',
-  OrgWorkspace: 'OrgWorkspace'
+  OrgWorkspace: 'OrgWorkspace',
+  CollabDoc: 'CollabDoc',
+  CollabOp: 'CollabOp',
+  CollabSnapshot: 'CollabSnapshot'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -404,7 +407,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "org" | "orgMembership" | "gitHubInstallation" | "orgWorkspace"
+    modelProps: "user" | "org" | "orgMembership" | "gitHubInstallation" | "orgWorkspace" | "collabDoc" | "collabOp" | "collabSnapshot"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -778,6 +781,228 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    CollabDoc: {
+      payload: Prisma.$CollabDocPayload<ExtArgs>
+      fields: Prisma.CollabDocFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CollabDocFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CollabDocFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>
+        }
+        findFirst: {
+          args: Prisma.CollabDocFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CollabDocFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>
+        }
+        findMany: {
+          args: Prisma.CollabDocFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>[]
+        }
+        create: {
+          args: Prisma.CollabDocCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>
+        }
+        createMany: {
+          args: Prisma.CollabDocCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CollabDocCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>[]
+        }
+        delete: {
+          args: Prisma.CollabDocDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>
+        }
+        update: {
+          args: Prisma.CollabDocUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>
+        }
+        deleteMany: {
+          args: Prisma.CollabDocDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CollabDocUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CollabDocUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>[]
+        }
+        upsert: {
+          args: Prisma.CollabDocUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabDocPayload>
+        }
+        aggregate: {
+          args: Prisma.CollabDocAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCollabDoc>
+        }
+        groupBy: {
+          args: Prisma.CollabDocGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CollabDocGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CollabDocCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CollabDocCountAggregateOutputType> | number
+        }
+      }
+    }
+    CollabOp: {
+      payload: Prisma.$CollabOpPayload<ExtArgs>
+      fields: Prisma.CollabOpFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CollabOpFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CollabOpFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
+        }
+        findFirst: {
+          args: Prisma.CollabOpFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CollabOpFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
+        }
+        findMany: {
+          args: Prisma.CollabOpFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>[]
+        }
+        create: {
+          args: Prisma.CollabOpCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
+        }
+        createMany: {
+          args: Prisma.CollabOpCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CollabOpCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>[]
+        }
+        delete: {
+          args: Prisma.CollabOpDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
+        }
+        update: {
+          args: Prisma.CollabOpUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
+        }
+        deleteMany: {
+          args: Prisma.CollabOpDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CollabOpUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CollabOpUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>[]
+        }
+        upsert: {
+          args: Prisma.CollabOpUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
+        }
+        aggregate: {
+          args: Prisma.CollabOpAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCollabOp>
+        }
+        groupBy: {
+          args: Prisma.CollabOpGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CollabOpGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CollabOpCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CollabOpCountAggregateOutputType> | number
+        }
+      }
+    }
+    CollabSnapshot: {
+      payload: Prisma.$CollabSnapshotPayload<ExtArgs>
+      fields: Prisma.CollabSnapshotFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CollabSnapshotFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CollabSnapshotFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>
+        }
+        findFirst: {
+          args: Prisma.CollabSnapshotFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CollabSnapshotFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>
+        }
+        findMany: {
+          args: Prisma.CollabSnapshotFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>[]
+        }
+        create: {
+          args: Prisma.CollabSnapshotCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>
+        }
+        createMany: {
+          args: Prisma.CollabSnapshotCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CollabSnapshotCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>[]
+        }
+        delete: {
+          args: Prisma.CollabSnapshotDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>
+        }
+        update: {
+          args: Prisma.CollabSnapshotUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>
+        }
+        deleteMany: {
+          args: Prisma.CollabSnapshotDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CollabSnapshotUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CollabSnapshotUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>[]
+        }
+        upsert: {
+          args: Prisma.CollabSnapshotUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabSnapshotPayload>
+        }
+        aggregate: {
+          args: Prisma.CollabSnapshotAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCollabSnapshot>
+        }
+        groupBy: {
+          args: Prisma.CollabSnapshotGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CollabSnapshotGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CollabSnapshotCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CollabSnapshotCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -880,6 +1105,45 @@ export const OrgWorkspaceScalarFieldEnum = {
 export type OrgWorkspaceScalarFieldEnum = (typeof OrgWorkspaceScalarFieldEnum)[keyof typeof OrgWorkspaceScalarFieldEnum]
 
 
+export const CollabDocScalarFieldEnum = {
+  id: 'id',
+  orgWorkspaceId: 'orgWorkspaceId',
+  docId: 'docId',
+  lastSnapshotSeq: 'lastSnapshotSeq',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CollabDocScalarFieldEnum = (typeof CollabDocScalarFieldEnum)[keyof typeof CollabDocScalarFieldEnum]
+
+
+export const CollabOpScalarFieldEnum = {
+  seq: 'seq',
+  collabDocId: 'collabDocId',
+  docId: 'docId',
+  opJson: 'opJson',
+  sourceClientId: 'sourceClientId',
+  sourceClock: 'sourceClock',
+  createdAt: 'createdAt'
+} as const
+
+export type CollabOpScalarFieldEnum = (typeof CollabOpScalarFieldEnum)[keyof typeof CollabOpScalarFieldEnum]
+
+
+export const CollabSnapshotScalarFieldEnum = {
+  id: 'id',
+  collabDocId: 'collabDocId',
+  docId: 'docId',
+  bucketKey: 'bucketKey',
+  byteSize: 'byteSize',
+  etag: 'etag',
+  baseSeq: 'baseSeq',
+  createdAt: 'createdAt'
+} as const
+
+export type CollabSnapshotScalarFieldEnum = (typeof CollabSnapshotScalarFieldEnum)[keyof typeof CollabSnapshotScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -949,6 +1213,20 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+/**
+ * Reference to a field of type 'BigInt'
+ */
+export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
+    
+
+
+/**
+ * Reference to a field of type 'BigInt[]'
+ */
+export type ListBigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt[]'>
     
 
 
@@ -1065,6 +1343,9 @@ export type GlobalOmitConfig = {
   orgMembership?: Prisma.OrgMembershipOmit
   gitHubInstallation?: Prisma.GitHubInstallationOmit
   orgWorkspace?: Prisma.OrgWorkspaceOmit
+  collabDoc?: Prisma.CollabDocOmit
+  collabOp?: Prisma.CollabOpOmit
+  collabSnapshot?: Prisma.CollabSnapshotOmit
 }
 
 /* Types for Logging */

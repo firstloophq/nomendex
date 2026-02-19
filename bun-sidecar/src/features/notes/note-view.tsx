@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { usePlugin } from "@/hooks/usePlugin";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { todosAPI } from "@/hooks/useTodosAPI";
 import { EditorState, Selection, NodeSelection, TextSelection, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -64,16 +65,20 @@ import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckP
 import "@/components/prosemirror/spellcheck/spellcheck.css";
 import { useCollab } from "@/contexts/CollabContext";
 import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
+import { buildNoteDocId, getWorkspaceCollabScope } from "@/lib/collab-doc-id";
 import {
     createCRDTPlugin,
     applyRemoteOps,
     undoCommand,
     redoCommand,
-    createCursorPlugin,
-    updateRemoteCursors,
-    awarenessToRemoteCursor,
 } from "@crdt/lib";
-import type { Operation, CRDTPluginState, RemoteCursor, ClientId } from "@crdt/lib";
+import type { Operation, CRDTPluginState, ClientId } from "@crdt/lib";
+import {
+    createCollabCursorPlugin,
+    updateCollabRemoteCursors,
+    awarenessToRemoteCursor,
+} from "@/components/prosemirror/collab-cursor-plugin";
+import type { RemoteCursor } from "@/components/prosemirror/collab-cursor-plugin";
 import "@/styles/collab-cursors.css";
 
 interface NotesViewProps {
@@ -262,6 +267,7 @@ export function NotesView(props: NotesViewProps) {
         throw new Error("tabId is required");
     }
     const { activeTab, setTabName, openTab } = useWorkspaceContext();
+    const { activeWorkspace } = useWorkspaceSwitcher();
     const collab = useCollab();
     const { loading, error, setLoading, setError } = usePlugin();
     const [note, setNote] = useState<Note | null>(null);
@@ -309,6 +315,8 @@ export function NotesView(props: NotesViewProps) {
 
     const hasNote = Boolean(note);
     const hasCollab = Boolean(collab);
+    const collabScope = getWorkspaceCollabScope({ activeWorkspace });
+    const collabDocId = buildNoteDocId({ scope: collabScope, noteFileName });
 
     useEffect(() => {
         const view = viewRef.current;
@@ -924,7 +932,6 @@ export function NotesView(props: NotesViewProps) {
 
         // In team mode with collab, use CRDT for document state
         const isCollabMode = !!collab;
-        const collabDocId = `note:${noteFileName}`;
         crdtDebugLog({
             event: "note_editor_init",
             data: {
@@ -1017,7 +1024,7 @@ export function NotesView(props: NotesViewProps) {
                     });
                 },
             });
-            cursorPlugin = createCursorPlugin({ localClientId: collab.clientId });
+            cursorPlugin = createCollabCursorPlugin({ localClientId: collab.clientId });
         }
 
         // CRDT undo/redo keymap (replaces default history in collab mode)
@@ -1534,7 +1541,7 @@ export function NotesView(props: NotesViewProps) {
                     } else {
                         remoteCursors.delete(remoteClientId);
                     }
-                    updateRemoteCursors({
+                    updateCollabRemoteCursors({
                         view: editorView,
                         cursors: remoteCursors,
                     });
@@ -1635,7 +1642,7 @@ export function NotesView(props: NotesViewProps) {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isRichTextMode, noteFileName, hasNote, updateContent, saveImmediately, collab?.clientId]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
+    }, [isRichTextMode, noteFileName, hasNote, updateContent, saveImmediately, collab?.clientId, collabDocId]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
 
     // Update editor content when content changes externally (only after initial load)
     // In collab mode, CRDT handles doc sync, so skip external content updates.

@@ -35,7 +35,7 @@ When active, UI reads/writes through `useKanban`; otherwise it uses `useTodosAPI
 
 - One board record per workspace + project key.
 - Doc id format:
-  - `kanban:${workspaceId}:${encodeURIComponent(projectKey)}`
+  - `ws:{orgWorkspaceId}:kanban:{projectKey}`
 - Project key mapping:
   - `null` project filter -> `__all__`
   - empty project (`""`) -> `__none__`
@@ -47,7 +47,9 @@ Board record stores:
 
 ### Card Records
 
-- Each todo is a separate card record (`cardId = todo.id`).
+- Each todo is a separate card record:
+  - `ws:{orgWorkspaceId}:card:{todoId}`
+- Raw todo ID is also stored in card fields (`todoId`) for file persistence calls and legacy fallback.
 - Card fields store title, description, status, project, archived/deleted flags, tags, due date, attachments, timestamps.
 
 ## Bootstrap and Persistence Strategy
@@ -75,7 +77,7 @@ Presence uses CRDT awareness on the **board doc channel**.
 
 `sendPresence({ todoId, editing })` sends:
 
-- `viewingDocId = todoId` when a card is selected/open
+- `viewingDocId = cardDocId` when a card is selected/open
 - `cursor` set (sentinel) when a card editor is open (`editing = true`)
 - `user` and `lastUpdated`
 
@@ -116,4 +118,5 @@ Archived view uses CRDT data source in team mode for read/write operations, but 
 
 1. v1 board UI still renders fixed status columns (plus optional `Later`) even though CRDT board layout supports generic columns.
 2. Presence is intentionally ephemeral and not persisted.
-3. Multi-machine team relay is still Phase 3 work; current collab transport is local sidecar scoped.
+3. Multi-machine team relay is behind sidecar relay config (`CRDT_RELAY_ENABLED`) and uses workspace-scoped doc IDs.
+   Implementation plan: `docs/specs/team/phase-3-team-backend-relay-plan.md`

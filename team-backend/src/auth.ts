@@ -155,21 +155,17 @@ export type AuthVariables = {
   userEmail: string | null;
 };
 
-export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(async (c, next) => {
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+export interface AuthIdentity {
+  userId: string;
+  clerkUserId: string;
+  userName: string | null;
+  userEmail: string | null;
+}
 
-  const token = authHeader.slice(7);
-
-  let jwtPayload: JWTPayload;
-  try {
-    jwtPayload = await verifyJWT(token);
-  } catch (err) {
-    console.error("[auth] JWT verification failed:", err instanceof Error ? err.message : String(err));
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+async function resolveIdentityFromBearerToken(params: {
+  token: string;
+}): Promise<AuthIdentity> {
+  const jwtPayload = await verifyJWT(params.token);
 
   // Upsert user in database
   const user = await prisma.user.upsert({
@@ -187,10 +183,38 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(asy
     },
   });
 
-  c.set("userId", user.id);
-  c.set("clerkUserId", jwtPayload.sub);
-  c.set("userName", user.name);
-  c.set("userEmail", user.email);
+  return {
+    userId: user.id,
+    clerkUserId: jwtPayload.sub,
+    userName: user.name,
+    userEmail: user.email,
+  };
+}
+
+export async function authenticateBearerToken(params: {
+  token: string;
+}): Promise<AuthIdentity> {
+  return resolveIdentityFromBearerToken(params);
+}
+
+export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(async (c, next) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const identity = await resolveIdentityFromBearerToken({ token });
+    c.set("userId", identity.userId);
+    c.set("clerkUserId", identity.clerkUserId);
+    c.set("userName", identity.userName);
+    c.set("userEmail", identity.userEmail);
+  } catch (err) {
+    console.error("[auth] JWT verification failed:", err instanceof Error ? err.message : String(err));
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
   await next();
 });

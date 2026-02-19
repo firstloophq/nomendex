@@ -11,13 +11,13 @@
 
 We are replacing the Y.js-based real-time collaboration system with a custom CRDT library (`@crdt/lib`). The new system runs a local WebSocket CRDT server inside the bun-sidecar process (no external services needed for local testing) and uses ProseMirror plugins from the CRDT lib to capture/apply operations.
 
-The plan has 4 phases. Phases 1-2 are complete, Phase 4 has a shipped v1, and Phase 3 remains deferred.
+The plan has 4 phases. Phases 1-2 are complete, Phase 4 has a shipped v1, and Phase 3 is now in progress.
 
 | Phase | Scope | Status |
 |---|---|---|
 | **Phase 1: Plumbing** | Package install, WS handler, CollabContext rewrite | Done |
 | **Phase 2: Notes Editor** | Replace Y.js PM plugins with CRDT plugins | Done (sync bugs remain) |
-| **Phase 3: Team Backend Relay** | Route CRDT ops through team-backend for remote sync | Not started |
+| **Phase 3: Team Backend Relay** | Route CRDT ops through team-backend for remote sync | In progress (backend WS/persistence + sidecar relay/doc IDs landed) |
 | **Phase 4: Todos / Kanban** | CRDT sync for todo items and kanban boards | In progress (v1 shipped in team mode) |
 
 ---
@@ -31,7 +31,7 @@ The plan has 4 phases. Phases 1-2 are complete, Phase 4 has a shipped v1, and Ph
 - **`bun-sidecar/package.json`**: Added `"@crdt/lib": "file:../../crdt"` dependency; removed `y-prosemirror` usage (packages still listed — cleanup deferred).
 - **`bun-sidecar/tsconfig.build.json`** (new file): Created to redirect `tsc` away from the crdt source (avoids prosemirror version mismatch between repos). Maps `@crdt/lib` and `@crdt/lib/server` to local `.d.ts` type stubs.
 - **`bun-sidecar/src/types/crdt-lib/index.d.ts`** (new file): Type declarations for all `@crdt/lib` exports used by nomendex (operations, plugin, cursors, transport).
-- **`bun-sidecar/src/types/crdt-server/index.d.ts`** (new file): Type declarations for `@crdt/lib/server` exports (WSClient, CRDTWebSocketHandler, createCRDTWebSocketHandler).
+- **`bun-sidecar/src/types/crdt-server/index.d.ts`** (new file): Type declarations for `@crdt/lib/server` exports (WSClient, CRDTWebSocketHandler, createCRDTWebSocketHandler, createCRDTRelay).
 
 > **Why type stubs?** The `@crdt/lib` source uses a different pinned version of prosemirror packages than nomendex. Running `tsc` over the crdt source produces false type errors (`Mapping` incompatibility, missing `defaultAttrs`, etc.). The stubs let `tsc --project tsconfig.build.json` validate nomendex code without touching crdt internals. At runtime, Bun resolves the real package via `file:../../crdt`.
 
@@ -40,7 +40,7 @@ The plan has 4 phases. Phases 1-2 are complete, Phase 4 has a shipped v1, and Ph
 **File**: `bun-sidecar/src/server.ts`
 
 - Added `CRDTWSData` interface to the `WSData` union type.
-- Created `crdtHandler` at module level via `createCRDTWebSocketHandler({ serverClientId: "sidecar-server" })`.
+- Created module-level CRDT handler via local `createCRDTWebSocketHandler(...)` or `createCRDTRelay(...).handler` when relay is enabled.
 - Added `/ws/crdt` HTTP route that upgrades to WebSocket with `{ data: { isCRDT: true, clientId } }`.
 - In `websocket.open`, `websocket.message`, and `websocket.close`: checks for `isCRDT` flag on `ws.data`, creates a `WSClient` wrapper `{ id, send }`, and delegates to `crdtHandler.handleOpen/handleMessage/handleClose`.
 
@@ -118,8 +118,9 @@ Solution implemented:
 
 Key implementation details:
 - Team mode uses a custom local hook (`useKanban`) instead of `@crdt/lib`'s demo hook.
-- Each board is a CRDT board record scoped per workspace + project (`kanban:${workspaceId}:${projectKey}`).
-- Each todo card is its own CRDT record (`cardId = todo.id`), while board record stores layout/ordering.
+- Each board is a CRDT board record scoped per workspace + project (`ws:{orgWorkspaceId}:kanban:{projectKey}`).
+- Each todo card is its own CRDT record (`ws:{orgWorkspaceId}:card:{todoId}`), while board record stores layout/ordering.
+- Card fields include `todoId` for file persistence compatibility and legacy card-id fallback.
 - On first sync of a board, file-backed todos are loaded and merged into CRDT state to prevent data loss.
 - Mutations in team mode remain file-backed for compatibility:
   - `createTodo` persists file first, then creates CRDT card.
@@ -137,7 +138,7 @@ Key implementation details:
 
 Presence model:
 - Awareness is sent on the board doc channel.
-- Focused card is represented as `viewingDocId = todoId`.
+- Focused card is represented as `viewingDocId = cardDocId` and mapped back to `todoId` in UI state.
 - Editing state is represented with awareness `cursor` presence (sentinel value), and aggregated separately.
 - `useKanban` exposes:
   - `presenceByDoc: Map<todoId, UserInfo[]>`
@@ -150,6 +151,19 @@ UI behavior:
 - Task editor dialog shows remote editor avatars for the active card.
 
 For the full behavior and data flow, see `docs/features/todos-collaboration.md`.
+
+### Phase 3: Relay + Production Config (Progress)
+
+Implemented in-progress Phase 3 pieces:
+
+1. Team-backend now serves authenticated `/ws/crdt` with workspace-scoped authz and durable CRDT state (DB op tail + S3 snapshots).
+2. Sidecar now supports relay mode (`createCRDTRelay`) behind `CRDT_RELAY_ENABLED`.
+3. Sidecar tracks CRDT doc subscribe/unsubscribe and relays only workspace-scoped doc IDs.
+4. Team backend base URL in frontend team flows is now runtime-resolved from sidecar (`/api/team-backend/config`) instead of hardcoded localhost.
+5. Notes + kanban now use workspace-scoped doc-id builders:
+   - `ws:{orgWorkspaceId}:note:{noteFileName}`
+   - `ws:{orgWorkspaceId}:kanban:{projectKey}`
+   - `ws:{orgWorkspaceId}:card:{todoId}`
 
 ---
 
@@ -210,8 +224,13 @@ These should be removed once the CRDT integration is confirmed stable.
 | `bun-sidecar/src/types/crdt-lib/index.d.ts` | **New** — type stubs for `@crdt/lib` | 1.1 |
 | `bun-sidecar/src/types/crdt-server/index.d.ts` | **New** — type stubs for `@crdt/lib/server` | 1.1 |
 | `bun-sidecar/src/server.ts` | CRDT WS handler, `/ws/crdt` route, `CRDTWSData` type | 1.2 |
+| `bun-sidecar/src/lib/collab-doc-id.ts` | **New** — shared workspace-scoped CRDT doc-id builders/parsers | 3.x |
+| `bun-sidecar/src/lib/team-backend-config.ts` | **New** — runtime team-backend URL resolver via sidecar config route | 3.x |
+| `bun-sidecar/.env.example` | **New** — sidecar relay/team-backend production env keys | 3.x |
 | `bun-sidecar/src/contexts/CollabContext.tsx` | Full rewrite: Y.js → CRDT transport + listener registries | 1.3 |
 | `bun-sidecar/src/contexts/GHSyncContext.tsx` | Disabled git sync in team mode (`skipSync = isTeamMode`) | 1.4 |
+| `bun-sidecar/src/components/WorkspaceOnboarding.tsx` | Team-backend requests now use runtime base URL | 3.x |
+| `bun-sidecar/src/components/GitHubRepoPickerDialog.tsx` | Team-backend requests now use runtime base URL | 3.x |
 | `bun-sidecar/src/features/notes/note-view.tsx` | Replaced Y.js PM plugins with CRDT plugins, bootstrap logic | 2.1-2.3 |
 | `bun-sidecar/src/features/todos/useKanban.ts` | **New** — team-mode kanban CRDT hook (board/card sync, bootstrap, presence) | 4.1-4.2 |
 | `bun-sidecar/src/features/todos/browser-view.tsx` | Team-mode data source switch + presence send/render integration | 4.1-4.2 |
@@ -256,6 +275,7 @@ These should be removed once the CRDT integration is confirmed stable.
 ## Next Steps
 
 1. **Notes hardening** — continue closing remaining notes sync edge cases (especially schema-heavy structures).
-2. **Phase 3: Team Backend Relay** — route CRDT ops through team-backend so collaboration works across machines/workers.
+2. **Phase 3: Team Backend Relay** — finish production rollout: relay env wiring, deploy config, and cross-machine validation.
+   Plan doc: `docs/specs/team/phase-3-team-backend-relay-plan.md`
 3. **Todos/Kanban v2** — add full customizable column UX on top of the existing CRDT board layout model.
 4. **Remove Y.js packages** — once notes CRDT path is stable, remove `yjs`, `y-prosemirror`, `y-protocols`, `y-websocket`.

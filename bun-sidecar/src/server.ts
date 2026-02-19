@@ -21,8 +21,10 @@ import { versionRoutes } from "./server-routes/version-routes";
 import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
 import { projectsRoutes } from "./server-routes/projects-routes";
-import { createCRDTWebSocketHandler } from "@crdt/lib/server";
+import { createCRDTRelay, createCRDTWebSocketHandler } from "@crdt/lib/server";
 import type { WSClient } from "@crdt/lib/server";
+import { globalConfig } from "./storage/global-config";
+import { isWorkspaceScopedDocId } from "./lib/collab-doc-id";
 
 // Terminal WebSocket data type
 interface TerminalWSData {
@@ -34,13 +36,174 @@ interface TerminalWSData {
 interface CRDTWSData {
     isCRDT: true;
     clientId: string;
+    wsClientId: string;
+    shouldRelay: boolean;
+    subscribedDocs: Set<string>;
 }
 
 // Union type for all WebSocket data types
 type WSData = TerminalWSData | CRDTWSData | Record<string, never>;
 
-// Create the CRDT WebSocket handler at module level
-const crdtHandler = createCRDTWebSocketHandler({ serverClientId: "sidecar-server" });
+// Create service-specific logger for the server
+const serverLogger = createServiceLogger("SERVER");
+const apiLogger = createServiceLogger("API");
+
+function isEnabledFlag(value: string | undefined): boolean {
+    if (!value) return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function parseUrlToWebSocket(rawUrl: string): URL | null {
+    try {
+        const url = new URL(rawUrl);
+        if (url.protocol === "http:") {
+            url.protocol = "ws:";
+        } else if (url.protocol === "https:") {
+            url.protocol = "wss:";
+        } else if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+            return null;
+        }
+        return url;
+    } catch {
+        return null;
+    }
+}
+
+function normalizeHttpUrl(rawUrl: string): string {
+    return rawUrl.replace(/\/+$/, "");
+}
+
+function resolveTeamBackendHttpUrl(): string | null {
+    const rawUrl = process.env.TEAM_BACKEND_HTTP_URL?.trim()
+        || process.env.TEAM_BACKEND_URL?.trim();
+    if (!rawUrl) return null;
+
+    try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            return null;
+        }
+        parsed.search = "";
+        parsed.hash = "";
+        return normalizeHttpUrl(parsed.toString());
+    } catch {
+        return null;
+    }
+}
+
+function resolveRelayRemoteUrl(): string | null {
+    const explicitWsUrl = process.env.TEAM_BACKEND_WS_URL?.trim();
+    if (explicitWsUrl) {
+        const parsed = parseUrlToWebSocket(explicitWsUrl);
+        if (!parsed) return null;
+        if (parsed.pathname === "/" || parsed.pathname === "") {
+            parsed.pathname = "/ws/crdt";
+        }
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+    }
+
+    const httpBaseUrl = resolveTeamBackendHttpUrl();
+    if (!httpBaseUrl) return null;
+
+    const parsed = parseUrlToWebSocket(httpBaseUrl);
+    if (!parsed) return null;
+    parsed.pathname = "/ws/crdt";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+}
+
+interface CRDTDocSubscriptionMessage {
+    type: "subscribe" | "unsubscribe";
+    docId: string;
+}
+
+function parseDocSubscriptionMessage(message: string): CRDTDocSubscriptionMessage | null {
+    try {
+        const parsed = JSON.parse(message) as { type?: string; docId?: string };
+        const type = parsed.type;
+        const docId = parsed.docId;
+        if ((type !== "subscribe" && type !== "unsubscribe") || typeof docId !== "string" || docId.trim() === "") {
+            return null;
+        }
+        return { type, docId: docId.trim() };
+    } catch {
+        return null;
+    }
+}
+
+const relayRemoteUrl = resolveRelayRemoteUrl();
+const relayEnabled = isEnabledFlag(process.env.CRDT_RELAY_ENABLED);
+const teamBackendHttpUrl = resolveTeamBackendHttpUrl() ?? "http://localhost:4444";
+
+let relayAuthToken = "";
+const relayDocRefCount = new Map<string, number>();
+
+const crdtRelay = relayEnabled && relayRemoteUrl
+    ? createCRDTRelay({
+        remoteUrl: relayRemoteUrl,
+        clientId: `sidecar-relay-${crypto.randomUUID()}`,
+        serverClientId: "sidecar-server",
+        getAuthToken: () => relayAuthToken,
+        onConnect: () => {
+            serverLogger.info("CRDT relay connected", { remoteUrl: relayRemoteUrl });
+        },
+        onDisconnect: () => {
+            serverLogger.warn("CRDT relay disconnected", { remoteUrl: relayRemoteUrl });
+        },
+    })
+    : null;
+
+const crdtHandler = crdtRelay?.handler
+    ?? createCRDTWebSocketHandler({ serverClientId: "sidecar-server" });
+
+if (crdtRelay) {
+    startupLog.info("CRDT relay enabled", { remoteUrl: relayRemoteUrl });
+} else {
+    startupLog.info("CRDT relay disabled", {
+        relayEnabled,
+        relayRemoteUrl,
+    });
+}
+
+function addRelayedDoc(params: { wsData: CRDTWSData; docId: string }) {
+    if (!crdtRelay || !params.wsData.shouldRelay) return;
+    if (!isWorkspaceScopedDocId({ docId: params.docId })) return;
+    if (params.wsData.subscribedDocs.has(params.docId)) return;
+
+    params.wsData.subscribedDocs.add(params.docId);
+    const current = relayDocRefCount.get(params.docId) ?? 0;
+    relayDocRefCount.set(params.docId, current + 1);
+    if (current === 0) {
+        crdtRelay.addDoc({ docId: params.docId });
+        serverLogger.debug("CRDT relay addDoc", { docId: params.docId });
+    }
+}
+
+function removeRelayedDoc(params: { wsData: CRDTWSData; docId: string }) {
+    if (!crdtRelay || !params.wsData.shouldRelay) return;
+    if (!params.wsData.subscribedDocs.has(params.docId)) return;
+
+    params.wsData.subscribedDocs.delete(params.docId);
+    const current = relayDocRefCount.get(params.docId) ?? 0;
+    const next = Math.max(0, current - 1);
+    if (next === 0) {
+        relayDocRefCount.delete(params.docId);
+        crdtRelay.removeDoc({ docId: params.docId });
+        serverLogger.debug("CRDT relay removeDoc", { docId: params.docId });
+        return;
+    }
+    relayDocRefCount.set(params.docId, next);
+}
+
+function clearRelayedDocsForSocket(params: { wsData: CRDTWSData }) {
+    for (const docId of Array.from(params.wsData.subscribedDocs)) {
+        removeRelayedDoc({ wsData: params.wsData, docId });
+    }
+}
 
 interface TerminalSession {
     proc: Subprocess;
@@ -51,10 +214,6 @@ interface TerminalSession {
 
 const TERMINAL_CONTROL_PREFIX = "__MCP_CONTROL__";
 const SESSION_STATUS_PREFIX = `${TERMINAL_CONTROL_PREFIX}:SESSION_STATUS:`;
-
-// Create service-specific logger for the server
-const serverLogger = createServiceLogger("SERVER");
-const apiLogger = createServiceLogger("API");
 
 // Map to track PTY sessions and clients by session ID
 const terminalSessions = new Map<string, TerminalSession>();
@@ -143,14 +302,42 @@ const server = serve<WSData>({
 
         // CRDT WebSocket route handler
         "/ws/crdt": {
-            GET: (req, server) => {
+            GET: async (req, server) => {
                 const url = new URL(req.url);
                 const clientId = url.searchParams.get("clientId") || `anon-${Date.now()}`;
+                const wsClientId = `crdt-ws-${crypto.randomUUID()}`;
+                const token = url.searchParams.get("token")?.trim() || "";
+                const activeWorkspace = await globalConfig.getActiveWorkspace().catch(() => null);
+                const shouldRelay = Boolean(
+                    crdtRelay
+                    && token
+                    && activeWorkspace?.teamMode === "team"
+                    && activeWorkspace.orgWorkspaceId
+                );
 
-                serverLogger.info("CRDT WebSocket upgrade request received", { clientId });
+                if (shouldRelay) {
+                    relayAuthToken = token;
+                }
 
-                if (server.upgrade(req, { data: { isCRDT: true, clientId } })) {
-                    serverLogger.info("CRDT WebSocket upgrade successful", { clientId });
+                serverLogger.info("CRDT WebSocket upgrade request received", {
+                    clientId,
+                    wsClientId,
+                    shouldRelay,
+                    relayConfigured: !!crdtRelay,
+                    teamMode: activeWorkspace?.teamMode ?? "unknown",
+                    orgWorkspaceId: activeWorkspace?.orgWorkspaceId ?? null,
+                });
+
+                if (server.upgrade(req, {
+                    data: {
+                        isCRDT: true,
+                        clientId,
+                        wsClientId,
+                        shouldRelay,
+                        subscribedDocs: new Set<string>(),
+                    },
+                })) {
+                    serverLogger.info("CRDT WebSocket upgrade successful", { clientId, wsClientId, shouldRelay });
                     return;
                 }
 
@@ -207,6 +394,18 @@ const server = serve<WSData>({
                 } catch {
                     return Response.json({ error: "Failed to write log" }, { status: 500 });
                 }
+            },
+        },
+        "/api/team-backend/config": {
+            GET() {
+                return Response.json({
+                    success: true,
+                    data: {
+                        httpUrl: teamBackendHttpUrl,
+                        relayEnabled: relayEnabled && !!relayRemoteUrl,
+                        wsUrl: relayRemoteUrl,
+                    },
+                });
             },
         },
         "/api/realtime/token": {
@@ -303,8 +502,24 @@ const server = serve<WSData>({
             } else if (_ws.data && "isCRDT" in _ws.data && _ws.data.isCRDT) {
                 // Delegate to CRDT handler
                 if (typeof _message === "string") {
+                    const crdtData = _ws.data as CRDTWSData;
+                    const subscriptionMessage = parseDocSubscriptionMessage(_message);
+                    if (subscriptionMessage) {
+                        if (subscriptionMessage.type === "subscribe") {
+                            if (crdtData.shouldRelay && !isWorkspaceScopedDocId({ docId: subscriptionMessage.docId })) {
+                                serverLogger.warn("Ignoring relay subscription for non-workspace-scoped CRDT doc", {
+                                    docId: subscriptionMessage.docId,
+                                    clientId: crdtData.clientId,
+                                });
+                            }
+                            addRelayedDoc({ wsData: crdtData, docId: subscriptionMessage.docId });
+                        } else {
+                            removeRelayedDoc({ wsData: crdtData, docId: subscriptionMessage.docId });
+                        }
+                    }
+
                     const client: WSClient = {
-                        id: (_ws.data as CRDTWSData).clientId,
+                        id: crdtData.wsClientId,
                         send: (msg: string) => _ws.send(msg),
                     };
                     crdtHandler.handleMessage({ client, message: _message });
@@ -474,9 +689,13 @@ const server = serve<WSData>({
                 }
             } else if (_ws.data && "isCRDT" in _ws.data && _ws.data.isCRDT) {
                 const crdtData = _ws.data as CRDTWSData;
-                serverLogger.info("CRDT WebSocket client connected", { clientId: crdtData.clientId });
+                serverLogger.info("CRDT WebSocket client connected", {
+                    clientId: crdtData.clientId,
+                    wsClientId: crdtData.wsClientId,
+                    shouldRelay: crdtData.shouldRelay,
+                });
                 const client: WSClient = {
-                    id: crdtData.clientId,
+                    id: crdtData.wsClientId,
                     send: (msg: string) => _ws.send(msg),
                 };
                 crdtHandler.handleOpen({ client });
@@ -507,13 +726,15 @@ const server = serve<WSData>({
                 // PTY will only be killed when it exits naturally or on server shutdown
             } else if (_ws.data && "isCRDT" in _ws.data && _ws.data.isCRDT) {
                 const crdtData = _ws.data as CRDTWSData;
+                clearRelayedDocsForSocket({ wsData: crdtData });
                 serverLogger.info("CRDT WebSocket client disconnected", {
                     clientId: crdtData.clientId,
+                    wsClientId: crdtData.wsClientId,
                     code: _code,
                     message: _message,
                 });
                 const client: WSClient = {
-                    id: crdtData.clientId,
+                    id: crdtData.wsClientId,
                     send: (msg: string) => _ws.send(msg),
                 };
                 crdtHandler.handleClose({ client });

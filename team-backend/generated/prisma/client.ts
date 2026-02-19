@@ -64,3 +64,18 @@ export type GitHubInstallation = Prisma.GitHubInstallationModel
  * 
  */
 export type OrgWorkspace = Prisma.OrgWorkspaceModel
+/**
+ * Model CollabDoc
+ * 
+ */
+export type CollabDoc = Prisma.CollabDocModel
+/**
+ * Model CollabOp
+ * 
+ */
+export type CollabOp = Prisma.CollabOpModel
+/**
+ * Model CollabSnapshot
+ * 
+ */
+export type CollabSnapshot = Prisma.CollabSnapshotModel

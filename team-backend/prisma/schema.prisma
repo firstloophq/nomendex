@@ -77,7 +77,57 @@ model OrgWorkspace {
 
   org          Org                @relation(fields: [orgId], references: [id], onDelete: Cascade)
   installation GitHubInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  collabDocs   CollabDoc[]
 
   @@unique([orgId, repoFullName])
   @@map("org_workspaces")
+}
+
+model CollabDoc {
+  id              String    @id @default(cuid())
+  orgWorkspaceId  String    @map("org_workspace_id")
+  docId           String    @unique @map("doc_id")
+  lastSnapshotSeq BigInt?   @map("last_snapshot_seq")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  orgWorkspace OrgWorkspace   @relation(fields: [orgWorkspaceId], references: [id], onDelete: Cascade)
+  ops          CollabOp[]
+  snapshots    CollabSnapshot[]
+
+  @@index([orgWorkspaceId])
+  @@map("collab_docs")
+}
+
+model CollabOp {
+  seq            BigInt   @id @default(autoincrement())
+  collabDocId    String   @map("collab_doc_id")
+  docId          String   @map("doc_id")
+  opJson         String   @map("op_json")
+  sourceClientId String?  @map("source_client_id")
+  sourceClock    Int?     @map("source_clock")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  collabDoc CollabDoc @relation(fields: [collabDocId], references: [id], onDelete: Cascade)
+
+  @@index([collabDocId, seq])
+  @@index([docId])
+  @@map("collab_ops")
+}
+
+model CollabSnapshot {
+  id         String   @id @default(cuid())
+  collabDocId String  @map("collab_doc_id")
+  docId      String   @map("doc_id")
+  bucketKey  String   @map("bucket_key")
+  byteSize   Int      @map("byte_size")
+  etag       String?
+  baseSeq    BigInt   @map("base_seq")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  collabDoc CollabDoc @relation(fields: [collabDocId], references: [id], onDelete: Cascade)
+
+  @@index([collabDocId, createdAt])
+  @@index([docId])
+  @@map("collab_snapshots")
 }

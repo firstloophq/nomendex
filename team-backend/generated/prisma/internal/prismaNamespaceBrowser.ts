@@ -55,7 +55,10 @@ export const ModelName = {
   Org: 'Org',
   OrgMembership: 'OrgMembership',
   GitHubInstallation: 'GitHubInstallation',
-  OrgWorkspace: 'OrgWorkspace'
+  OrgWorkspace: 'OrgWorkspace',
+  CollabDoc: 'CollabDoc',
+  CollabOp: 'CollabOp',
+  CollabSnapshot: 'CollabSnapshot'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -135,6 +138,45 @@ export const OrgWorkspaceScalarFieldEnum = {
 } as const
 
 export type OrgWorkspaceScalarFieldEnum = (typeof OrgWorkspaceScalarFieldEnum)[keyof typeof OrgWorkspaceScalarFieldEnum]
+
+
+export const CollabDocScalarFieldEnum = {
+  id: 'id',
+  orgWorkspaceId: 'orgWorkspaceId',
+  docId: 'docId',
+  lastSnapshotSeq: 'lastSnapshotSeq',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CollabDocScalarFieldEnum = (typeof CollabDocScalarFieldEnum)[keyof typeof CollabDocScalarFieldEnum]
+
+
+export const CollabOpScalarFieldEnum = {
+  seq: 'seq',
+  collabDocId: 'collabDocId',
+  docId: 'docId',
+  opJson: 'opJson',
+  sourceClientId: 'sourceClientId',
+  sourceClock: 'sourceClock',
+  createdAt: 'createdAt'
+} as const
+
+export type CollabOpScalarFieldEnum = (typeof CollabOpScalarFieldEnum)[keyof typeof CollabOpScalarFieldEnum]
+
+
+export const CollabSnapshotScalarFieldEnum = {
+  id: 'id',
+  collabDocId: 'collabDocId',
+  docId: 'docId',
+  bucketKey: 'bucketKey',
+  byteSize: 'byteSize',
+  etag: 'etag',
+  baseSeq: 'baseSeq',
+  createdAt: 'createdAt'
+} as const
+
+export type CollabSnapshotScalarFieldEnum = (typeof CollabSnapshotScalarFieldEnum)[keyof typeof CollabSnapshotScalarFieldEnum]
 
 
 export const SortOrder = {

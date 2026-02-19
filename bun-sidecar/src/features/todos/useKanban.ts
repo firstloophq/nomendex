@@ -19,6 +19,12 @@ import { useCollab } from "@/contexts/CollabContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { todosAPI } from "@/hooks/useTodosAPI";
 import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
+import {
+    buildKanbanBoardDocId,
+    buildKanbanCardDocId,
+    getWorkspaceCollabScope,
+    todoIdFromKanbanCardDocId,
+} from "@/lib/collab-doc-id";
 import type { Attachment } from "@/types/attachments";
 import type { Todo } from "./todo-types";
 
@@ -103,20 +109,6 @@ function parseAttachments(raw: string | undefined): Attachment[] | undefined {
     return undefined;
 }
 
-function projectKeyForBoard(project: string | null): string {
-    if (project === null) return "__all__";
-    if (project === "") return "__none__";
-    return project;
-}
-
-function buildBoardDocId(params: {
-    workspaceId: string;
-    project: string | null;
-}): string {
-    const projectKey = projectKeyForBoard(params.project);
-    return `kanban:${params.workspaceId}:${encodeURIComponent(projectKey)}`;
-}
-
 function normalizeProjectValue(params: {
     projectFromHook: string | null;
     projectFromInput?: string;
@@ -195,9 +187,10 @@ function deriveTodo(params: {
     const project = explicitProject ?? (params.projectFromHook === null ? undefined : params.projectFromHook);
     const tags = detail.tags.length > 0 ? [...detail.tags] : undefined;
     const attachments = parseAttachments(detail.fields.attachments);
+    const todoId = fieldToOptional(detail.fields.todoId) ?? todoIdFromKanbanCardDocId({ docId: params.cardId });
 
     return {
-        id: params.cardId,
+        id: todoId,
         title: detail.fields.title ?? "",
         description: fieldToOptional(detail.fields.description),
         status: resolvedStatus,
@@ -235,9 +228,15 @@ export function useKanban(params: UseKanbanParams) {
     const collabSendOps = collab?.sendOps;
     const collabSendAwareness = collab?.sendAwareness;
     const { activeWorkspace } = useWorkspaceSwitcher();
-    const workspaceId = activeWorkspace?.id ?? "unknown-workspace";
+    const collabScope = useMemo(
+        () => getWorkspaceCollabScope({ activeWorkspace }),
+        [activeWorkspace]
+    );
 
-    const boardDocId = useMemo(() => buildBoardDocId({ workspaceId, project }), [workspaceId, project]);
+    const boardDocId = useMemo(
+        () => buildKanbanBoardDocId({ scope: collabScope, project }),
+        [collabScope, project]
+    );
     const collabEnabled = enabled
         && activeWorkspace?.teamMode === "team"
         && !!collabClientId
@@ -258,6 +257,43 @@ export function useKanban(params: UseKanbanParams) {
     const cardUnsubsRef = useRef<Map<string, () => void>>(new Map());
     const bootstrapAttemptedRef = useRef<string | null>(null);
     const remotePresenceRef = useRef<Map<string, PresenceSnapshot>>(new Map());
+    const toCardDocId = useCallback((todoId: string) => {
+        return buildKanbanCardDocId({
+            scope: collabScope,
+            todoId,
+        });
+    }, [collabScope]);
+
+    const resolveCardDocId = useCallback((params: {
+        todoId: string;
+        state?: KanbanState;
+    }): string => {
+        const preferredCardDocId = toCardDocId(params.todoId);
+        const currentState = params.state ?? stateRef.current;
+        if (preferredCardDocId === params.todoId) {
+            return preferredCardDocId;
+        }
+
+        const preferredDetail = getCardDetail({
+            manager: currentState.manager,
+            cardId: preferredCardDocId,
+            boardDocId,
+        });
+        if (preferredDetail) {
+            return preferredCardDocId;
+        }
+
+        const legacyDetail = getCardDetail({
+            manager: currentState.manager,
+            cardId: params.todoId,
+            boardDocId,
+        });
+        if (legacyDetail) {
+            return params.todoId;
+        }
+
+        return preferredCardDocId;
+    }, [boardDocId, toCardDocId]);
 
     useEffect(() => {
         bootstrapAttemptedRef.current = null;
@@ -276,15 +312,16 @@ export function useKanban(params: UseKanbanParams) {
         for (const [, snapshot] of remotePresenceRef.current) {
             const docId = snapshot.viewingDocId;
             if (!docId) continue;
+            const todoId = todoIdFromKanbanCardDocId({ docId });
 
-            const viewers = nextPresence.get(docId) ?? [];
+            const viewers = nextPresence.get(todoId) ?? [];
             viewers.push(snapshot.user);
-            nextPresence.set(docId, viewers);
+            nextPresence.set(todoId, viewers);
 
             if (snapshot.editing) {
-                const editors = nextEditing.get(docId) ?? [];
+                const editors = nextEditing.get(todoId) ?? [];
                 editors.push(snapshot.user);
-                nextEditing.set(docId, editors);
+                nextEditing.set(todoId, editors);
             }
         }
 
@@ -549,17 +586,22 @@ export function useKanban(params: UseKanbanParams) {
         }
 
         for (const todo of sortedTodos) {
+            const cardDocId = resolveCardDocId({
+                todoId: todo.id,
+                state: nextState,
+            });
             const existingCard = getCardDetail({
                 manager: nextState.manager,
-                cardId: todo.id,
+                cardId: cardDocId,
                 boardDocId,
             });
             if (existingCard) continue;
 
             const result = createCard({
                 state: nextState,
-                cardId: todo.id,
+                cardId: cardDocId,
                 fields: {
+                    todoId: todo.id,
                     title: todo.title,
                     description: todo.description ?? "",
                     status: todo.status,
@@ -585,7 +627,7 @@ export function useKanban(params: UseKanbanParams) {
                 reason: "bootstrap_from_files",
             });
         }
-    }, [applyAndBroadcast, boardDocId, collabEnabled, isBoardSynced, project]);
+    }, [applyAndBroadcast, boardDocId, collabEnabled, isBoardSynced, project, resolveCardDocId]);
 
     useEffect(() => {
         void bootstrapFromFiles();
@@ -639,6 +681,10 @@ export function useKanban(params: UseKanbanParams) {
     }, [activeTodos]);
 
     const getTodoByIdFromState = useCallback((todoId: string, currentState: KanbanState): Todo | null => {
+        const resolvedCardDocId = resolveCardDocId({
+            todoId,
+            state: currentState,
+        });
         const currentBoard = getBoardState({
             manager: currentState.manager,
             boardDocId,
@@ -646,18 +692,21 @@ export function useKanban(params: UseKanbanParams) {
 
         for (const column of currentBoard.columns) {
             const cards = currentBoard.cardsByColumn[column] ?? [];
-            const index = cards.findIndex((card) => card.cardId === todoId);
+            const index = cards.findIndex(
+                (card) => card.cardId === resolvedCardDocId || card.cardId === todoId
+            );
             if (index === -1) continue;
+            const cardDocId = cards[index]?.cardId ?? resolvedCardDocId;
             return deriveTodo({
                 manager: currentState.manager,
                 boardDocId,
-                cardId: todoId,
+                cardId: cardDocId,
                 order: index + 1,
                 projectFromHook: project,
             });
         }
         return null;
-    }, [boardDocId, project]);
+    }, [boardDocId, project, resolveCardDocId]);
 
     const getTodos = useCallback(async (args: { project?: string } = {}) => {
         return filterTodosByProject({ todos: activeTodos, project: args.project });
@@ -681,16 +730,20 @@ export function useKanban(params: UseKanbanParams) {
     }) => {
         if (!collabEnabled || !collabSendAwareness || !collabUserInfo) return;
 
+        const viewingDocId = params.todoId
+            ? resolveCardDocId({ todoId: params.todoId })
+            : undefined;
+
         collabSendAwareness({
             docId: boardDocId,
             state: {
-                viewingDocId: params.todoId ?? undefined,
+                viewingDocId,
                 user: collabUserInfo,
                 lastUpdated: Date.now(),
                 cursor: params.editing ? { anchor: 0, head: 0 } : undefined,
             },
         });
-    }, [boardDocId, collabEnabled, collabSendAwareness, collabUserInfo]);
+    }, [boardDocId, collabEnabled, collabSendAwareness, collabUserInfo, resolveCardDocId]);
 
     const createTodoItem = useCallback(async (input: CreateTodoInput): Promise<Todo> => {
         if (!collabEnabled) {
@@ -731,8 +784,9 @@ export function useKanban(params: UseKanbanParams) {
 
         const result = createCard({
             state: nextState,
-            cardId: persisted.id,
+            cardId: toCardDocId(persisted.id),
             fields: {
+                todoId: persisted.id,
                 title: persisted.title,
                 description: persisted.description ?? "",
                 status: persisted.status,
@@ -761,7 +815,7 @@ export function useKanban(params: UseKanbanParams) {
             throw new Error("Failed to create todo");
         }
         return created;
-    }, [applyAndBroadcast, boardDocId, collabEnabled, getTodoByIdFromState, project]);
+    }, [applyAndBroadcast, boardDocId, collabEnabled, getTodoByIdFromState, project, toCardDocId]);
 
     const updateTodoItem = useCallback(async (input: UpdateTodoInput): Promise<Todo> => {
         if (!collabEnabled) {
@@ -770,10 +824,14 @@ export function useKanban(params: UseKanbanParams) {
 
         let nextState = stateRef.current;
         const pendingOps: Array<{ docId: string; op: RecordOp }> = [];
+        const cardDocId = resolveCardDocId({
+            todoId: input.todoId,
+            state: nextState,
+        });
 
         const detail = getCardDetail({
             manager: nextState.manager,
-            cardId: input.todoId,
+            cardId: cardDocId,
             boardDocId,
         });
         if (!detail) {
@@ -808,8 +866,9 @@ export function useKanban(params: UseKanbanParams) {
 
         const fieldResult = updateCardFields({
             state: nextState,
-            cardId: input.todoId,
+            cardId: cardDocId,
             fields: {
+                todoId: input.todoId,
                 title: persistedTodo.title,
                 description: persistedTodo.description ?? "",
                 status: targetStatus,
@@ -833,7 +892,7 @@ export function useKanban(params: UseKanbanParams) {
             if (toAdd.length > 0) {
                 const addResult = addCardTags({
                     state: nextState,
-                    cardId: input.todoId,
+                    cardId: cardDocId,
                     tags: toAdd,
                 });
                 nextState = appendResult({ pendingOps, result: addResult });
@@ -842,7 +901,7 @@ export function useKanban(params: UseKanbanParams) {
             if (toRemove.length > 0) {
                 const removeResult = removeCardTags({
                     state: nextState,
-                    cardId: input.todoId,
+                    cardId: cardDocId,
                     tags: toRemove,
                 });
                 nextState = appendResult({ pendingOps, result: removeResult });
@@ -865,7 +924,7 @@ export function useKanban(params: UseKanbanParams) {
 
             const moveResult = moveCard({
                 state: nextState,
-                cardId: input.todoId,
+                cardId: cardDocId,
                 column: targetStatus,
                 boardDocId,
             });
@@ -883,7 +942,7 @@ export function useKanban(params: UseKanbanParams) {
             throw new Error(`Todo with ID ${input.todoId} not found after update`);
         }
         return updated;
-    }, [applyAndBroadcast, boardDocId, collabEnabled, getTodoByIdFromState]);
+    }, [applyAndBroadcast, boardDocId, collabEnabled, getTodoByIdFromState, resolveCardDocId]);
 
     const deleteTodoItem = useCallback(async (input: { todoId: string }) => {
         await updateTodoItem({
@@ -943,10 +1002,14 @@ export function useKanban(params: UseKanbanParams) {
         for (let index = 0; index < orderedIds.length; index++) {
             const todoId = orderedIds[index];
             if (!todoId) continue;
-            const afterCardId = index > 0 ? orderedIds[index - 1] : undefined;
+            const cardDocId = resolveCardDocId({ todoId, state: nextState });
+            const afterTodoId = index > 0 ? orderedIds[index - 1] : undefined;
+            const afterCardId = afterTodoId
+                ? resolveCardDocId({ todoId: afterTodoId, state: nextState })
+                : undefined;
             const moveResult = moveCard({
                 state: nextState,
-                cardId: todoId,
+                cardId: cardDocId,
                 column: firstTodo.status,
                 afterCardId,
                 boardDocId,
@@ -961,7 +1024,7 @@ export function useKanban(params: UseKanbanParams) {
         });
 
         return { success: true };
-    }, [applyAndBroadcast, boardDocId, collabEnabled, getTodoByIdFromState]);
+    }, [applyAndBroadcast, boardDocId, collabEnabled, getTodoByIdFromState, resolveCardDocId]);
 
     const getTodoById = useCallback(async (input: { todoId: string }): Promise<Todo> => {
         const todo = todos.find((candidate) => candidate.id === input.todoId);
