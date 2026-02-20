@@ -10,6 +10,9 @@ import {
     type LamportClock,
     type RecordOp,
     type DocManager,
+    type LWWRegister,
+    type StateVector,
+    type Timestamp,
 } from "@crdt/lib";
 import type {
     Editor,
@@ -51,6 +54,21 @@ interface CanvasCRDTState {
 interface SerializableRecord {
     id?: unknown;
     [key: string]: unknown;
+}
+
+interface PersistedCRDTField {
+    fieldName: string;
+    value: string;
+    timestamp: { clientId: string; clock: number };
+}
+
+interface PersistedCanvasCRDTState {
+    version: 1;
+    clockCounter: number;
+    clientId: string;
+    wasSynced: boolean;
+    stateVector: Record<string, number>;
+    fields: PersistedCRDTField[];
 }
 
 interface RemotePresenceEntry {
@@ -187,18 +205,6 @@ export function extractTldrawRecords(params: {
     return records;
 }
 
-function hasTldrawContentInManager(params: { manager: DocManager; docId: string }): boolean {
-    const record = getDoc({ manager: params.manager, docId: params.docId });
-    if (!record) return false;
-    const fields = record.fields as ReadonlyMap<string, { value: string }>;
-    for (const [fieldName, register] of fields) {
-        if (!fieldName.startsWith(TL_FIELD_PREFIX)) continue;
-        if (register.value === DELETED_SENTINEL) continue;
-        return true;
-    }
-    return false;
-}
-
 function canUseBeaconTransport(): boolean {
     return typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function";
 }
@@ -206,7 +212,7 @@ function canUseBeaconTransport(): boolean {
 export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }) {
     const { canvasId, forceLocal = false } = params;
     const collab = useCollab();
-    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { activeWorkspace, appMode } = useWorkspaceSwitcher();
     const collabScope = useMemo(
         () => getWorkspaceCollabScope({ activeWorkspace }),
         [activeWorkspace]
@@ -217,7 +223,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
     );
 
     const collabEnabled = !forceLocal
-        && activeWorkspace?.teamMode === "team"
+        && appMode === "team"
         && !!collab?.clientId
         && !!collab?.subscribeDoc
         && !!collab?.sendOps;
@@ -244,6 +250,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
     const persistAttemptCounterRef = useRef(0);
     const localSaveTimerRef = useRef<number | null>(null);
     const persistedSnapshotRecordsRef = useRef<Array<{ id: string; [key: string]: unknown }> | null>(null);
+    const restoredStateVectorRef = useRef<StateVector | null>(null);
 
     // tl:<recordId> -> serialized record JSON
     const mirroredFieldsRef = useRef<Map<string, string>>(new Map());
@@ -681,21 +688,8 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         const attemptId = `${canvasId}-${persistAttemptCounterRef.current + 1}`;
         persistAttemptCounterRef.current += 1;
 
-        if (collabEnabled && !didSyncRef.current) {
-            // Prevent unsynced team tabs from overwriting a good persisted snapshot.
-            crdtDebugLog({
-                event: "canvas_snapshot_save_skipped",
-                data: {
-                    canvasId,
-                    docId,
-                    clientId,
-                    attemptId,
-                    reason: "unsynced_collab",
-                    transport,
-                },
-            });
-            return;
-        }
+        // Local snapshot is always saved as a safety net, even before sync completes.
+        // The CRDT state (with wasSynced flag) is used at load time to judge data quality.
 
         if (params?.finalizeEditing && ed.getEditingShapeId()) {
             try {
@@ -843,7 +837,78 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                 durationMs: Date.now() - startedAt,
             },
         });
-    }, [canvasId, clientId, collabEnabled, docId]);
+    }, [canvasId, clientId, docId]);
+
+    const persistCRDTStateNow = useCallback((persistParams?: {
+        transport?: "fetch" | "beacon";
+    }) => {
+        const { manager, clock } = stateRef.current;
+        const record = getDoc({ manager, docId });
+        if (!record) return;
+
+        const fields: PersistedCRDTField[] = [];
+        const recordFields = record.fields as ReadonlyMap<string, LWWRegister<string>>;
+        for (const [fieldName, register] of recordFields) {
+            if (!fieldName.startsWith(TL_FIELD_PREFIX)) continue;
+            fields.push({
+                fieldName,
+                value: register.value,
+                timestamp: {
+                    clientId: register.timestamp.clientId,
+                    clock: register.timestamp.clock,
+                },
+            });
+        }
+
+        if (fields.length === 0) return;
+
+        const svObj: Record<string, number> = {};
+        const sv = record.stateVector as ReadonlyMap<string, number>;
+        for (const [svClientId, svClock] of sv) {
+            svObj[svClientId] = svClock;
+        }
+
+        const state: PersistedCanvasCRDTState = {
+            version: 1,
+            clockCounter: clock.counter,
+            clientId: clock.clientId,
+            wasSynced: didSyncRef.current,
+            stateVector: svObj,
+            fields,
+        };
+
+        const payload = JSON.stringify({ canvasId, crdtState: JSON.stringify(state) });
+        const transport = persistParams?.transport ?? "fetch";
+
+        if (transport === "beacon") {
+            if (canUseBeaconTransport()) {
+                navigator.sendBeacon(
+                    "/api/canvas/crdt-state/save",
+                    new Blob([payload], { type: "application/json" })
+                );
+                return;
+            }
+            fetch("/api/canvas/crdt-state/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                keepalive: true,
+            }).catch(() => {
+                // Best-effort; ignore errors on unload path.
+            });
+            return;
+        }
+
+        canvasAPI.saveCRDTState({ canvasId, crdtState: JSON.stringify(state) }).catch((error) => {
+            crdtDebugLog({
+                event: "canvas_crdt_state_save_error",
+                data: {
+                    canvasId,
+                    message: error instanceof Error ? error.message : String(error),
+                },
+            });
+        });
+    }, [canvasId, docId]);
 
     const queueLocalSnapshotPersist = useCallback(() => {
         if (localSaveTimerRef.current !== null) {
@@ -860,8 +925,9 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                     },
                 });
             });
+            persistCRDTStateNow();
         }, LOCAL_SAVE_DEBOUNCE_MS) as unknown as number;
-    }, [canvasId, persistSnapshotNow]);
+    }, [canvasId, persistCRDTStateNow, persistSnapshotNow]);
 
     const handleRemoteOps = useCallback((incoming: {
         docId: string;
@@ -896,17 +962,17 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
             });
             return;
         }
-        if (hasTldrawContentInManager({ manager: stateRef.current.manager, docId })) {
-            crdtDebugLog({
-                event: "canvas_collab_bootstrap_skipped",
-                data: {
-                    canvasId,
-                    docId,
-                    reason: "manager_has_content",
-                    snapshotRecordCount: snapshotRecords.length,
-                },
-            });
-            return;
+        // Per-record bootstrap: only seed records that are NOT already in the manager.
+        // This handles partial sync scenarios where remote has some but not all records.
+        const existingFields = new Set<string>();
+        const docRecord = getDoc({ manager: stateRef.current.manager, docId });
+        if (docRecord) {
+            const fields = docRecord.fields as ReadonlyMap<string, { value: string }>;
+            for (const [fieldName, register] of fields) {
+                if (!fieldName.startsWith(TL_FIELD_PREFIX)) continue;
+                if (register.value === DELETED_SENTINEL) continue;
+                existingFields.add(fieldName);
+            }
         }
 
         let manager = stateRef.current.manager;
@@ -916,6 +982,11 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
 
         for (const record of snapshotRecords) {
             if (!record || typeof record.id !== "string") continue;
+            const fieldName = `${TL_FIELD_PREFIX}${record.id}`;
+
+            // Skip records that already exist in the manager (remote version is authoritative via LWW).
+            if (existingFields.has(fieldName)) continue;
+
             let value: string;
             try {
                 value = JSON.stringify(record);
@@ -923,7 +994,6 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                 continue;
             }
 
-            const fieldName = `${TL_FIELD_PREFIX}${record.id}`;
             if (mirroredFieldsRef.current.get(fieldName) === value) continue;
 
             const { clock: nextClock, timestamp } = incrementClock(clock);
@@ -1013,12 +1083,18 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
     }, [clientId, collab, collabEnabled, followedCollaboratorId, restoreEditorFromState, sendLocalAwarenessNow]);
 
     // Reset local state when switching canvases/modes.
+    // Persist current state before clearing to prevent data loss.
     useEffect(() => {
+        // Save current state before reset (beacon survives teardown).
+        void persistSnapshotNow({ transport: "beacon", finalizeEditing: true });
+        persistCRDTStateNow({ transport: "beacon" });
+
         didSyncRef.current = false;
         didHydrateLocalRef.current = false;
         lastPersistedSnapshotRef.current = null;
         persistedSnapshotRecordsRef.current = null;
         lastAwarenessSignatureRef.current = null;
+        restoredStateVectorRef.current = null;
         setIsSynced(false);
         mirroredFieldsRef.current = new Map();
         pendingSendOpsRef.current = [];
@@ -1053,7 +1129,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
             clearInterval(awarenessStaleSweepTimerRef.current);
             awarenessStaleSweepTimerRef.current = null;
         }
-    }, [canvasId, cancelNextFrame, clearRemotePresenceRecords, clientId, collabEnabled]);
+    }, [canvasId, cancelNextFrame, clearRemotePresenceRecords, clientId, collabEnabled, persistCRDTStateNow, persistSnapshotNow]);
 
     // Subscribe to team-mode collab document.
     useEffect(() => {
@@ -1061,6 +1137,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         const unsubscribe = collab.subscribeDoc({
             docId,
             onOps: handleRemoteOps,
+            initialStateVector: restoredStateVectorRef.current ?? undefined,
             onSyncComplete: () => handleSyncComplete(),
         });
         return () => {
@@ -1112,8 +1189,8 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         };
     }, [collabEnabled, editor, pruneStaleRemotePresence, sendLocalAwarenessNow]);
 
-    // Hydrate persisted snapshot. In team mode we defer applying it until sync completes
-    // and only bootstrap when the shared CRDT doc is empty.
+    // Hydrate persisted snapshot and CRDT state. In team mode we defer applying the
+    // snapshot until sync completes and only bootstrap when the shared CRDT doc is empty.
     useEffect(() => {
         if (!editor) return;
         if (didHydrateLocalRef.current) return;
@@ -1122,21 +1199,86 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         didHydrateLocalRef.current = true;
         void (async () => {
             try {
-                const result = await canvasAPI.getSnapshot({ canvasId });
+                const [snapshotResult, crdtStateResult] = await Promise.all([
+                    canvasAPI.getSnapshot({ canvasId }),
+                    canvasAPI.getCRDTState({ canvasId }),
+                ]);
                 if (cancelled) return;
 
-                if (result.snapshot) {
+                // Restore CRDT manager from persisted state if available.
+                if (crdtStateResult.crdtState) {
+                    try {
+                        const persisted = JSON.parse(crdtStateResult.crdtState) as PersistedCanvasCRDTState;
+                        if (persisted.version === 1 && persisted.fields.length > 0) {
+                            let manager = stateRef.current.manager;
+                            let clock = stateRef.current.clock;
+
+                            // Restore the clock counter to at least the persisted value.
+                            if (persisted.clockCounter > clock.counter) {
+                                clock = { ...clock, counter: persisted.clockCounter };
+                            }
+
+                            // Replay persisted fields as FieldOps with original timestamps.
+                            for (const field of persisted.fields) {
+                                const op: FieldOp = {
+                                    type: "field",
+                                    id: createFieldOpId({
+                                        clientId: field.timestamp.clientId,
+                                        clock: field.timestamp.clock,
+                                    }),
+                                    fieldName: field.fieldName,
+                                    value: field.value,
+                                    timestamp: field.timestamp as Timestamp,
+                                };
+                                manager = applyDocOperation({ manager, docId, op });
+                                mirroredFieldsRef.current.set(field.fieldName, field.value);
+                            }
+
+                            stateRef.current = { manager, clock };
+
+                            // Restore state vector for delta sync.
+                            const sv = new Map<string, number>();
+                            for (const [svClientId, svClock] of Object.entries(persisted.stateVector)) {
+                                sv.set(svClientId, svClock);
+                            }
+                            restoredStateVectorRef.current = sv;
+
+                            crdtDebugLog({
+                                event: "canvas_crdt_state_restore",
+                                data: {
+                                    canvasId,
+                                    docId,
+                                    fieldCount: persisted.fields.length,
+                                    clockCounter: persisted.clockCounter,
+                                    wasSynced: persisted.wasSynced,
+                                    stateVectorSize: sv.size,
+                                },
+                            });
+                        }
+                    } catch (parseError) {
+                        crdtDebugLog({
+                            event: "canvas_crdt_state_restore_error",
+                            data: {
+                                canvasId,
+                                docId,
+                                message: parseError instanceof Error ? parseError.message : String(parseError),
+                            },
+                        });
+                    }
+                }
+
+                if (snapshotResult.snapshot) {
                     crdtDebugLog({
                         event: "canvas_snapshot_load_hit",
                         data: {
                             canvasId,
                             docId,
-                            bytes: result.snapshot.length,
+                            bytes: snapshotResult.snapshot.length,
                             collabEnabled,
                             synced: didSyncRef.current,
                         },
                     });
-                    const parsed = JSON.parse(result.snapshot) as unknown;
+                    const parsed = JSON.parse(snapshotResult.snapshot) as unknown;
                     const records = recordsFromSerializedSnapshot(parsed);
                     persistedSnapshotRecordsRef.current = records;
                     crdtDebugLog({
@@ -1166,7 +1308,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                             isApplyingRemoteRef.current = false;
                         }
                     }
-                    lastPersistedSnapshotRef.current = result.snapshot;
+                    lastPersistedSnapshotRef.current = snapshotResult.snapshot;
                 } else {
                     crdtDebugLog({
                         event: "canvas_snapshot_load_miss",
@@ -1215,11 +1357,13 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
     useEffect(() => {
         const handlePageHide = () => {
             void persistSnapshotNow({ transport: "beacon", finalizeEditing: true });
+            persistCRDTStateNow({ transport: "beacon" });
         };
         const handleVisibilityChange = () => {
             if (typeof document === "undefined") return;
             if (document.visibilityState !== "hidden") return;
             void persistSnapshotNow({ transport: "beacon", finalizeEditing: true });
+            persistCRDTStateNow({ transport: "beacon" });
         };
 
         if (typeof window !== "undefined") {
@@ -1239,7 +1383,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                 document.removeEventListener("visibilitychange", handleVisibilityChange);
             }
         };
-    }, [persistSnapshotNow]);
+    }, [persistCRDTStateNow, persistSnapshotNow]);
 
     // Register store listener.
     useEffect(() => {
@@ -1381,7 +1525,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                 flushSendOpsNow();
                 sendLocalAwarenessNow({ force: true });
             }
-            void persistSnapshotNow({ finalizeEditing: true }).catch((error) => {
+            void persistSnapshotNow({ transport: "beacon", finalizeEditing: true }).catch((error) => {
                 crdtDebugLog({
                     event: "canvas_snapshot_save_error",
                     data: {
@@ -1390,6 +1534,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                     },
                 });
             });
+            persistCRDTStateNow({ transport: "beacon" });
         };
     }, [
         buildFieldMapFromEditor,
@@ -1399,6 +1544,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         docId,
         editor,
         flushSendOpsNow,
+        persistCRDTStateNow,
         queueLocalAwarenessSend,
         queueLocalSnapshotPersist,
         queueSendOps,

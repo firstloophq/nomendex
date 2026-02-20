@@ -13,6 +13,7 @@
     "db:push": "bunx prisma db push"
   },
   "dependencies": {
+    "@clerk/backend": "^1.0.0",
     "@crdt/lib": "file:../crdt",
     "@hono/zod-openapi": "^1.2.2",
     "@prisma/adapter-pg": "^7.0.0",

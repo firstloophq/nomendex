@@ -28,8 +28,10 @@ import { NotesCommandMenu } from "./components/NotesCommandMenu";
 import { TabSwitcherMenu } from "./components/TabSwitcherMenu";
 import { useWorkspaceSwitcher } from "./hooks/useWorkspaceSwitcher";
 import { WorkspaceOnboarding } from "./components/WorkspaceOnboarding";
+import { AppModeSelector } from "./components/AppModeSelector";
+import { TeamSignInScreen } from "./components/TeamSignInScreen";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useTeamAuth } from "./contexts/AuthContext";
 import { CollabProviderGate } from "./contexts/CollabContext";
 
 // Bridge component for native Mac app keyboard handling
@@ -75,7 +77,8 @@ function SkillUpdatesBridge() {
 
 // Wrapper component that shows onboarding if no workspace is configured
 function WorkspaceGuard({ children }: { children: React.ReactNode }) {
-    const { activeWorkspace, loading } = useWorkspaceSwitcher();
+    const { activeWorkspace, appMode, loading } = useWorkspaceSwitcher();
+    const { isSignedIn } = useTeamAuth();
 
     if (loading) {
         // Show a minimal loading state
@@ -84,6 +87,14 @@ function WorkspaceGuard({ children }: { children: React.ReactNode }) {
                 <div className="text-muted-foreground">Loading...</div>
             </div>
         );
+    }
+
+    if (appMode === undefined) {
+        return <AppModeSelector />;
+    }
+
+    if (appMode === "team" && !isSignedIn) {
+        return <TeamSignInScreen />;
     }
 
     if (!activeWorkspace) {

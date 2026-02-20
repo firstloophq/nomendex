@@ -79,3 +79,8 @@ export type CollabOp = Prisma.CollabOpModel
  * 
  */
 export type CollabSnapshot = Prisma.CollabSnapshotModel
+/**
+ * Model AuthCode
+ * 
+ */
+export type AuthCode = Prisma.AuthCodeModel

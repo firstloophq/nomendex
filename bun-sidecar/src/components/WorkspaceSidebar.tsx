@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, GitBranch, Bot, HelpCircle, Users } from "lucide-react";
+import { Settings, GitBranch, Bot, HelpCircle, Users, LogOut } from "lucide-react";
 import {
     Sidebar,
     SidebarContent,
@@ -21,14 +21,13 @@ import { useTheme } from "@/hooks/useTheme";
 import { TITLE_BAR_HEIGHT } from "./Layout";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { useTeamAuth } from "@/contexts/AuthContext";
-import { UserButton, OrganizationSwitcher } from "@clerk/clerk-react";
 
 export function WorkspaceSidebar() {
     const plugins = Object.values(baseRegistry);
     const { openTab } = useWorkspaceContext();
     const { navigate, currentPath } = useRouting();
     const { currentTheme } = useTheme();
-    const { isSignedIn } = useTeamAuth();
+    const { isSignedIn, userName, userImageUrl, signOut } = useTeamAuth();
     const [appVersion, setAppVersion] = useState("...");
 
     useEffect(() => {
@@ -232,34 +231,30 @@ export function WorkspaceSidebar() {
                     </SidebarGroupContent>
                 </SidebarGroup>
                 {isSignedIn && (
-                    <div className="px-2 py-1 space-y-2">
-                        <div className="flex items-center justify-center">
-                            <OrganizationSwitcher
-                                hidePersonal={false}
-                                appearance={{
-                                    elements: {
-                                        rootBox: { width: "100%" },
-                                        organizationSwitcherTrigger: {
-                                            width: "100%",
-                                            justifyContent: "flex-start",
-                                        },
-                                    },
-                                }}
-                            />
-                        </div>
-                        <div className="flex items-center justify-center">
-                            <UserButton
-                                showName
-                                appearance={{
-                                    elements: {
-                                        rootBox: { width: "100%" },
-                                        userButtonTrigger: {
-                                            width: "100%",
-                                            justifyContent: "flex-start",
-                                        },
-                                    },
-                                }}
-                            />
+                    <div className="px-2 py-1">
+                        <div
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-md"
+                            style={{ color: currentTheme.styles.contentPrimary }}
+                        >
+                            {userImageUrl ? (
+                                <img src={userImageUrl} alt="" className="size-6 rounded-full shrink-0" />
+                            ) : (
+                                <div
+                                    className="size-6 rounded-full shrink-0 flex items-center justify-center text-xs font-medium"
+                                    style={{ backgroundColor: currentTheme.styles.surfaceAccent }}
+                                >
+                                    {userName?.charAt(0)?.toUpperCase() ?? "?"}
+                                </div>
+                            )}
+                            <span className="text-sm truncate flex-1">{userName ?? "User"}</span>
+                            <button
+                                onClick={() => signOut()}
+                                className="p-1 rounded hover:opacity-70 transition-opacity shrink-0"
+                                style={{ color: currentTheme.styles.contentTertiary }}
+                                title="Sign out"
+                            >
+                                <LogOut className="size-3.5" />
+                            </button>
                         </div>
                     </div>
                 )}

@@ -21,6 +21,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             userDriverDelegate: nil
         )
 
+        // Register URL scheme handler for nomendex:// auth callbacks
+        let em = NSAppleEventManager.shared()
+        em.setEventHandler(self,
+            andSelector: #selector(handleURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL))
+
         // Set up main menu with standard keyboard shortcuts
         setupMainMenu()
 
@@ -140,6 +147,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         webView.evaluateJavaScript(script) { _, _ in }
     }
     
+    @objc private func handleURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: urlString),
+              url.scheme == "nomendex",
+              url.host == "auth-callback" else { return }
+
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let code = components?.queryItems?.first(where: { $0.name == "code" })?.value ?? ""
+        let state = components?.queryItems?.first(where: { $0.name == "state" })?.value ?? ""
+
+        log("Auth callback received: code=\(code.prefix(8))..., state=\(state.prefix(8))...")
+
+        // Bring app to front and forward to WebView
+        windowController?.show()
+        windowController?.handleAuthCallback(code: code, state: state)
+    }
+
     private func setupMainMenu() {
         let mainMenu = NSMenu()
         

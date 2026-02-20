@@ -44,30 +44,16 @@ function getRoleIcon(role: string) {
 
 function SoloModeContent() {
     const { currentTheme } = useTheme();
-    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { setAppMode } = useWorkspaceSwitcher();
     const [enabling, setEnabling] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleEnableTeamMode = async () => {
-        if (!activeWorkspace) return;
-
         setEnabling(true);
         setError(null);
 
         try {
-            const res = await fetch("/api/workspaces/enable-team", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ workspaceId: activeWorkspace.id }),
-            });
-
-            const data = await res.json();
-
-            if (data.success && data.data?.requiresReload) {
-                window.location.reload();
-            } else {
-                setError(data.message || "Failed to enable team mode");
-            }
+            await setAppMode("team");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to enable team mode");
         } finally {
@@ -114,7 +100,7 @@ function SoloModeContent() {
                 </div>
 
                 <div className="pt-2">
-                    <Button onClick={handleEnableTeamMode} disabled={enabling || !activeWorkspace}>
+                    <Button onClick={handleEnableTeamMode} disabled={enabling}>
                         {enabling ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
@@ -127,9 +113,6 @@ function SoloModeContent() {
                             {error}
                         </p>
                     )}
-                    <p className="text-xs mt-2" style={{ color: currentTheme.styles.contentTertiary }}>
-                        {activeWorkspace ? `Workspace: ${activeWorkspace.name}` : ""}
-                    </p>
                 </div>
             </CardContent>
         </Card>
@@ -139,7 +122,7 @@ function SoloModeContent() {
 function TeamModeContent() {
     const { currentTheme } = useTheme();
     const { isSignedIn, userName, userImageUrl, signOut } = useTeamAuth();
-    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { activeWorkspace, setAppMode } = useWorkspaceSwitcher();
     const [vault, setVault] = useState<VaultInfo | null>(null);
     const [members, _setMembers] = useState<VaultMemberInfo[]>([]);
     const [_currentUserRole, _setCurrentUserRole] = useState<string | null>(null);
@@ -148,25 +131,11 @@ function TeamModeContent() {
     const [disabling, setDisabling] = useState(false);
 
     const handleDisableTeamMode = async () => {
-        if (!activeWorkspace) return;
-
         setDisabling(true);
         setError(null);
 
         try {
-            const res = await fetch("/api/workspaces/disable-team", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ workspaceId: activeWorkspace.id }),
-            });
-
-            const data = await res.json();
-
-            if (data.success && data.data?.requiresReload) {
-                window.location.reload();
-            } else {
-                setError(data.message || "Failed to disable team mode");
-            }
+            await setAppMode("solo");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to disable team mode");
         } finally {
@@ -416,8 +385,8 @@ function TeamModeContent() {
 
 function TeamSettingsContent() {
     const { currentTheme } = useTheme();
-    const { activeWorkspace } = useWorkspaceSwitcher();
-    const isTeamMode = activeWorkspace?.teamMode === "team";
+    const { appMode } = useWorkspaceSwitcher();
+    const isTeamMode = appMode === "team";
 
     return (
         <div

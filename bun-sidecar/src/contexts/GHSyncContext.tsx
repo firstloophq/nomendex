@@ -44,9 +44,9 @@ const CHANGE_DEBOUNCE_MS = 5000; // 5 seconds
 export function GHSyncProvider(props: { children: React.ReactNode }) {
     const { children } = props;
     const { gitAuthMode, setGitAuthMode, autoSync } = useWorkspaceContext();
-    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { activeWorkspace, appMode } = useWorkspaceSwitcher();
     const { getToken } = useTeamAuth();
-    const isTeamMode = activeWorkspace?.teamMode === "team";
+    const isTeamMode = appMode === "team";
     // GitHub-backed team workspaces use installation tokens for git sync
     const hasGitHubInstallation = Boolean(activeWorkspace?.installationId);
     // Team mode uses CRDT collab — skip git sync entirely

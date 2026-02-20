@@ -21,6 +21,10 @@ export const canvasAPI = {
     getSnapshot: (args: { canvasId: string }) => fetchAPI<{ snapshot: string | null }>("snapshot/get", args),
     saveSnapshot: (args: { canvasId: string; snapshot: string }) =>
         fetchAPI<{ success: boolean; updatedAt: string }>("snapshot/save", args),
+    saveCRDTState: (args: { canvasId: string; crdtState: string }) =>
+        fetchAPI<{ success: boolean }>("crdt-state/save", args),
+    getCRDTState: (args: { canvasId: string }) =>
+        fetchAPI<{ crdtState: string | null }>("crdt-state/get", args),
 };
 
 export function useCanvasAPI() {

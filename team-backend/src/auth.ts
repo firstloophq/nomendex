@@ -18,8 +18,9 @@ interface JWTHeader {
   typ: string;
 }
 
-interface JWTPayload {
+export interface JWTPayload {
   sub: string;
+  sid?: string;
   exp: number;
   iat: number;
   iss: string;
@@ -115,7 +116,7 @@ async function verifyWithKey({
   return payload;
 }
 
-async function verifyJWT(token: string): Promise<JWTPayload> {
+export async function verifyJWT(token: string): Promise<JWTPayload> {
   const parts = token.split(".");
   if (parts.length !== 3) {
     throw new Error("Invalid JWT format");

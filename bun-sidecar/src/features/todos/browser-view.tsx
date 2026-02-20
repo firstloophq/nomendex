@@ -51,8 +51,8 @@ export function TodosBrowserView({ project, selectedTodoId: initialSelectedTodoI
     const { currentTheme } = useTheme();
 
     const collab = useCollab();
-    const { activeWorkspace } = useWorkspaceSwitcher();
-    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+    const { appMode } = useWorkspaceSwitcher();
+    const isTeamCollabMode = appMode === "team" && !!collab;
 
     const todosAPI = useTodosAPI();
     const kanban = useKanban({

@@ -163,60 +163,22 @@ export const workspacesRoutes = {
         },
     },
 
-    // Enable team mode on a workspace
-    "/api/workspaces/enable-team": {
+    // Set global app mode (solo or team)
+    "/api/workspaces/set-app-mode": {
         async POST(req: Request) {
             try {
-                const { workspaceId, vaultId } = (await req.json()) as { workspaceId: string; vaultId: string };
+                const { mode } = (await req.json()) as { mode: "solo" | "team" };
 
-                if (!workspaceId) {
+                if (mode !== "solo" && mode !== "team") {
                     const response: Result = {
                         success: false,
                         code: ErrorCodes.BAD_REQUEST,
-                        message: "workspaceId is required",
+                        message: "mode must be 'solo' or 'team'",
                     };
                     return Response.json(response, { status: 400 });
                 }
 
-                // Generate a vault ID if none provided (for initial setup before collab server)
-                const resolvedVaultId = vaultId || crypto.randomUUID();
-
-                await globalConfig.enableTeamMode({ workspaceId, vaultId: resolvedVaultId });
-
-                const response: Result<{ vaultId: string; requiresReload: boolean }> = {
-                    success: true,
-                    data: { vaultId: resolvedVaultId, requiresReload: true },
-                };
-                return Response.json(response);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                const response: Result = {
-                    success: false,
-                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
-                    message: `Failed to enable team mode: ${message}`,
-                    error,
-                };
-                return Response.json(response, { status: 500 });
-            }
-        },
-    },
-
-    // Disable team mode on a workspace
-    "/api/workspaces/disable-team": {
-        async POST(req: Request) {
-            try {
-                const { workspaceId } = (await req.json()) as { workspaceId: string };
-
-                if (!workspaceId) {
-                    const response: Result = {
-                        success: false,
-                        code: ErrorCodes.BAD_REQUEST,
-                        message: "workspaceId is required",
-                    };
-                    return Response.json(response, { status: 400 });
-                }
-
-                await globalConfig.disableTeamMode({ workspaceId });
+                await globalConfig.setAppMode({ mode });
 
                 const response: Result<{ requiresReload: boolean }> = {
                     success: true,
@@ -228,7 +190,7 @@ export const workspacesRoutes = {
                 const response: Result = {
                     success: false,
                     code: ErrorCodes.INTERNAL_SERVER_ERROR,
-                    message: `Failed to disable team mode: ${message}`,
+                    message: `Failed to set app mode: ${message}`,
                     error,
                 };
                 return Response.json(response, { status: 500 });
@@ -337,7 +299,6 @@ export const workspacesRoutes = {
                     name: displayName || repoFullName,
                     createdAt: new Date().toISOString(),
                     lastAccessedAt: new Date().toISOString(),
-                    teamMode: "team",
                     orgId,
                     orgWorkspaceId,
                     repoFullName,

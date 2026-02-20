@@ -82,5 +82,10 @@ bun.lockb
 docs/specs/team/issues/artifacts/
 bun-sidecar/docs/specs/team/issues/artifacts/
 
+# Test artifacts (screenshots, images)
+tests/**/artifacts/*.png
+tests/**/artifacts/*.jpg
+tests/**/artifacts/*.jpeg
+
 # Nomendex workspace data
 .nomendex/

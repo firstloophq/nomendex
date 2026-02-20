@@ -391,7 +391,8 @@ export const ModelName = {
   OrgWorkspace: 'OrgWorkspace',
   CollabDoc: 'CollabDoc',
   CollabOp: 'CollabOp',
-  CollabSnapshot: 'CollabSnapshot'
+  CollabSnapshot: 'CollabSnapshot',
+  AuthCode: 'AuthCode'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -407,7 +408,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "org" | "orgMembership" | "gitHubInstallation" | "orgWorkspace" | "collabDoc" | "collabOp" | "collabSnapshot"
+    modelProps: "user" | "org" | "orgMembership" | "gitHubInstallation" | "orgWorkspace" | "collabDoc" | "collabOp" | "collabSnapshot" | "authCode"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1003,6 +1004,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    AuthCode: {
+      payload: Prisma.$AuthCodePayload<ExtArgs>
+      fields: Prisma.AuthCodeFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AuthCodeFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AuthCodeFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>
+        }
+        findFirst: {
+          args: Prisma.AuthCodeFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AuthCodeFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>
+        }
+        findMany: {
+          args: Prisma.AuthCodeFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>[]
+        }
+        create: {
+          args: Prisma.AuthCodeCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>
+        }
+        createMany: {
+          args: Prisma.AuthCodeCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AuthCodeCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>[]
+        }
+        delete: {
+          args: Prisma.AuthCodeDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>
+        }
+        update: {
+          args: Prisma.AuthCodeUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>
+        }
+        deleteMany: {
+          args: Prisma.AuthCodeDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AuthCodeUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AuthCodeUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>[]
+        }
+        upsert: {
+          args: Prisma.AuthCodeUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthCodePayload>
+        }
+        aggregate: {
+          args: Prisma.AuthCodeAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAuthCode>
+        }
+        groupBy: {
+          args: Prisma.AuthCodeGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AuthCodeGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AuthCodeCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AuthCodeCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -1144,6 +1219,20 @@ export const CollabSnapshotScalarFieldEnum = {
 export type CollabSnapshotScalarFieldEnum = (typeof CollabSnapshotScalarFieldEnum)[keyof typeof CollabSnapshotScalarFieldEnum]
 
 
+export const AuthCodeScalarFieldEnum = {
+  code: 'code',
+  clerkUserId: 'clerkUserId',
+  clerkSessionId: 'clerkSessionId',
+  deviceId: 'deviceId',
+  state: 'state',
+  createdAt: 'createdAt',
+  expiresAt: 'expiresAt',
+  used: 'used'
+} as const
+
+export type AuthCodeScalarFieldEnum = (typeof AuthCodeScalarFieldEnum)[keyof typeof AuthCodeScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -1227,6 +1316,13 @@ export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 
  * Reference to a field of type 'BigInt[]'
  */
 export type ListBigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Boolean'
+ */
+export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
     
 
 
@@ -1346,6 +1442,7 @@ export type GlobalOmitConfig = {
   collabDoc?: Prisma.CollabDocOmit
   collabOp?: Prisma.CollabOpOmit
   collabSnapshot?: Prisma.CollabSnapshotOmit
+  authCode?: Prisma.AuthCodeOmit
 }
 
 /* Types for Logging */

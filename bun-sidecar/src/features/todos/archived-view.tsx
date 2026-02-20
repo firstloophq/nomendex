@@ -41,8 +41,8 @@ export function ArchivedBrowserView({ project }: { project?: string | null } = {
     const { activeTab, setTabName, openTab } = useWorkspaceContext();
 
     const collab = useCollab();
-    const { activeWorkspace } = useWorkspaceSwitcher();
-    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+    const { appMode } = useWorkspaceSwitcher();
+    const isTeamCollabMode = appMode === "team" && !!collab;
 
     const todosAPI = useTodosAPI();
     const kanban = useKanban({

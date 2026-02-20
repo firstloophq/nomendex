@@ -23,6 +23,7 @@ import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
 import { projectsRoutes } from "./server-routes/projects-routes";
 import { canvasRoutes } from "./server-routes/canvas-routes";
+import { authRoutes, initAuthFromPersistedState } from "./server-routes/auth-routes";
 import { createCRDTRelay, createCRDTWebSocketHandler } from "@crdt/lib/server";
 import type { WSClient } from "@crdt/lib/server";
 import { globalConfig } from "./storage/global-config";
@@ -233,6 +234,13 @@ startupLog.info('Initializing workspace services...');
 try {
     await initializeWorkspaceServices();
     startupLog.info('Workspace services initialized successfully');
+
+    // Resume persisted auth session (non-blocking — errors are logged, not thrown)
+    initAuthFromPersistedState().catch((err) => {
+        startupLog.warn('Failed to init auth from persisted state', {
+            error: err instanceof Error ? err.message : String(err),
+        });
+    });
 } catch (error) {
     startupLog.error('Failed to initialize workspace services', {
         error: error instanceof Error ? error.message : String(error)
@@ -270,6 +278,7 @@ const server = serve<WSData>({
         ...dictionariesRoutes,
         ...projectsRoutes,
         ...canvasRoutes,
+        ...authRoutes,
         // WebSocket route handler
         "/ws": {
             GET: (req, server) => {
@@ -316,12 +325,16 @@ const server = serve<WSData>({
                 const clientId = url.searchParams.get("clientId") || `anon-${Date.now()}`;
                 const wsClientId = `crdt-ws-${crypto.randomUUID()}`;
                 const token = url.searchParams.get("token")?.trim() || "";
-                const activeWorkspace = await globalConfig.getActiveWorkspace().catch(() => null);
+                const config = await globalConfig.load().catch(() => null);
+                const appMode = config?.appMode ?? "solo";
+                const activeWorkspace = config?.activeWorkspaceId
+                    ? config.workspaces.find((w) => w.id === config.activeWorkspaceId) ?? null
+                    : null;
                 const shouldRelay = Boolean(
                     crdtRelay
                     && token
-                    && activeWorkspace?.teamMode === "team"
-                    && activeWorkspace.orgWorkspaceId
+                    && appMode === "team"
+                    && activeWorkspace?.orgWorkspaceId
                 );
 
                 if (shouldRelay) {
@@ -333,7 +346,7 @@ const server = serve<WSData>({
                     wsClientId,
                     shouldRelay,
                     relayConfigured: !!crdtRelay,
-                    teamMode: activeWorkspace?.teamMode ?? "unknown",
+                    appMode,
                     orgWorkspaceId: activeWorkspace?.orgWorkspaceId ?? null,
                 });
 

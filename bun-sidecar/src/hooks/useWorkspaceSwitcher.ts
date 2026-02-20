@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 
-export type TeamMode = "solo" | "team";
-
 export interface WorkspaceInfo {
     id: string;
     path: string;
@@ -9,7 +7,6 @@ export interface WorkspaceInfo {
     createdAt: string;
     lastAccessedAt: string;
     teamVaultId?: string;
-    teamMode: TeamMode;
     orgId?: string;
     orgWorkspaceId?: string;
     repoFullName?: string;
@@ -21,23 +18,27 @@ export interface WorkspaceInfo {
 export interface GlobalConfig {
     workspaces: WorkspaceInfo[];
     activeWorkspaceId: string | null;
+    appMode?: "solo" | "team";
 }
 
 interface UseWorkspaceSwitcherResult {
     workspaces: WorkspaceInfo[];
     activeWorkspace: WorkspaceInfo | null;
+    appMode: "solo" | "team" | undefined;
     loading: boolean;
     error: string | null;
     switchWorkspace: (workspaceId: string) => Promise<void>;
     addWorkspace: (path: string) => Promise<void>;
     removeWorkspace: (workspaceId: string) => Promise<void>;
     renameWorkspace: (workspaceId: string, name: string) => Promise<void>;
+    setAppMode: (mode: "solo" | "team") => Promise<void>;
     refresh: () => Promise<void>;
 }
 
 export function useWorkspaceSwitcher(): UseWorkspaceSwitcherResult {
     const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
     const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceInfo | null>(null);
+    const [appMode, setAppModeState] = useState<"solo" | "team" | undefined>(undefined);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +57,7 @@ export function useWorkspaceSwitcher(): UseWorkspaceSwitcherResult {
 
             if (configData.success) {
                 setWorkspaces(configData.data.workspaces || []);
+                setAppModeState(configData.data.appMode);
             }
 
             if (activeData.success) {
@@ -168,15 +170,37 @@ export function useWorkspaceSwitcher(): UseWorkspaceSwitcherResult {
         }
     }, [fetchWorkspaces]);
 
+    const setAppMode = useCallback(async (mode: "solo" | "team") => {
+        try {
+            const res = await fetch("/api/workspaces/set-app-mode", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode }),
+            });
+
+            const data = await res.json();
+
+            if (data.success && data.data?.requiresReload) {
+                window.location.reload();
+            } else if (!data.success) {
+                setError(data.message || "Failed to set app mode");
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to set app mode");
+        }
+    }, []);
+
     return {
         workspaces,
         activeWorkspace,
+        appMode,
         loading,
         error,
         switchWorkspace,
         addWorkspace,
         removeWorkspace,
         renameWorkspace,
+        setAppMode,
         refresh: fetchWorkspaces,
     };
 }

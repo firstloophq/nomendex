@@ -135,6 +135,13 @@ export interface AwarenessState {
     readonly lastUpdated: number;
 }
 
+// --- LWW Register ---
+
+export interface LWWRegister<T> {
+    readonly value: T;
+    readonly timestamp: Timestamp;
+}
+
 // --- State vector ---
 
 export type StateVector = ReadonlyMap<ClientId, number>;

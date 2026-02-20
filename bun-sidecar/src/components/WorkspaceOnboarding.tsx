@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { FolderOpen, Github, LogIn, Loader2, Plus } from "lucide-react";
-import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
+import { FolderOpen, Github, LogIn, LogOut, Loader2, Plus } from "lucide-react";
 import { Button } from "./ui/button";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { useTeamAuth } from "@/contexts/AuthContext";
@@ -224,6 +223,7 @@ function SignedInOnboarding(props: { currentTheme: ReturnType<typeof useTheme>["
 export function WorkspaceOnboarding() {
     const { addWorkspace } = useWorkspaceSwitcher();
     const { currentTheme } = useTheme();
+    const { isSignedIn, userName, userImageUrl, signIn, signOut } = useTeamAuth();
     const [folderPickerOpen, setFolderPickerOpen] = useState(false);
     const [warningDialogOpen, setWarningDialogOpen] = useState(false);
     const [pendingPath, setPendingPath] = useState<string | null>(null);
@@ -281,20 +281,32 @@ export function WorkspaceOnboarding() {
         >
             {/* Sign-in area in top-right */}
             <div className="absolute top-4 right-4">
-                <SignedOut>
-                    <SignInButton mode="modal">
+                {!isSignedIn ? (
+                    <button
+                        onClick={() => signIn()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors hover:opacity-80"
+                        style={{ color: currentTheme.styles.contentSecondary }}
+                    >
+                        <LogIn className="size-3.5" />
+                        Sign In
+                    </button>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        {userImageUrl && (
+                            <img src={userImageUrl} alt="" className="size-6 rounded-full" />
+                        )}
+                        <span className="text-sm" style={{ color: currentTheme.styles.contentSecondary }}>
+                            {userName}
+                        </span>
                         <button
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors hover:opacity-80"
-                            style={{ color: currentTheme.styles.contentSecondary }}
+                            onClick={() => signOut()}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors hover:opacity-80"
+                            style={{ color: currentTheme.styles.contentTertiary }}
                         >
-                            <LogIn className="size-3.5" />
-                            Sign In
+                            <LogOut className="size-3" />
                         </button>
-                    </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                    <UserButton />
-                </SignedIn>
+                    </div>
+                )}
             </div>
 
             <div className="flex flex-col items-center gap-4 text-center max-w-md">
@@ -302,30 +314,31 @@ export function WorkspaceOnboarding() {
             </div>
 
             {/* Signed in: show org workspaces */}
-            <SignedIn>
+            {isSignedIn && (
                 <SignedInOnboarding currentTheme={currentTheme} />
-            </SignedIn>
+            )}
 
             {/* Signed out: show folder picker */}
-            <SignedOut>
-                <div className="flex flex-col items-center gap-4 text-center max-w-md">
-                    <div
-                        className="p-4 rounded-full"
-                        style={{ backgroundColor: currentTheme.styles.surfaceAccent }}
-                    >
-                        <FolderOpen className="size-12" style={{ color: currentTheme.styles.contentPrimary }} />
+            {!isSignedIn && (
+                <>
+                    <div className="flex flex-col items-center gap-4 text-center max-w-md">
+                        <div
+                            className="p-4 rounded-full"
+                            style={{ backgroundColor: currentTheme.styles.surfaceAccent }}
+                        >
+                            <FolderOpen className="size-12" style={{ color: currentTheme.styles.contentPrimary }} />
+                        </div>
+                        <p style={{ color: currentTheme.styles.contentSecondary }}>
+                            Choose a folder to use as your workspace. Your todos, notes, and settings will be stored there.
+                        </p>
                     </div>
-                    <p style={{ color: currentTheme.styles.contentSecondary }}>
-                        Choose a folder to use as your workspace. Your todos, notes, and settings will be stored there.
-                    </p>
-                </div>
 
-                <Button onClick={handleChooseFolder} size="lg" className="gap-2">
-                    <FolderOpen className="size-4" />
-                    Choose Workspace Folder
-                </Button>
-            </SignedOut>
-
+                    <Button onClick={handleChooseFolder} size="lg" className="gap-2">
+                        <FolderOpen className="size-4" />
+                        Choose Workspace Folder
+                    </Button>
+                </>
+            )}
 
             <p
                 className="text-sm text-center max-w-sm"

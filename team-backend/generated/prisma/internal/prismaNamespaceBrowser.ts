@@ -58,7 +58,8 @@ export const ModelName = {
   OrgWorkspace: 'OrgWorkspace',
   CollabDoc: 'CollabDoc',
   CollabOp: 'CollabOp',
-  CollabSnapshot: 'CollabSnapshot'
+  CollabSnapshot: 'CollabSnapshot',
+  AuthCode: 'AuthCode'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -177,6 +178,20 @@ export const CollabSnapshotScalarFieldEnum = {
 } as const
 
 export type CollabSnapshotScalarFieldEnum = (typeof CollabSnapshotScalarFieldEnum)[keyof typeof CollabSnapshotScalarFieldEnum]
+
+
+export const AuthCodeScalarFieldEnum = {
+  code: 'code',
+  clerkUserId: 'clerkUserId',
+  clerkSessionId: 'clerkSessionId',
+  deviceId: 'deviceId',
+  state: 'state',
+  createdAt: 'createdAt',
+  expiresAt: 'expiresAt',
+  used: 'used'
+} as const
+
+export type AuthCodeScalarFieldEnum = (typeof AuthCodeScalarFieldEnum)[keyof typeof AuthCodeScalarFieldEnum]
 
 
 export const SortOrder = {

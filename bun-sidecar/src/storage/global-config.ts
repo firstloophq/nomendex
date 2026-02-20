@@ -1,8 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "path";
 
-export type TeamMode = "solo" | "team";
-
 export interface WorkspaceInfo {
     id: string;
     path: string;
@@ -10,7 +8,6 @@ export interface WorkspaceInfo {
     createdAt: string;
     lastAccessedAt: string;
     teamVaultId?: string;
-    teamMode: TeamMode;
     /** team-backend Org.id — set for GitHub-backed team workspaces */
     orgId?: string;
     /** team-backend OrgWorkspace.id */
@@ -25,9 +22,25 @@ export interface WorkspaceInfo {
     defaultBranch?: string;
 }
 
+export interface AuthUser {
+    id: string;
+    clerkUserId: string;
+    name: string | null;
+    email: string | null;
+    imageUrl: string | null;
+}
+
+export interface PersistedAuth {
+    clerkSessionId: string;
+    user: AuthUser;
+}
+
 export interface GlobalConfig {
     workspaces: WorkspaceInfo[];
     activeWorkspaceId: string | null;
+    appMode?: "solo" | "team";
+    deviceId?: string;
+    auth?: PersistedAuth;
 }
 
 const DEFAULT_CONFIG: GlobalConfig = {
@@ -55,11 +68,6 @@ export class GlobalConfigManager {
             if (await file.exists()) {
                 const content = await file.text();
                 const config = JSON.parse(content) as GlobalConfig;
-                // Backfill teamMode for workspaces created before team support
-                config.workspaces = config.workspaces.map((w) => ({
-                    ...w,
-                    teamMode: w.teamMode ?? "solo",
-                }));
                 return config;
             }
         } catch {
@@ -111,7 +119,6 @@ export class GlobalConfigManager {
             name: path.basename(workspacePath),
             createdAt: new Date().toISOString(),
             lastAccessedAt: new Date().toISOString(),
-            teamMode: "solo",
         };
 
         config.workspaces.push(workspace);
@@ -144,29 +151,40 @@ export class GlobalConfigManager {
         await this.save(config);
     }
 
-    async enableTeamMode(params: { workspaceId: string; vaultId: string }): Promise<void> {
+    async getAppMode(): Promise<"solo" | "team"> {
         const config = await this.load();
-        const workspace = config.workspaces.find((w) => w.id === params.workspaceId);
-        if (!workspace) {
-            throw new Error(`Workspace not found: ${params.workspaceId}`);
-        }
+        return config.appMode ?? "solo";
+    }
 
-        workspace.teamMode = "team";
-        workspace.teamVaultId = params.vaultId;
+    async setAppMode(params: { mode: "solo" | "team" }): Promise<void> {
+        const config = await this.load();
+        config.appMode = params.mode;
         await this.save(config);
     }
 
-    async disableTeamMode(params: { workspaceId: string }): Promise<void> {
+    async getOrCreateDeviceId(): Promise<string> {
         const config = await this.load();
-        const workspace = config.workspaces.find((w) => w.id === params.workspaceId);
-        if (!workspace) {
-            throw new Error(`Workspace not found: ${params.workspaceId}`);
-        }
+        if (config.deviceId) return config.deviceId;
+        config.deviceId = crypto.randomUUID();
+        await this.save(config);
+        return config.deviceId;
+    }
 
-        workspace.teamMode = "solo";
-        workspace.teamVaultId = undefined;
+    async getPersistedAuth(): Promise<PersistedAuth | null> {
+        const config = await this.load();
+        return config.auth ?? null;
+    }
+
+    async setPersistedAuth(params: { auth: PersistedAuth | null }): Promise<void> {
+        const config = await this.load();
+        if (params.auth) {
+            config.auth = params.auth;
+        } else {
+            delete config.auth;
+        }
         await this.save(config);
     }
+
 }
 
 export const globalConfig = new GlobalConfigManager();

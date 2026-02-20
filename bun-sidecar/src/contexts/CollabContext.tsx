@@ -435,12 +435,12 @@ export function useCollab(): CollabContextValue | null {
  * Wrapper that conditionally enables CollabProvider based on workspace team mode.
  */
 export function CollabProviderGate(props: { children: React.ReactNode }) {
-    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { activeWorkspace, appMode } = useWorkspaceSwitcher();
     const { isSignedIn } = useTeamAuth();
     const [forceCollabFromQuery] = useState(() => isQueryFlagEnabled({ key: "forceCollab" }));
     const [forceCollabFromRoute] = useState(() => isCollabTestRoute());
 
-    const isTeamMode = activeWorkspace?.teamMode === "team";
+    const isTeamMode = appMode === "team";
     // Use teamVaultId if set, otherwise fall back to orgWorkspaceId for GitHub-backed workspaces
     const vaultId = activeWorkspace?.teamVaultId ?? activeWorkspace?.orgWorkspaceId;
 

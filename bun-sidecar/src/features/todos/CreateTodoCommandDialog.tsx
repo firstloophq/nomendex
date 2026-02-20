@@ -53,8 +53,8 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
     const { closeDialog } = useCommandDialog();
     const { addNewTab, setActiveTabId } = useWorkspaceContext();
     const collab = useCollab();
-    const { activeWorkspace } = useWorkspaceSwitcher();
-    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+    const { appMode } = useWorkspaceSwitcher();
+    const isTeamCollabMode = appMode === "team" && !!collab;
 
     const restAPI = useTodosAPI();
     const boardProject = project.trim() === "" ? "" : project.trim();

@@ -9,6 +9,7 @@ import orgsRoutes from "./routes/orgs";
 import membersRoutes from "./routes/members";
 import githubRoutes, { handleGitHubCallback } from "./routes/github";
 import orgWorkspacesRoutes from "./routes/org-workspaces";
+import authRoutes from "./routes/auth";
 
 const app = new OpenAPIHono<{ Variables: AuthVariables }>();
 
@@ -22,6 +23,9 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 // GitHub App callback (no auth — receives installation_id + state from GitHub redirect)
 app.get("/github/callback", (c) => handleGitHubCallback(c.req.raw));
 app.get("/ws/crdt", (c) => handleCollabWebSocketUpgrade(c));
+
+// Auth routes (no auth middleware — handles its own auth)
+app.route("/auth", authRoutes);
 
 // Auth-protected API routes
 app.use("/api/*", authMiddleware);

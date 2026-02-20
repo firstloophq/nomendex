@@ -227,7 +227,7 @@ export function useKanban(params: UseKanbanParams) {
     const collabSubscribeAwareness = collab?.subscribeAwareness;
     const collabSendOps = collab?.sendOps;
     const collabSendAwareness = collab?.sendAwareness;
-    const { activeWorkspace } = useWorkspaceSwitcher();
+    const { activeWorkspace, appMode } = useWorkspaceSwitcher();
     const collabScope = useMemo(
         () => getWorkspaceCollabScope({ activeWorkspace }),
         [activeWorkspace]
@@ -238,7 +238,7 @@ export function useKanban(params: UseKanbanParams) {
         [collabScope, project]
     );
     const collabEnabled = enabled
-        && activeWorkspace?.teamMode === "team"
+        && appMode === "team"
         && !!collabClientId
         && !!collabSubscribeDoc
         && !!collabSendOps;

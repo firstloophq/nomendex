@@ -3,7 +3,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
@@ -17,7 +16,7 @@ import { WorkspaceWarningDialog } from "./WorkspaceWarningDialog";
 import { GitHubRepoPickerDialog } from "./GitHubRepoPickerDialog";
 
 export function WorkspaceSwitcher() {
-    const { workspaces, activeWorkspace, loading, switchWorkspace, addWorkspace } =
+    const { workspaces, activeWorkspace, appMode, loading, switchWorkspace, addWorkspace } =
         useWorkspaceSwitcher();
     const { currentTheme } = useTheme();
     const { isSignedIn } = useTeamAuth();
@@ -124,8 +123,8 @@ export function WorkspaceSwitcher() {
                     borderColor: currentTheme.styles.borderDefault,
                 }}
             >
-                {/* Solo workspaces */}
-                {soloWorkspaces.map((ws) => (
+                {/* Solo workspaces — hidden in team mode */}
+                {appMode !== "team" && soloWorkspaces.map((ws) => (
                     <DropdownMenuItem
                         key={ws.id}
                         onClick={() => switchWorkspace(ws.id)}
@@ -140,16 +139,9 @@ export function WorkspaceSwitcher() {
                     </DropdownMenuItem>
                 ))}
 
-                {/* Team workspaces */}
-                {teamWorkspaces.length > 0 && (
+                {/* Team workspaces — hidden in solo mode */}
+                {appMode === "team" && teamWorkspaces.length > 0 && (
                     <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel
-                            className="text-xs font-medium"
-                            style={{ color: currentTheme.styles.contentSecondary }}
-                        >
-                            Team
-                        </DropdownMenuLabel>
                         {teamWorkspaces.map((ws) => (
                             <DropdownMenuItem
                                 key={ws.id}
@@ -168,15 +160,19 @@ export function WorkspaceSwitcher() {
                 )}
 
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                    onClick={handleAddWorkspace}
-                    className="cursor-pointer"
-                    style={{ color: currentTheme.styles.contentPrimary }}
-                >
-                    <Plus className="size-4 mr-2 shrink-0" />
-                    <span>Add Workspace...</span>
-                </DropdownMenuItem>
-                {isSignedIn && (
+                {/* Add local workspace — only in solo mode */}
+                {appMode !== "team" && (
+                    <DropdownMenuItem
+                        onClick={handleAddWorkspace}
+                        className="cursor-pointer"
+                        style={{ color: currentTheme.styles.contentPrimary }}
+                    >
+                        <Plus className="size-4 mr-2 shrink-0" />
+                        <span>Add Workspace...</span>
+                    </DropdownMenuItem>
+                )}
+                {/* Create from GitHub — only in team mode when signed in */}
+                {appMode === "team" && isSignedIn && (
                     <DropdownMenuItem
                         onClick={() => setGitHubPickerOpen(true)}
                         className="cursor-pointer"

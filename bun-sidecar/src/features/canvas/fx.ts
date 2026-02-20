@@ -58,6 +58,10 @@ function snapshotFileName(canvasId: string): string {
     return `${encodeURIComponent(canvasId)}.snapshot.json`;
 }
 
+function crdtStateFileName(canvasId: string): string {
+    return `${encodeURIComponent(canvasId)}.crdt-state.json`;
+}
+
 function getStorage(): FeatureStorage {
     if (!storage) {
         throw new Error("Canvas service not initialized. Call initializeCanvasService() first.");
@@ -192,6 +196,12 @@ export async function deleteCanvas(input: { canvasId: string }): Promise<{ succe
         // Ignore missing snapshot files.
     }
 
+    try {
+        await getStorage().deleteFile(crdtStateFileName(input.canvasId));
+    } catch {
+        // Ignore missing CRDT state files.
+    }
+
     emitCanvasTelemetry({
         event: "canvas_delete_success",
         data: { canvasId: input.canvasId },
@@ -273,4 +283,52 @@ export async function saveCanvasSnapshot(input: {
         });
         throw error;
     }
+}
+
+export async function saveCRDTState(input: {
+    canvasId: string;
+    crdtState: string;
+}): Promise<{ success: boolean }> {
+    const startedAt = Date.now();
+    try {
+        await getStorage().writeFile(crdtStateFileName(input.canvasId), input.crdtState);
+        emitCanvasTelemetry({
+            event: "canvas_crdt_state_save_success",
+            data: {
+                canvasId: input.canvasId,
+                bytes: input.crdtState.length,
+                durationMs: Date.now() - startedAt,
+            },
+        });
+        return { success: true };
+    } catch (error) {
+        emitCanvasTelemetry({
+            event: "canvas_crdt_state_save_error",
+            level: "error",
+            data: {
+                canvasId: input.canvasId,
+                bytes: input.crdtState.length,
+                durationMs: Date.now() - startedAt,
+                message: error instanceof Error ? error.message : String(error),
+            },
+        });
+        throw error;
+    }
+}
+
+export async function getCRDTState(input: {
+    canvasId: string;
+}): Promise<{ crdtState: string | null }> {
+    const startedAt = Date.now();
+    const crdtState = await getStorage().readFile(crdtStateFileName(input.canvasId));
+    emitCanvasTelemetry({
+        event: "canvas_crdt_state_get",
+        data: {
+            canvasId: input.canvasId,
+            found: !!crdtState,
+            bytes: crdtState?.length ?? 0,
+            durationMs: Date.now() - startedAt,
+        },
+    });
+    return { crdtState };
 }

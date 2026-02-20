@@ -56,6 +56,7 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
         userContentController.add(self, name: "setNativeTheme")
         userContentController.add(self, name: "triggerAppUpdate")
         userContentController.add(self, name: "checkForUpdatesInBackground")
+        userContentController.add(self, name: "openAuthUrl")
         config.userContentController = userContentController
         config.preferences.javaScriptEnabled = true
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -219,9 +220,23 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
             if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
                 appDelegate.checkForUpdatesInBackground()
             }
+        } else if message.name == "openAuthUrl" {
+            guard let data = message.body as? [String: Any],
+                  let urlString = data["url"] as? String,
+                  let url = URL(string: urlString) else { return }
+            NSWorkspace.shared.open(url)
         }
     }
     
+    // MARK: - Auth Callback
+
+    func handleAuthCallback(code: String, state: String) {
+        let escapedCode = code.replacingOccurrences(of: "'", with: "\\'")
+        let escapedState = state.replacingOccurrences(of: "'", with: "\\'")
+        let js = "window.__authCallback && window.__authCallback('\(escapedCode)', '\(escapedState)')"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

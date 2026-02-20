@@ -6,6 +6,8 @@ import {
     deleteCanvas,
     getCanvasSnapshot,
     saveCanvasSnapshot,
+    saveCRDTState,
+    getCRDTState,
 } from "@/features/canvas/fx";
 
 export const canvasRoutes = {
@@ -54,6 +56,20 @@ export const canvasRoutes = {
         async POST(req: Request) {
             const args = await req.json();
             const result = await saveCanvasSnapshot(args);
+            return Response.json(result);
+        },
+    },
+    "/api/canvas/crdt-state/save": {
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await saveCRDTState(args);
+            return Response.json(result);
+        },
+    },
+    "/api/canvas/crdt-state/get": {
+        async POST(req: Request) {
+            const args = await req.json();
+            const result = await getCRDTState(args);
             return Response.json(result);
         },
     },

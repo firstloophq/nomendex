@@ -39,6 +39,19 @@
   <key>SUScheduledCheckInterval</key>
   <integer>300</integer>
 
+  <!-- URL Scheme for auth callback -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.firstloop.nomendex.auth</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>nomendex</string>
+      </array>
+    </dict>
+  </array>
+
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsArbitraryLoads</key>

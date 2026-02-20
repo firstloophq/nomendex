@@ -29,8 +29,8 @@ export function TodosView({ todoId, tabId }: { todoId: string; tabId: string }) 
     const { closeTab } = useWorkspaceContext();
     const { loading, setLoading } = usePlugin();
     const collab = useCollab();
-    const { activeWorkspace } = useWorkspaceSwitcher();
-    const isTeamCollabMode = activeWorkspace?.teamMode === "team" && !!collab;
+    const { appMode } = useWorkspaceSwitcher();
+    const isTeamCollabMode = appMode === "team" && !!collab;
 
     const todosAPI = useTodosAPI();
     const [todo, setTodo] = useState<Todo | null>(null);
