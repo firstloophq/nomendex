@@ -11,14 +11,16 @@ import {
     type RecordOp,
     type DocManager,
 } from "@crdt/lib";
-import type { Editor } from "tldraw";
+import type {
+    Editor,
+    TLPageId,
+    TLShapeId,
+    TLStore,
+} from "tldraw";
 import {
     getDefaultUserPresence,
     InstancePresenceRecordType,
-    type TLPageId,
-    type TLShapeId,
-    type TLStore,
-} from "@tldraw/tlschema";
+} from "tldraw";
 import { useCollab } from "@/contexts/CollabContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { buildCanvasDocId, getWorkspaceCollabScope } from "@/lib/collab-doc-id";
@@ -54,6 +56,27 @@ interface SerializableRecord {
 interface RemotePresenceEntry {
     recordId: string;
     lastUpdated: number;
+}
+
+export interface CanvasRemoteCollaborator {
+    clientId: string;
+    userName: string;
+    color: string;
+    currentPageId: TLPageId;
+    cursor: {
+        x: number;
+        y: number;
+        rotation: number;
+    } | null;
+    lastUpdated: number;
+}
+
+function compareCanvasRemoteCollaborators(
+    a: CanvasRemoteCollaborator,
+    b: CanvasRemoteCollaborator
+): number {
+    if (a.lastUpdated !== b.lastUpdated) return b.lastUpdated - a.lastUpdated;
+    return a.userName.localeCompare(b.userName);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -164,6 +187,22 @@ export function extractTldrawRecords(params: {
     return records;
 }
 
+function hasTldrawContentInManager(params: { manager: DocManager; docId: string }): boolean {
+    const record = getDoc({ manager: params.manager, docId: params.docId });
+    if (!record) return false;
+    const fields = record.fields as ReadonlyMap<string, { value: string }>;
+    for (const [fieldName, register] of fields) {
+        if (!fieldName.startsWith(TL_FIELD_PREFIX)) continue;
+        if (register.value === DELETED_SENTINEL) continue;
+        return true;
+    }
+    return false;
+}
+
+function canUseBeaconTransport(): boolean {
+    return typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function";
+}
+
 export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }) {
     const { canvasId, forceLocal = false } = params;
     const collab = useCollab();
@@ -196,11 +235,15 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
     const editorRef = useRef<Editor | null>(null);
     const [editor, setEditor] = useState<Editor | null>(null);
     const [isSynced, setIsSynced] = useState(false);
+    const [remoteCollaborators, setRemoteCollaborators] = useState<CanvasRemoteCollaborator[]>([]);
+    const [followedCollaboratorId, setFollowedCollaboratorId] = useState<string | null>(null);
     const didSyncRef = useRef(false);
     const isApplyingRemoteRef = useRef(false);
     const didHydrateLocalRef = useRef(false);
     const lastPersistedSnapshotRef = useRef<string | null>(null);
+    const persistAttemptCounterRef = useRef(0);
     const localSaveTimerRef = useRef<number | null>(null);
+    const persistedSnapshotRecordsRef = useRef<Array<{ id: string; [key: string]: unknown }> | null>(null);
 
     // tl:<recordId> -> serialized record JSON
     const mirroredFieldsRef = useRef<Map<string, string>>(new Map());
@@ -214,6 +257,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
     const awarenessStaleSweepTimerRef = useRef<number | null>(null);
     const lastAwarenessSignatureRef = useRef<string | null>(null);
     const remotePresenceRef = useRef<Map<string, RemotePresenceEntry>>(new Map());
+    const remoteCollaboratorsRef = useRef<Map<string, CanvasRemoteCollaborator>>(new Map());
 
     const scheduleNextFrame = useCallback((fn: () => void): number => {
         if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -230,7 +274,48 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         clearTimeout(id);
     }, []);
 
-    const clearRemotePresenceRecords = useCallback(() => {
+    const publishRemoteCollaborators = useCallback(() => {
+        const sorted = Array.from(remoteCollaboratorsRef.current.values())
+            .sort(compareCanvasRemoteCollaborators);
+        setRemoteCollaborators(sorted);
+    }, []);
+
+    const stopFollowingCollaborator = useCallback(() => {
+        const ed = editorRef.current;
+        if (ed) {
+            ed.stopFollowingUser();
+        }
+        setFollowedCollaboratorId(null);
+    }, []);
+
+    const followCollaborator = useCallback((nextClientId: string | null) => {
+        const ed = editorRef.current;
+        if (!ed) {
+            setFollowedCollaboratorId(nextClientId);
+            return;
+        }
+
+        if (!nextClientId) {
+            ed.stopFollowingUser();
+            setFollowedCollaboratorId(null);
+            return;
+        }
+
+        if (nextClientId === clientId) return;
+        if (!remoteCollaboratorsRef.current.has(nextClientId)) {
+            ed.stopFollowingUser();
+            setFollowedCollaboratorId(null);
+            return;
+        }
+
+        ed.stopFollowingUser();
+        ed.zoomToUser(nextClientId, { animation: { duration: 220 } });
+        ed.startFollowingUser(nextClientId);
+        setFollowedCollaboratorId(nextClientId);
+    }, [clientId]);
+
+    const clearRemotePresenceRecords = useCallback((options?: { resetState?: boolean }) => {
+        const shouldResetState = options?.resetState !== false;
         const ed = editorRef.current;
         if (ed && remotePresenceRef.current.size > 0) {
             const recordIds = Array.from(remotePresenceRef.current.values()).map((entry) => entry.recordId);
@@ -241,7 +326,14 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
             }
         }
         remotePresenceRef.current.clear();
-    }, []);
+        remoteCollaboratorsRef.current.clear();
+        if (shouldResetState) {
+            setRemoteCollaborators([]);
+            stopFollowingCollaborator();
+        } else if (ed) {
+            ed.stopFollowingUser();
+        }
+    }, [stopFollowingCollaborator]);
 
     const applyRemotePresenceFromAwareness = useCallback((params: {
         remoteClientId: string;
@@ -286,7 +378,20 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
             recordId: presenceRecord.id,
             lastUpdated: presenceRecord.lastActivityTimestamp ?? Date.now(),
         });
-    }, []);
+        remoteCollaboratorsRef.current.set(params.remoteClientId, {
+            clientId: params.remoteClientId,
+            userName: presenceRecord.userName,
+            color: presenceRecord.color,
+            currentPageId: presenceRecord.currentPageId,
+            cursor: cursor ? {
+                x: cursor.x,
+                y: cursor.y,
+                rotation: cursor.rotation,
+            } : null,
+            lastUpdated: presenceRecord.lastActivityTimestamp ?? Date.now(),
+        });
+        publishRemoteCollaborators();
+    }, [publishRemoteCollaborators]);
 
     const pruneStaleRemotePresence = useCallback(() => {
         const ed = editorRef.current;
@@ -295,17 +400,24 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
 
         const now = Date.now();
         const staleRecordIds: string[] = [];
+        const removedClientIds: string[] = [];
         for (const [remoteClientId, entry] of remotePresenceRef.current) {
             if (now - entry.lastUpdated <= AWARENESS_STALE_MS) continue;
             staleRecordIds.push(entry.recordId);
             remotePresenceRef.current.delete(remoteClientId);
+            remoteCollaboratorsRef.current.delete(remoteClientId);
+            removedClientIds.push(remoteClientId);
         }
 
         if (staleRecordIds.length === 0) return;
         ed.store.mergeRemoteChanges(() => {
             ed.store.remove(staleRecordIds as Parameters<typeof ed.store.remove>[0]);
         });
-    }, []);
+        publishRemoteCollaborators();
+        if (followedCollaboratorId && removedClientIds.includes(followedCollaboratorId)) {
+            stopFollowingCollaborator();
+        }
+    }, [followedCollaboratorId, publishRemoteCollaborators, stopFollowingCollaborator]);
 
     const buildLocalAwarenessState = useCallback((ed: Editor): AwarenessState | null => {
         if (!collabEnabled || !collab?.userInfo) return null;
@@ -559,46 +671,320 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         });
     }, [flushRemoteOpsNow, scheduleNextFrame]);
 
+    const persistSnapshotNow = useCallback(async (params?: {
+        transport?: "fetch" | "beacon";
+        finalizeEditing?: boolean;
+    }) => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        const transport = params?.transport ?? "fetch";
+        const attemptId = `${canvasId}-${persistAttemptCounterRef.current + 1}`;
+        persistAttemptCounterRef.current += 1;
+
+        if (collabEnabled && !didSyncRef.current) {
+            // Prevent unsynced team tabs from overwriting a good persisted snapshot.
+            crdtDebugLog({
+                event: "canvas_snapshot_save_skipped",
+                data: {
+                    canvasId,
+                    docId,
+                    clientId,
+                    attemptId,
+                    reason: "unsynced_collab",
+                    transport,
+                },
+            });
+            return;
+        }
+
+        if (params?.finalizeEditing && ed.getEditingShapeId()) {
+            try {
+                // Commit active rich-text edits into the document before serializing.
+                ed.complete();
+            } catch {
+                // Ignore completion errors and continue best-effort snapshotting.
+            }
+        }
+
+        let snapshot: string;
+        try {
+            snapshot = JSON.stringify(ed.store.serialize("document"));
+        } catch (error) {
+            crdtDebugLog({
+                event: "canvas_snapshot_serialize_error",
+                data: {
+                    canvasId,
+                    docId,
+                    clientId,
+                    attemptId,
+                    message: error instanceof Error ? error.message : String(error),
+                },
+            });
+            return;
+        }
+
+        const snapshotBytes = snapshot.length;
+        if (lastPersistedSnapshotRef.current === snapshot) {
+            crdtDebugLog({
+                event: "canvas_snapshot_save_skipped",
+                data: {
+                    canvasId,
+                    docId,
+                    clientId,
+                    attemptId,
+                    reason: "unchanged_snapshot",
+                    transport,
+                    bytes: snapshotBytes,
+                },
+            });
+            return;
+        }
+        const startedAt = Date.now();
+        crdtDebugLog({
+            event: "canvas_snapshot_save_start",
+            data: {
+                canvasId,
+                docId,
+                clientId,
+                attemptId,
+                transport,
+                bytes: snapshotBytes,
+                finalizeEditing: !!params?.finalizeEditing,
+            },
+        });
+
+        if (params?.transport === "beacon") {
+            const payload = JSON.stringify({ canvasId, snapshot });
+            if (canUseBeaconTransport()) {
+                const queued = navigator.sendBeacon(
+                    "/api/canvas/snapshot/save",
+                    new Blob([payload], { type: "application/json" })
+                );
+                if (queued) {
+                    lastPersistedSnapshotRef.current = snapshot;
+                    crdtDebugLog({
+                        event: "canvas_snapshot_save_enqueued",
+                        data: {
+                            canvasId,
+                            docId,
+                            clientId,
+                            attemptId,
+                            transport: "beacon",
+                            bytes: snapshotBytes,
+                            durationMs: Date.now() - startedAt,
+                        },
+                    });
+                    return;
+                }
+            }
+            crdtDebugLog({
+                event: "canvas_snapshot_save_beacon_fallback",
+                data: {
+                    canvasId,
+                    docId,
+                    clientId,
+                    attemptId,
+                    bytes: snapshotBytes,
+                },
+            });
+
+            // Fallback for environments where sendBeacon is unavailable or failed.
+            fetch("/api/canvas/snapshot/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                keepalive: true,
+            }).then((response) => {
+                if (!response.ok) {
+                    throw new Error(`status ${response.status}`);
+                }
+                lastPersistedSnapshotRef.current = snapshot;
+                crdtDebugLog({
+                    event: "canvas_snapshot_save_success",
+                    data: {
+                        canvasId,
+                        docId,
+                        clientId,
+                        attemptId,
+                        transport: "beacon_fetch_keepalive",
+                        bytes: snapshotBytes,
+                        durationMs: Date.now() - startedAt,
+                    },
+                });
+            }).catch((error) => {
+                crdtDebugLog({
+                    event: "canvas_snapshot_save_error",
+                    data: {
+                        canvasId,
+                        docId,
+                        clientId,
+                        attemptId,
+                        transport: "beacon_fetch_keepalive",
+                        bytes: snapshotBytes,
+                        message: error instanceof Error ? error.message : String(error),
+                        durationMs: Date.now() - startedAt,
+                    },
+                });
+            });
+            return;
+        }
+
+        await canvasAPI.saveSnapshot({ canvasId, snapshot });
+        lastPersistedSnapshotRef.current = snapshot;
+        crdtDebugLog({
+            event: "canvas_snapshot_save_success",
+            data: {
+                canvasId,
+                docId,
+                clientId,
+                attemptId,
+                transport: "fetch",
+                bytes: snapshotBytes,
+                durationMs: Date.now() - startedAt,
+            },
+        });
+    }, [canvasId, clientId, collabEnabled, docId]);
+
     const queueLocalSnapshotPersist = useCallback(() => {
         if (localSaveTimerRef.current !== null) {
             clearTimeout(localSaveTimerRef.current);
         }
-        localSaveTimerRef.current = setTimeout(async () => {
+        localSaveTimerRef.current = setTimeout(() => {
             localSaveTimerRef.current = null;
-            const ed = editorRef.current;
-            if (!ed || collabEnabled) return;
-            try {
-                const snapshotObject = ed.store.serialize("document");
-                const snapshot = JSON.stringify(snapshotObject);
-                if (lastPersistedSnapshotRef.current === snapshot) return;
-                await canvasAPI.saveSnapshot({ canvasId, snapshot });
-                lastPersistedSnapshotRef.current = snapshot;
-            } catch (error) {
+            void persistSnapshotNow().catch((error) => {
                 crdtDebugLog({
-                    event: "canvas_local_snapshot_save_error",
+                    event: "canvas_snapshot_save_error",
                     data: {
                         canvasId,
                         message: error instanceof Error ? error.message : String(error),
                     },
                 });
-            }
+            });
         }, LOCAL_SAVE_DEBOUNCE_MS) as unknown as number;
-    }, [canvasId, collabEnabled]);
+    }, [canvasId, persistSnapshotNow]);
 
     const handleRemoteOps = useCallback((incoming: {
         docId: string;
         ops: ReadonlyArray<RecordOp>;
     }) => {
+        crdtDebugLog({
+            event: "canvas_receive_ops",
+            data: {
+                canvasId,
+                docId: incoming.docId,
+                count: incoming.ops.length,
+                ops: summarizeOpsForDebug(incoming.ops),
+            },
+        });
         queueRemoteOps(incoming.ops);
-    }, [queueRemoteOps]);
+    }, [canvasId, queueRemoteOps]);
+
+    const bootstrapCollabDocFromPersistedSnapshot = useCallback(() => {
+        if (!collabEnabled) return;
+        const editorInstance = editorRef.current;
+        if (!editorInstance) return;
+
+        const snapshotRecords = persistedSnapshotRecordsRef.current;
+        if (!snapshotRecords || snapshotRecords.length === 0) {
+            crdtDebugLog({
+                event: "canvas_collab_bootstrap_skipped",
+                data: {
+                    canvasId,
+                    docId,
+                    reason: "no_snapshot_records",
+                },
+            });
+            return;
+        }
+        if (hasTldrawContentInManager({ manager: stateRef.current.manager, docId })) {
+            crdtDebugLog({
+                event: "canvas_collab_bootstrap_skipped",
+                data: {
+                    canvasId,
+                    docId,
+                    reason: "manager_has_content",
+                    snapshotRecordCount: snapshotRecords.length,
+                },
+            });
+            return;
+        }
+
+        let manager = stateRef.current.manager;
+        let clock = stateRef.current.clock;
+        const seedOps: FieldOp[] = [];
+        const putRecords: Array<{ id: string; [key: string]: unknown }> = [];
+
+        for (const record of snapshotRecords) {
+            if (!record || typeof record.id !== "string") continue;
+            let value: string;
+            try {
+                value = JSON.stringify(record);
+            } catch {
+                continue;
+            }
+
+            const fieldName = `${TL_FIELD_PREFIX}${record.id}`;
+            if (mirroredFieldsRef.current.get(fieldName) === value) continue;
+
+            const { clock: nextClock, timestamp } = incrementClock(clock);
+            clock = nextClock;
+            const op: FieldOp = {
+                type: "field",
+                id: createFieldOpId({ clientId, clock: timestamp.clock }),
+                fieldName,
+                value,
+                timestamp,
+            };
+            seedOps.push(op);
+            putRecords.push(record);
+            manager = applyDocOperation({ manager, docId, op });
+            mirroredFieldsRef.current.set(fieldName, value);
+        }
+
+        if (putRecords.length > 0) {
+            isApplyingRemoteRef.current = true;
+            try {
+                editorInstance.store.mergeRemoteChanges(() => {
+                    editorInstance.store.put(putRecords as unknown as Parameters<typeof editorInstance.store.put>[0]);
+                });
+            } finally {
+                isApplyingRemoteRef.current = false;
+            }
+        }
+
+        stateRef.current = { manager, clock };
+        persistedSnapshotRecordsRef.current = null;
+
+        if (seedOps.length > 0) {
+            queueSendOps(seedOps);
+            crdtDebugLog({
+                event: "canvas_collab_bootstrap_from_snapshot",
+                data: {
+                    canvasId,
+                    docId,
+                    count: seedOps.length,
+                },
+            });
+        }
+    }, [canvasId, clientId, collabEnabled, docId, queueSendOps]);
 
     const handleSyncComplete = useCallback(() => {
+        crdtDebugLog({
+            event: "canvas_sync_complete",
+            data: {
+                canvasId,
+                docId,
+                pendingRemoteOps: pendingRemoteOpsRef.current.length,
+                remoteCollaborators: remoteCollaboratorsRef.current.size,
+            },
+        });
         flushRemoteOpsNow();
         didSyncRef.current = true;
         restoreEditorFromState();
+        bootstrapCollabDocFromPersistedSnapshot();
         sendLocalAwarenessNow({ force: true });
         setIsSynced(true);
-    }, [flushRemoteOpsNow, restoreEditorFromState, sendLocalAwarenessNow]);
+    }, [bootstrapCollabDocFromPersistedSnapshot, canvasId, docId, flushRemoteOpsNow, restoreEditorFromState, sendLocalAwarenessNow]);
 
     const handleMount = useCallback((mountedEditor: Editor) => {
         editorRef.current = mountedEditor;
@@ -616,14 +1002,22 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                 setIsSynced(true);
             }
             sendLocalAwarenessNow({ force: true });
+            if (
+                followedCollaboratorId
+                && remoteCollaboratorsRef.current.has(followedCollaboratorId)
+            ) {
+                mountedEditor.zoomToUser(followedCollaboratorId, { animation: { duration: 220 } });
+                mountedEditor.startFollowingUser(followedCollaboratorId);
+            }
         }
-    }, [clientId, collab, collabEnabled, restoreEditorFromState, sendLocalAwarenessNow]);
+    }, [clientId, collab, collabEnabled, followedCollaboratorId, restoreEditorFromState, sendLocalAwarenessNow]);
 
     // Reset local state when switching canvases/modes.
     useEffect(() => {
         didSyncRef.current = false;
         didHydrateLocalRef.current = false;
         lastPersistedSnapshotRef.current = null;
+        persistedSnapshotRecordsRef.current = null;
         lastAwarenessSignatureRef.current = null;
         setIsSynced(false);
         mirroredFieldsRef.current = new Map();
@@ -718,10 +1112,10 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         };
     }, [collabEnabled, editor, pruneStaleRemotePresence, sendLocalAwarenessNow]);
 
-    // Hydrate local snapshot in solo mode.
+    // Hydrate persisted snapshot. In team mode we defer applying it until sync completes
+    // and only bootstrap when the shared CRDT doc is empty.
     useEffect(() => {
         if (!editor) return;
-        if (collabEnabled) return;
         if (didHydrateLocalRef.current) return;
 
         let cancelled = false;
@@ -732,9 +1126,37 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                 if (cancelled) return;
 
                 if (result.snapshot) {
+                    crdtDebugLog({
+                        event: "canvas_snapshot_load_hit",
+                        data: {
+                            canvasId,
+                            docId,
+                            bytes: result.snapshot.length,
+                            collabEnabled,
+                            synced: didSyncRef.current,
+                        },
+                    });
                     const parsed = JSON.parse(result.snapshot) as unknown;
                     const records = recordsFromSerializedSnapshot(parsed);
-                    if (records.length > 0) {
+                    persistedSnapshotRecordsRef.current = records;
+                    crdtDebugLog({
+                        event: "canvas_snapshot_load_records",
+                        data: {
+                            canvasId,
+                            docId,
+                            count: records.length,
+                            collabEnabled,
+                            synced: didSyncRef.current,
+                        },
+                    });
+
+                    if (collabEnabled) {
+                        // Sync may complete before snapshot fetch resolves; bootstrap again once
+                        // snapshot data is available so an empty shared doc gets seeded reliably.
+                        if (didSyncRef.current && records.length > 0) {
+                            bootstrapCollabDocFromPersistedSnapshot();
+                        }
+                    } else if (records.length > 0) {
                         isApplyingRemoteRef.current = true;
                         try {
                             editor.store.mergeRemoteChanges(() => {
@@ -746,39 +1168,90 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
                     }
                     lastPersistedSnapshotRef.current = result.snapshot;
                 } else {
+                    crdtDebugLog({
+                        event: "canvas_snapshot_load_miss",
+                        data: {
+                            canvasId,
+                            docId,
+                            collabEnabled,
+                        },
+                    });
                     const initialSnapshot = JSON.stringify(editor.store.serialize("document"));
                     lastPersistedSnapshotRef.current = initialSnapshot;
                     await canvasAPI.saveSnapshot({ canvasId, snapshot: initialSnapshot });
+                    persistedSnapshotRecordsRef.current = null;
+                    crdtDebugLog({
+                        event: "canvas_snapshot_seed_initial",
+                        data: {
+                            canvasId,
+                            docId,
+                            bytes: initialSnapshot.length,
+                        },
+                    });
                 }
             } catch (error) {
                 crdtDebugLog({
-                    event: "canvas_local_snapshot_load_error",
+                    event: "canvas_snapshot_load_error",
                     data: {
                         canvasId,
+                        docId,
                         message: error instanceof Error ? error.message : String(error),
                     },
                 });
             } finally {
                 mirroredFieldsRef.current = buildFieldMapFromEditor(editor);
-                setIsSynced(true);
+                if (!collabEnabled) {
+                    setIsSynced(true);
+                }
             }
         })();
 
         return () => {
             cancelled = true;
         };
-    }, [buildFieldMapFromEditor, canvasId, collabEnabled, editor]);
+    }, [bootstrapCollabDocFromPersistedSnapshot, buildFieldMapFromEditor, canvasId, collabEnabled, docId, editor]);
+
+    // Flush latest snapshot when the page is backgrounded/closed.
+    useEffect(() => {
+        const handlePageHide = () => {
+            void persistSnapshotNow({ transport: "beacon", finalizeEditing: true });
+        };
+        const handleVisibilityChange = () => {
+            if (typeof document === "undefined") return;
+            if (document.visibilityState !== "hidden") return;
+            void persistSnapshotNow({ transport: "beacon", finalizeEditing: true });
+        };
+
+        if (typeof window !== "undefined") {
+            window.addEventListener("pagehide", handlePageHide);
+            window.addEventListener("beforeunload", handlePageHide);
+        }
+        if (typeof document !== "undefined") {
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+        }
+
+        return () => {
+            if (typeof window !== "undefined") {
+                window.removeEventListener("pagehide", handlePageHide);
+                window.removeEventListener("beforeunload", handlePageHide);
+            }
+            if (typeof document !== "undefined") {
+                document.removeEventListener("visibilitychange", handleVisibilityChange);
+            }
+        };
+    }, [persistSnapshotNow]);
 
     // Register store listener.
     useEffect(() => {
         if (!editor) return undefined;
 
         const removeDocumentListener = editor.store.listen((entry) => {
+            queueLocalSnapshotPersist();
+
             if (isApplyingRemoteRef.current) return;
             if (entry.source === "remote") return;
 
             if (!collabEnabled) {
-                queueLocalSnapshotPersist();
                 return;
             }
 
@@ -907,9 +1380,16 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
             if (collabEnabled) {
                 flushSendOpsNow();
                 sendLocalAwarenessNow({ force: true });
-            } else {
-                queueLocalSnapshotPersist();
             }
+            void persistSnapshotNow({ finalizeEditing: true }).catch((error) => {
+                crdtDebugLog({
+                    event: "canvas_snapshot_save_error",
+                    data: {
+                        canvasId,
+                        message: error instanceof Error ? error.message : String(error),
+                    },
+                });
+            });
         };
     }, [
         buildFieldMapFromEditor,
@@ -922,6 +1402,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         queueLocalAwarenessSend,
         queueLocalSnapshotPersist,
         queueSendOps,
+        persistSnapshotNow,
         sendLocalAwarenessNow,
     ]);
 
@@ -945,7 +1426,7 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
             if (awarenessStaleSweepTimerRef.current !== null) {
                 clearInterval(awarenessStaleSweepTimerRef.current);
             }
-            clearRemotePresenceRecords();
+            clearRemotePresenceRecords({ resetState: false });
         };
     }, [cancelNextFrame, clearRemotePresenceRecords]);
 
@@ -954,6 +1435,9 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         collabEnabled,
         isConnected: collabEnabled ? (collab?.isConnected ?? false) : true,
         isSynced,
+        remoteCollaborators,
+        followedCollaboratorId,
+        followCollaborator,
         handleMount,
     };
 }

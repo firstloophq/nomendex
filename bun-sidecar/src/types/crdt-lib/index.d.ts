@@ -286,6 +286,7 @@ export declare function getCardDetail(params: {
 
 export interface CRDTPluginState {
     readonly clientId: string;
+    readonly doc: unknown;
     readonly isRemoteUpdate: boolean;
 }
 
@@ -316,6 +317,18 @@ export declare function redoCommand(params: {
     state: EditorState;
     plugin: Plugin<CRDTPluginState>;
 }): { state: EditorState; ops: ReadonlyArray<Operation> } | null;
+
+// --- Suggestion API ---
+
+export interface SuggestionSummary {
+    readonly id: string;
+    readonly insertText: string;
+    readonly deleteText: string;
+}
+
+export declare function listSuggestions(params: {
+    doc: unknown;
+}): ReadonlyArray<SuggestionSummary>;
 
 // --- Cursor Plugin ---
 

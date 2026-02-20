@@ -9,6 +9,33 @@ const LOG_FILE = join(LOG_DIR, 'logs.txt');
 // Startup mode flag - only log to file during startup
 let isStartupMode = true;
 
+type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'HTTP' | 'DEBUG';
+type LogLevelName = Lowercase<LogLevel>;
+
+const LOG_LEVEL_PRIORITIES: Record<LogLevelName, number> = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  http: 2,
+  debug: 3,
+};
+
+const DEFAULT_LOG_LEVEL: LogLevelName =
+  process.env.NODE_ENV === 'development' ? 'warn' : 'info';
+
+const configuredLogLevel = (() => {
+  const raw = process.env.NOMENDEX_LOG_LEVEL?.toLowerCase();
+  if (raw && raw in LOG_LEVEL_PRIORITIES) {
+    return raw as LogLevelName;
+  }
+  return DEFAULT_LOG_LEVEL;
+})();
+
+function shouldLog(level: LogLevel): boolean {
+  const normalized = level.toLowerCase() as LogLevelName;
+  return LOG_LEVEL_PRIORITIES[normalized] <= LOG_LEVEL_PRIORITIES[configuredLogLevel];
+}
+
 function getLogDir(): string {
   return LOG_DIR;
 }
@@ -60,7 +87,8 @@ function writeStartupLog(level: string, message: string, meta?: Record<string, u
 }
 
 // Console logging (always active)
-function consoleLog(level: string, message: string, meta?: Record<string, unknown>): void {
+function consoleLog(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
+  if (!shouldLog(level)) return;
   const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const metaStr = meta && Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
   console.log(`${timestamp} [${level}] ${message}${metaStr}`);
@@ -69,20 +97,28 @@ function consoleLog(level: string, message: string, meta?: Record<string, unknow
 // Startup logger - writes to both console and file (during startup only)
 export const startupLog = {
   error: (message: string, meta?: Record<string, unknown>) => {
-    consoleLog('ERROR', message, meta);
-    writeStartupLog('ERROR', message, meta);
+    if (shouldLog('ERROR')) {
+      consoleLog('ERROR', message, meta);
+      writeStartupLog('ERROR', message, meta);
+    }
   },
   warn: (message: string, meta?: Record<string, unknown>) => {
-    consoleLog('WARN', message, meta);
-    writeStartupLog('WARN', message, meta);
+    if (shouldLog('WARN')) {
+      consoleLog('WARN', message, meta);
+      writeStartupLog('WARN', message, meta);
+    }
   },
   info: (message: string, meta?: Record<string, unknown>) => {
-    consoleLog('INFO', message, meta);
-    writeStartupLog('INFO', message, meta);
+    if (shouldLog('INFO')) {
+      consoleLog('INFO', message, meta);
+      writeStartupLog('INFO', message, meta);
+    }
   },
   debug: (message: string, meta?: Record<string, unknown>) => {
-    consoleLog('DEBUG', message, meta);
-    writeStartupLog('DEBUG', message, meta);
+    if (shouldLog('DEBUG')) {
+      consoleLog('DEBUG', message, meta);
+      writeStartupLog('DEBUG', message, meta);
+    }
   },
 };
 

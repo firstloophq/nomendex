@@ -7,11 +7,38 @@ const MAX_DEPTH = 3;
 type DebugLevel = "info" | "warn" | "error" | "debug";
 
 let sessionId: string | null = null;
+let sessionTraceId: string | null = null;
+let sequence = 0;
 
 function getSessionId(): string {
     if (sessionId) return sessionId;
     sessionId = `dbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     return sessionId;
+}
+
+function randomHex(bytes: number): string {
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const view = new Uint8Array(bytes);
+        crypto.getRandomValues(view);
+        return Array.from(view)
+            .map((value) => value.toString(16).padStart(2, "0"))
+            .join("");
+    }
+    let fallback = "";
+    for (let i = 0; i < bytes; i++) {
+        fallback += Math.floor(Math.random() * 256).toString(16).padStart(2, "0");
+    }
+    return fallback;
+}
+
+function getTraceId(): string {
+    if (sessionTraceId) return sessionTraceId;
+    sessionTraceId = randomHex(16);
+    return sessionTraceId;
+}
+
+function createSpanId(): string {
+    return randomHex(8);
 }
 
 export function isCRDTDebugEnabled(): boolean {
@@ -93,15 +120,24 @@ export function crdtDebugLog(params: {
     if (!isCRDTDebugEnabled()) return;
     if (typeof window === "undefined" || typeof fetch === "undefined") return;
 
+    const traceId = getTraceId();
+    const spanId = createSpanId();
+    sequence += 1;
+
     const payload = {
         event: `CRDT:${params.event}`,
         level: params.level ?? "debug",
         context: "crdt",
+        traceId,
+        spanId,
         data: sanitize({
+            ...((params.data as Record<string, unknown>) ?? {}),
             sessionId: getSessionId(),
             href: window.location.href,
             ts: Date.now(),
-            ...((params.data as Record<string, unknown>) ?? {}),
+            sequence,
+            traceId,
+            spanId,
         }),
     };
 

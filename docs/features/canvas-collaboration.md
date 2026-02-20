@@ -179,3 +179,55 @@ if (typeof structuredClone === "function") {
   globalThis.structuredClone = structuredClone.bind(globalThis);
 }
 ```
+
+## OTel Logging and Debugging
+
+Canvas/CRDT debug logs are now forwarded to OTEL so persistence and sync races can be inspected in one timeline.
+
+### Pipeline
+
+1. Browser CRDT/canvas events are emitted via `crdtDebugLog(...)`.
+2. Browser posts to `/api/logs` (existing path).
+3. Sidecar still appends JSON lines to `logs.txt`.
+4. Sidecar also forwards structured OTLP logs to `otel-viewer` (`/v1/logs`) through `emitOTelLog(...)`.
+5. Server-side persistence events (`canvas_snapshot_get/save/delete`) are emitted directly to OTEL as well.
+
+### Key Correlation Fields
+
+- `traceId` and `spanId` per browser debug event (OTEL trace filters)
+- `sessionId` and `sequence` for strict in-tab event order
+- `canvasId` and `docId` for room scoping
+- `attemptId`, `transport`, `bytes`, `durationMs` for snapshot save diagnostics
+- `nomendex.event` and `nomendex.context` attributes for event filtering
+
+### Environment Variables
+
+- `NOMENDEX_OTEL_LOGS_ENABLED` (default `1`)
+- `NOMENDEX_OTEL_EXPORTER_ENDPOINT` (default `http://localhost:4318`, auto-appends `/v1/logs`)
+- `NOMENDEX_OTEL_LOGS_ENDPOINT` (optional exact endpoint override)
+- Standard OTEL fallback is also respected:
+  - `OTEL_EXPORTER_OTLP_ENDPOINT`
+  - `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
+
+### High-Signal Events to Watch
+
+- Snapshot lifecycle:
+  - `CRDT:canvas_snapshot_load_hit`
+  - `CRDT:canvas_snapshot_load_miss`
+  - `CRDT:canvas_snapshot_save_start`
+  - `CRDT:canvas_snapshot_save_success`
+  - `CRDT:canvas_snapshot_save_skipped`
+  - `canvas_snapshot_save_success` (server persistence layer)
+- Sync/bootstrap lifecycle:
+  - `CRDT:canvas_receive_ops`
+  - `CRDT:canvas_sync_complete`
+  - `CRDT:canvas_collab_bootstrap_from_snapshot`
+  - `CRDT:canvas_collab_bootstrap_skipped`
+
+### Practical Debug Flow
+
+1. Open OTEL viewer (`http://localhost:4318`).
+2. Filter `service` to `nomendex-browser` for client timeline, then `nomendex-sidecar` for persistence confirmations.
+3. Filter by `nomendex.canvasId` and inspect ordered `sequence` values.
+4. Confirm each `canvas_snapshot_save_start` has a matching success/enqueued event.
+5. Correlate with server-side `canvas_snapshot_save_success` and `bytes`/`durationMs`.

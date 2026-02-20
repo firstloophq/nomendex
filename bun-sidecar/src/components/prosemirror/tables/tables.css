@@ -165,3 +165,67 @@
 .ProseMirror table {
     border-spacing: 0;
 }
+
+/* Suggestion mark styling (agent proposed changes) */
+.ProseMirror .suggestion-insert {
+    background: rgba(34, 197, 94, 0.2);
+}
+
+.ProseMirror .suggestion-delete {
+    background: rgba(239, 68, 68, 0.2);
+    text-decoration: line-through;
+}
+
+/* Inline controls for accepting/rejecting suggestion marks */
+.ProseMirror .suggestion-inline-actions-anchor {
+    position: relative;
+    display: inline-block;
+    width: 0;
+    height: 0;
+    vertical-align: baseline;
+    pointer-events: none;
+}
+
+.ProseMirror .suggestion-inline-actions {
+    position: absolute;
+    left: 0;
+    bottom: 1.15em;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border-radius: 999px;
+    border: 1px solid rgba(120, 113, 108, 0.45);
+    background: rgba(250, 249, 246, 0.94);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+    pointer-events: auto;
+    z-index: 15;
+}
+
+.ProseMirror .suggestion-inline-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(120, 113, 108, 0.55);
+    background: rgba(255, 255, 255, 0.92);
+    color: rgba(68, 64, 60, 0.95);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ProseMirror .suggestion-inline-action-accept:hover {
+    background: rgba(34, 197, 94, 0.18);
+    border-color: rgba(34, 197, 94, 0.6);
+    color: rgba(21, 128, 61, 1);
+}
+
+.ProseMirror .suggestion-inline-action-reject:hover {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: rgba(185, 28, 28, 1);
+}

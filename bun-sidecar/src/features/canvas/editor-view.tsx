@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Tldraw, type Editor } from "tldraw";
+import { Users } from "lucide-react";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useCanvasAPI } from "@/hooks/useCanvasAPI";
 import { useTheme } from "@/hooks/useTheme";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { useCanvasCRDT } from "./useCanvasCRDT";
 import type { CanvasItem } from "./index";
 
@@ -14,6 +16,15 @@ interface CanvasEditorViewProps {
 }
 
 const TITLE_SAVE_DEBOUNCE_MS = 300;
+
+function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "?";
+    if (parts.length === 1) {
+        return parts[0].slice(0, 2).toUpperCase();
+    }
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
 
 export function CanvasEditorView(props: CanvasEditorViewProps) {
     const { canvasId, tabId } = props;
@@ -29,7 +40,15 @@ export function CanvasEditorView(props: CanvasEditorViewProps) {
     const saveTitleTimerRef = useRef<number | null>(null);
     const lastSavedTitleRef = useRef<string>("");
 
-    const { handleMount, isConnected, isSynced, collabEnabled } = useCanvasCRDT({ canvasId });
+    const {
+        handleMount,
+        isConnected,
+        isSynced,
+        collabEnabled,
+        remoteCollaborators,
+        followedCollaboratorId,
+        followCollaborator,
+    } = useCanvasCRDT({ canvasId });
 
     useEffect(() => {
         let cancelled = false;
@@ -138,20 +157,63 @@ export function CanvasEditorView(props: CanvasEditorViewProps) {
                     placeholder="Canvas title"
                     className="max-w-md"
                 />
-                <div className="flex items-center gap-2 ml-auto text-xs">
-                    <span
-                        className={`px-2 py-1 rounded ${isConnected
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                            }`}
-                    >
-                        {collabEnabled ? (isConnected ? "Connected" : "Offline") : "Local"}
-                    </span>
-                    {collabEnabled && !isSynced && (
-                        <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800">
-                            Syncing...
-                        </span>
+                <div className="ml-auto flex items-center gap-3 min-w-0">
+                    {collabEnabled && (
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                                <Users className="size-3.5" />
+                                {remoteCollaborators.length + 1} in room
+                            </span>
+                            {remoteCollaborators.length === 0 ? (
+                                <span className="text-xs text-muted-foreground">Only you</span>
+                            ) : (
+                                <div className="flex items-center gap-1 min-w-0">
+                                    {remoteCollaborators.map((collaborator) => {
+                                        const isFollowing = followedCollaboratorId === collaborator.clientId;
+                                        const nextAction = isFollowing ? "Stop following" : "Follow";
+                                        return (
+                                            <Button
+                                                key={collaborator.clientId}
+                                                type="button"
+                                                variant={isFollowing ? "secondary" : "ghost"}
+                                                size="sm"
+                                                className="h-8 rounded-full px-2 max-w-40"
+                                                onClick={() => {
+                                                    followCollaborator(isFollowing ? null : collaborator.clientId);
+                                                }}
+                                                title={`${nextAction} ${collaborator.userName}`}
+                                                aria-label={`${nextAction} ${collaborator.userName}`}
+                                            >
+                                                <span
+                                                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                                                    style={{ backgroundColor: collaborator.color }}
+                                                >
+                                                    {getInitials(collaborator.userName)}
+                                                </span>
+                                                <span className="truncate">{collaborator.userName}</span>
+                                            </Button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     )}
+
+                    <div className="flex items-center gap-2 text-xs">
+                        <span
+                            className={`px-2 py-1 rounded ${isConnected
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                                }`}
+                        >
+                            {collabEnabled ? (isConnected ? "Connected" : "Offline") : "Local"}
+                        </span>
+                        {collabEnabled && !isSynced && (
+                            <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800">
+                                Syncing...
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 

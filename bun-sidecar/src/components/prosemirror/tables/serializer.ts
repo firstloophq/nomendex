@@ -230,6 +230,22 @@ const markSerializers = {
         close: "`",
         escape: false,
     },
+    suggestion: {
+        open: (_state: MarkdownSerializerState, mark: Node["marks"][number]) => {
+            const action = mark.attrs?.action === "delete" ? "delete" : "insert";
+            const suggestionId = String(mark.attrs?.id || "").trim();
+            if (!suggestionId) return "";
+            return action === "delete"
+                ? `[[[-${suggestionId}]]]`
+                : `[[[+${suggestionId}]]]`;
+        },
+        close: (_state: MarkdownSerializerState, mark: Node["marks"][number]) => {
+            const suggestionId = String(mark.attrs?.id || "").trim();
+            if (!suggestionId) return "";
+            const action = mark.attrs?.action === "delete" ? "delete" : "insert";
+            return action === "delete" ? "[[[/-]]]" : "[[[/+]]]";
+        },
+    },
 };
 
 /**

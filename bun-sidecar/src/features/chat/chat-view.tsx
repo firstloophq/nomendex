@@ -58,6 +58,24 @@ type PendingPermission = {
     input: Record<string, unknown>;
 };
 
+function shouldAttemptRenderedUIParse(toolName: string | undefined): boolean {
+    if (!toolName) return false;
+    if (toolName === "mcp__noetect-ui__render_ui") return true;
+    if (toolName === "render_ui") return true;
+    return toolName.endsWith("__render_ui");
+}
+
+function isChatDebugEnabled(): boolean {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("debug:chat") === "1";
+}
+
+function chatDebugLog(...args: unknown[]) {
+    if (isChatDebugEnabled()) {
+        console.log("[Chat]", ...args);
+    }
+}
+
 export type ChatViewProps = {
     sessionId?: string;
     tabId: string;
@@ -194,7 +212,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
             // Load the session's agentId from metadata
             if (sessionsResponse.ok) {
                 const data = await sessionsResponse.json();
-                console.log("[Chat] Sessions list response:", typeof data, Array.isArray(data), data);
+                chatDebugLog("Sessions list response:", typeof data, Array.isArray(data), data);
                 const sessions = Array.isArray(data) ? data : (data.sessions || []);
                 const sessionMeta = sessions.find((s: { id: string }) => s.id === id);
                 if (sessionMeta?.agentId) {
@@ -674,7 +692,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                             }
                         } else if (data.type === "cancelled") {
                             // User cancelled - not an error, just stop processing
-                            console.log("[Chat] Query was cancelled by user");
+                            chatDebugLog("Query was cancelled by user");
                             break;
                         } else if (data.type === "error") {
                             throw new Error(data.error);
@@ -691,7 +709,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                             (error instanceof Error && error.name === "AbortError");
 
             if (isAbort) {
-                console.log("[Chat] Query was cancelled");
+                chatDebugLog("Query was cancelled");
                 // Optionally add a "Cancelled" indicator to the message
                 setMessages((prev) =>
                     prev.map((m) => {
@@ -745,7 +763,7 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
             });
 
             if (response.ok) {
-                console.log("[Chat] Cancelled query:", queryTrackingId);
+                chatDebugLog("Cancelled query:", queryTrackingId);
             } else {
                 console.error("[Chat] Failed to cancel query:", await response.text());
             }
@@ -825,7 +843,9 @@ export default function ChatView({ sessionId: initialSessionId, tabId, initialPr
                                         const toolCall = block.toolCall;
 
                                         // Check if this is a render_ui tool with UI data
-                                        const uiData = parseNoetectUIData(toolCall.output);
+                                        const uiData = shouldAttemptRenderedUIParse(toolCall.name)
+                                            ? parseNoetectUIData(toolCall.output)
+                                            : null;
                                         if (uiData) {
                                             return (
                                                 <div key={block.id} className="mb-2">

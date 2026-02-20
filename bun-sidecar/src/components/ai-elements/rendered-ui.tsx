@@ -18,6 +18,8 @@ function toKebabCase(str: string): string {
 
 // Logging helper for debugging render_ui issues
 function logRenderUI(message: string, data?: Record<string, unknown>) {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem("debug:render-ui") !== "1") return;
     console.log(`[RenderedUI] ${message}`, data ?? "");
 }
 
@@ -299,8 +301,9 @@ export interface NoetectUIData {
 
 // MCP content block format
 interface McpContentBlock {
-    type: string;
-    text?: string;
+    type?: unknown;
+    text?: unknown;
+    content?: unknown;
 }
 
 function isNoetectUIDataObject(obj: unknown): obj is NoetectUIData {
@@ -314,87 +317,115 @@ function isNoetectUIDataObject(obj: unknown): obj is NoetectUIData {
     );
 }
 
-export function isNoetectUIData(output: unknown): output is NoetectUIData {
-    // Direct object check
-    if (isNoetectUIDataObject(output)) {
-        return true;
+function looksLikeJsonPayload(value: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    return (
+        trimmed.startsWith("{") ||
+        trimmed.startsWith("[") ||
+        trimmed.startsWith("```") ||
+        trimmed.includes("__noetect_ui")
+    );
+}
+
+function parseJsonCandidates(raw: string): unknown | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    const candidates: string[] = [trimmed];
+    const fullFenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (fullFenceMatch?.[1]) {
+        candidates.push(fullFenceMatch[1].trim());
+    }
+    const inlineFenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (inlineFenceMatch?.[1]) {
+        candidates.push(inlineFenceMatch[1].trim());
     }
 
-    // JSON string check
-    if (typeof output === "string") {
+    const firstBrace = trimmed.indexOf("{");
+    const lastBrace = trimmed.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+        candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+    }
+
+    const firstBracket = trimmed.indexOf("[");
+    const lastBracket = trimmed.lastIndexOf("]");
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+        candidates.push(trimmed.slice(firstBracket, lastBracket + 1));
+    }
+
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+        if (!candidate || seen.has(candidate)) continue;
+        seen.add(candidate);
+
         try {
-            const parsed = JSON.parse(output);
-            return isNoetectUIDataObject(parsed);
-        } catch {
-            return false;
-        }
-    }
-
-    // MCP content array format: [{ type: "text", text: "{...}" }]
-    if (Array.isArray(output) && output.length > 0) {
-        const firstBlock = output[0] as McpContentBlock;
-        if (firstBlock?.type === "text" && typeof firstBlock.text === "string") {
-            try {
-                const parsed = JSON.parse(firstBlock.text);
-                return isNoetectUIDataObject(parsed);
-            } catch {
-                return false;
+            const parsed = JSON.parse(candidate);
+            if (typeof parsed === "string" && looksLikeJsonPayload(parsed)) {
+                try {
+                    return JSON.parse(parsed);
+                } catch {
+                    // Keep the first parsed string if nested JSON parse fails.
+                }
             }
+            return parsed;
+        } catch {
+            // Try next candidate.
         }
     }
 
-    return false;
+    return null;
+}
+
+export function isNoetectUIData(output: unknown): output is NoetectUIData {
+    return parseNoetectUIData(output) !== null;
 }
 
 export function parseNoetectUIData(output: unknown): NoetectUIData | null {
-    logRenderUI("Parsing tool output", {
-        type: typeof output,
-        isArray: Array.isArray(output),
-        preview: typeof output === "string" ? output.substring(0, 100) : JSON.stringify(output)?.substring(0, 100)
-    });
+    const queue: unknown[] = [output];
+    const seenObjects = new Set<object>();
 
-    // Direct object
-    if (isNoetectUIDataObject(output)) {
-        logRenderUI("Parsed as direct object");
-        return output;
-    }
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (current === null || current === undefined) {
+            continue;
+        }
 
-    // JSON string
-    if (typeof output === "string") {
-        try {
-            const parsed = JSON.parse(output);
-            if (isNoetectUIDataObject(parsed)) {
-                logRenderUI("Parsed from JSON string");
-                return parsed;
+        if (isNoetectUIDataObject(current)) {
+            return current;
+        }
+
+        if (typeof current === "string") {
+            if (!looksLikeJsonPayload(current)) {
+                continue;
             }
-            logRenderUI("JSON parsed but not NoetectUIData", { parsed });
-        } catch (e) {
-            logRenderUI("Failed to parse JSON string", { error: String(e) });
-            return null;
+            const parsed = parseJsonCandidates(current);
+            if (parsed !== null) {
+                queue.push(parsed);
+            }
+            continue;
+        }
+
+        if (Array.isArray(current)) {
+            queue.push(...current);
+            continue;
+        }
+
+        if (typeof current === "object") {
+            if (seenObjects.has(current)) {
+                continue;
+            }
+            seenObjects.add(current);
+
+            const block = current as McpContentBlock;
+            if (typeof block.text === "string") {
+                queue.push(block.text);
+            }
+            if ("content" in block) {
+                queue.push(block.content);
+            }
         }
     }
 
-    // MCP content array format: [{ type: "text", text: "{...}" }]
-    if (Array.isArray(output) && output.length > 0) {
-        logRenderUI("Checking MCP content array format", { length: output.length });
-        const firstBlock = output[0] as McpContentBlock;
-        if (firstBlock?.type === "text" && typeof firstBlock.text === "string") {
-            try {
-                const parsed = JSON.parse(firstBlock.text);
-                if (isNoetectUIDataObject(parsed)) {
-                    logRenderUI("Parsed from MCP content array");
-                    return parsed;
-                }
-                logRenderUI("MCP content parsed but not NoetectUIData", { parsed });
-            } catch (e) {
-                logRenderUI("Failed to parse MCP content text", { error: String(e), text: firstBlock.text?.substring(0, 100) });
-                return null;
-            }
-        } else {
-            logRenderUI("MCP content array first block not text type", { firstBlock });
-        }
-    }
-
-    logRenderUI("Could not parse as NoetectUIData");
     return null;
 }

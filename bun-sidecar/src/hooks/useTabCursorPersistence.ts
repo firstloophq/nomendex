@@ -10,6 +10,11 @@ interface CursorPosition {
 // Module-level storage survives component unmounts
 const cursorPositions = new Map<string, CursorPosition>();
 
+const DEBUG = typeof window !== "undefined" && window.localStorage.getItem("debug:cursor-persist") === "1";
+function debugLog(...args: unknown[]) {
+    if (DEBUG) console.log("[CursorPersist]", ...args);
+}
+
 /**
  * Hook to persist cursor/selection position for a tab's ProseMirror editor.
  * Saves position on selection changes, restores when editor is ready.
@@ -24,21 +29,21 @@ export function useTabCursorPersistence(tabId: string) {
     const saveCursor = useCallback((view: EditorView) => {
         const { anchor, head } = view.state.selection;
         cursorPositions.set(tabId, { anchor, head });
-        console.log(`[CursorPersist] Saved cursor for ${tabId}: anchor=${anchor}, head=${head}`);
+        debugLog(`Saved cursor for ${tabId}: anchor=${anchor}, head=${head}`);
     }, [tabId]);
 
     // Restore selection - call this after editor content is loaded
     const restoreCursor = useCallback((view: EditorView) => {
         if (hasRestoredRef.current) {
-            console.log(`[CursorPersist] Already restored cursor for ${tabId}, skipping`);
+            debugLog(`Already restored cursor for ${tabId}, skipping`);
             return;
         }
 
         const saved = cursorPositions.get(tabId);
-        console.log(`[CursorPersist] Attempting to restore cursor for ${tabId}:`, saved);
+        debugLog(`Attempting to restore cursor for ${tabId}:`, saved);
 
         if (!saved) {
-            console.log(`[CursorPersist] No saved cursor for ${tabId}`);
+            debugLog(`No saved cursor for ${tabId}`);
             hasRestoredRef.current = true;
             return;
         }
@@ -51,14 +56,14 @@ export function useTabCursorPersistence(tabId: string) {
             const anchor = Math.min(saved.anchor, maxPos);
             const head = Math.min(saved.head, maxPos);
 
-            console.log(`[CursorPersist] Restoring cursor: anchor=${anchor}, head=${head} (max=${maxPos})`);
+            debugLog(`Restoring cursor: anchor=${anchor}, head=${head} (max=${maxPos})`);
 
             const selection = TextSelection.create(doc, anchor, head);
             const tr = view.state.tr.setSelection(selection);
             view.dispatch(tr);
 
             hasRestoredRef.current = true;
-            console.log(`[CursorPersist] Cursor restored successfully`);
+            debugLog(`Cursor restored successfully`);
         } catch (error) {
             console.error(`[CursorPersist] Failed to restore cursor:`, error);
             hasRestoredRef.current = true;
@@ -68,10 +73,10 @@ export function useTabCursorPersistence(tabId: string) {
     // Reset the restored flag when tabId changes (new tab)
     useEffect(() => {
         hasRestoredRef.current = false;
-        console.log(`[CursorPersist] Reset restored flag for ${tabId}`);
+        debugLog(`Reset restored flag for ${tabId}`);
 
         return () => {
-            console.log(`[CursorPersist] Cleanup for ${tabId}, saved position:`, cursorPositions.get(tabId));
+            debugLog(`Cleanup for ${tabId}, saved position:`, cursorPositions.get(tabId));
         };
     }, [tabId]);
 

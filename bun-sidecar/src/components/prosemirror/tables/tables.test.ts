@@ -67,6 +67,29 @@ Some paragraph after.`;
         expect(doc.child(2).type.name).toBe("table");
         expect(doc.child(3).type.name).toBe("paragraph");
     });
+
+    test("parses serialized suggestion marks", () => {
+        const markdown = `Before [[[+suggest-1]]]added[[[/+]]] and [[[-suggest-1]]]removed[[[/-]]] text.`;
+        const doc = tableMarkdownParser.parse(markdown);
+        const paragraph = doc.firstChild;
+        expect(paragraph?.type.name).toBe("paragraph");
+
+        const textNodes: Array<{ text: string; marks: Array<{ type: string; attrs?: Record<string, unknown> }> }> = [];
+        paragraph?.forEach((node) => {
+            if (!node.isText) return;
+            textNodes.push({
+                text: node.text || "",
+                marks: node.marks.map((mark) => ({ type: mark.type.name, attrs: mark.attrs as Record<string, unknown> })),
+            });
+        });
+
+        const insertNode = textNodes.find((node) => node.text.includes("added"));
+        const deleteNode = textNodes.find((node) => node.text.includes("removed"));
+        expect(insertNode).toBeTruthy();
+        expect(deleteNode).toBeTruthy();
+        expect(insertNode?.marks.some((mark) => mark.type === "suggestion" && mark.attrs?.action === "insert")).toBe(true);
+        expect(deleteNode?.marks.some((mark) => mark.type === "suggestion" && mark.attrs?.action === "delete")).toBe(true);
+    });
 });
 
 describe("Markdown Table Serializer", () => {
@@ -166,6 +189,22 @@ Walking pad: daily.`;
         expect(doc2.firstChild?.type.name).toBe("table");
         expect(doc2.firstChild?.childCount).toBe(3); // header + 2 rows
     });
+
+    test("roundtrip preserves suggestion marks", () => {
+        const original = `Alpha [[[+s-42]]]beta[[[/+]]] [[[-s-42]]]gamma[[[/-]]]`;
+
+        const doc = tableMarkdownParser.parse(original);
+        const output = tableMarkdownSerializer.serialize(doc);
+        const reparsed = tableMarkdownParser.parse(output);
+        const reparsedOutput = tableMarkdownSerializer.serialize(reparsed);
+
+        expect(output).toContain("[[[+s-42]]]");
+        expect(output).toContain("[[[/+]]]");
+        expect(output).toContain("[[[-s-42]]]");
+        expect(output).toContain("[[[/-]]]");
+        expect(reparsedOutput).toContain("[[[+s-42]]]");
+        expect(reparsedOutput).toContain("[[[-s-42]]]");
+    });
 });
 
 describe("Table Schema", () => {
@@ -184,5 +223,9 @@ describe("Table Schema", () => {
         const cellSpec = tableSchema.nodes.table_cell.spec;
         expect(cellSpec.attrs?.alignment).toBeTruthy();
         expect(cellSpec.attrs?.alignment?.default).toBe(null);
+    });
+
+    test("supports suggestion mark", () => {
+        expect(tableSchema.marks.suggestion).toBeTruthy();
     });
 });

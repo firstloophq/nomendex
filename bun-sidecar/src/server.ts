@@ -1,6 +1,7 @@
 import { serve, type ServerWebSocket, type Terminal, type Subprocess } from "bun";
 import index from "./index.html";
 import { createServiceLogger, getLogFile, startupLog, markStartupComplete, isInStartupMode } from "./lib/logger";
+import { emitOTelLog, getOTelLogsConfig } from "./lib/otel-logs";
 import { initializeWorkspaceServices } from "./services/workspace-init";
 import { appendFile } from "node:fs/promises";
 import { baseDirRoute } from "./server-routes/base-dir";
@@ -48,6 +49,12 @@ type WSData = TerminalWSData | CRDTWSData | Record<string, never>;
 // Create service-specific logger for the server
 const serverLogger = createServiceLogger("SERVER");
 const apiLogger = createServiceLogger("API");
+const otelLogsConfig = getOTelLogsConfig();
+
+startupLog.info("OTEL logs exporter", {
+    enabled: otelLogsConfig.enabled,
+    endpoint: otelLogsConfig.endpoint ?? null,
+});
 
 function isEnabledFlag(value: string | undefined): boolean {
     if (!value) return false;
@@ -368,6 +375,16 @@ const server = serve<WSData>({
                         default:
                             apiLogger.info(String(message), safeMeta);
                     }
+
+                    emitOTelLog({
+                        event: "frontend_log",
+                        level: String(level),
+                        context: "frontend",
+                        message: String(message),
+                        data: safeMeta,
+                        source: "browser",
+                        serviceName: "nomendex-browser",
+                    });
                     return new Response(null, { status: 204 });
                 } catch {
                     return Response.json({ error: "Failed to record log" }, { status: 500 });
@@ -379,7 +396,10 @@ const server = serve<WSData>({
         "/api/logs": {
             async POST(req: Request) {
                 try {
-                    const data = await req.json();
+                    const raw = await req.json();
+                    const data = typeof raw === "object" && raw !== null
+                        ? raw as Record<string, unknown>
+                        : { message: String(raw) };
                     const timestamp = new Date().toISOString();
                     const logEntry = JSON.stringify({ timestamp, ...data }) + "\n";
 
@@ -391,6 +411,34 @@ const server = serve<WSData>({
                     } else {
                         await appendFile(logPath, logEntry);
                     }
+
+                    const payloadData = typeof data.data === "object" && data.data !== null
+                        ? data.data as Record<string, unknown>
+                        : data;
+                    const traceId = typeof data.traceId === "string"
+                        ? data.traceId
+                        : (typeof payloadData.traceId === "string" ? payloadData.traceId : null);
+                    const spanId = typeof data.spanId === "string"
+                        ? data.spanId
+                        : (typeof payloadData.spanId === "string" ? payloadData.spanId : null);
+                    const timestampMs = typeof payloadData.ts === "number" && Number.isFinite(payloadData.ts)
+                        ? payloadData.ts
+                        : Date.now();
+
+                    emitOTelLog({
+                        event: typeof data.event === "string" ? data.event : "frontend_log",
+                        level: typeof data.level === "string" ? data.level : "info",
+                        context: typeof data.context === "string" ? data.context : "frontend",
+                        message: typeof data.message === "string" ? data.message : (
+                            typeof data.event === "string" ? data.event : "frontend_log"
+                        ),
+                        data: payloadData,
+                        traceId,
+                        spanId,
+                        source: "browser",
+                        serviceName: "nomendex-browser",
+                        timestampMs,
+                    });
 
                     return new Response(null, { status: 204 });
                 } catch {
@@ -762,7 +810,11 @@ startupLog.info(`Server port written to ${serverPortPath}`);
 // Warn if health check not received within 10 seconds (helps diagnose connectivity issues)
 setTimeout(() => {
     if (isInStartupMode()) {
-        startupLog.warn('Health check not received after 10 seconds - native app may not be connecting');
-        startupLog.info('Server is running but native app health check has not been called');
+        if (process.env.NODE_ENV === "development") {
+            startupLog.debug('Health check not received after 10 seconds (dev mode)');
+        } else {
+            startupLog.warn('Health check not received after 10 seconds - native app may not be connecting');
+            startupLog.info('Server is running but native app health check has not been called');
+        }
     }
 }, 10000);

@@ -6,9 +6,11 @@ import {
     type AgentConfig,
     AgentConfigSchema,
     type AgentPreferences,
+    AgentPreferencesSchema,
     DEFAULT_AGENT,
     DEFAULT_PREFERENCES,
     MCP_REGISTRY,
+    mergeAgentPreferences,
     type McpServerDefinition,
 } from "./index";
 
@@ -40,7 +42,17 @@ async function getPreferences(): Promise<AgentPreferences> {
         await ensureAgentsDir();
         const file = Bun.file(getPreferencesFile());
         if (await file.exists()) {
-            return await file.json();
+            const raw = await file.json();
+            const parseResult = AgentPreferencesSchema.safeParse({
+                ...DEFAULT_PREFERENCES,
+                ...raw,
+            });
+            if (parseResult.success) {
+                return parseResult.data;
+            }
+            agentsLogger.error("Invalid preferences file, falling back to defaults", {
+                issues: parseResult.error.issues,
+            });
         }
         return DEFAULT_PREFERENCES;
     } catch (error) {
@@ -50,10 +62,12 @@ async function getPreferences(): Promise<AgentPreferences> {
 }
 
 // Save preferences
-async function savePreferences(preferences: AgentPreferences): Promise<void> {
+async function savePreferences(preferences: Partial<AgentPreferences>): Promise<void> {
     try {
         await ensureAgentsDir();
-        await Bun.write(getPreferencesFile(), JSON.stringify(preferences, null, 2));
+        const current = await getPreferences();
+        const merged = mergeAgentPreferences(current, preferences);
+        await Bun.write(getPreferencesFile(), JSON.stringify(merged, null, 2));
     } catch (error) {
         agentsLogger.error("Failed to save preferences", { error });
         throw error;
@@ -62,7 +76,7 @@ async function savePreferences(preferences: AgentPreferences): Promise<void> {
 
 // Get a single agent by ID
 async function getAgent(input: { agentId: string }): Promise<AgentConfig | null> {
-    agentsLogger.info(`Getting agent: ${input.agentId}`);
+    agentsLogger.debug(`Getting agent: ${input.agentId}`);
 
     // Return default agent if requested
     if (input.agentId === "default") {
@@ -98,7 +112,7 @@ async function getAgent(input: { agentId: string }): Promise<AgentConfig | null>
 
 // List all agents (including default)
 async function listAgents(): Promise<AgentConfig[]> {
-    agentsLogger.info("Listing all agents");
+    agentsLogger.debug("Listing all agents");
 
     try {
         await ensureAgentsDir();
@@ -136,7 +150,7 @@ async function listAgents(): Promise<AgentConfig[]> {
             return a.name.localeCompare(b.name);
         });
 
-        agentsLogger.info(`Found ${agents.length} agents`);
+        agentsLogger.debug(`Found ${agents.length} agents`);
         return agents;
     } catch (error) {
         agentsLogger.error("Failed to list agents", { error });

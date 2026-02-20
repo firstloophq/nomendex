@@ -55,6 +55,16 @@ export const AgentPreferencesSchema = z.object({
 
 export type AgentPreferences = z.infer<typeof AgentPreferencesSchema>;
 
+export function mergeAgentPreferences(
+    current: AgentPreferences,
+    updates: Partial<AgentPreferences>
+): AgentPreferences {
+    return AgentPreferencesSchema.parse({
+        ...current,
+        ...updates,
+    });
+}
+
 // MCP Server config types - supports stdio and SSE transports
 const StdioConfigSchema = z.object({
     type: z.literal("stdio").optional(), // Default if not specified

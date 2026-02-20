@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "bun --hot src/server.ts",
     "build": "bun run tsc --noEmit",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
     "db:generate": "bunx prisma generate",
     "db:migrate": "bunx prisma migrate dev",
     "db:push": "bunx prisma db push"

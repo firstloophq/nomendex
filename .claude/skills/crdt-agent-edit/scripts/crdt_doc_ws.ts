@@ -10,12 +10,12 @@ interface CRDTModule {
   createOperationId: (params: { clientId: string; clock: number }) => { clientId: string; clock: number };
   createRecord: () => CRDTRecord;
   decodeRecordSnapshot: (params: { data: Uint8Array }) => CRDTRecord;
-  editDocument: (params: {
+  suggestEdit: (params: {
     doc: unknown;
     clock: LamportClock;
     oldString: string;
     newString: string;
-  }) => { success: boolean; error?: string; doc?: unknown; clock?: LamportClock; ops?: ReadonlyArray<RecordOp> };
+  }) => { success: boolean; error?: string; doc?: unknown; clock?: LamportClock; ops?: ReadonlyArray<RecordOp>; suggestionId?: string };
   generateKeyBetween: (params: { a: string | null; b: string | null }) => string;
   getCardsInColumn: (params: { record: CRDTRecord; column: string }) => ReadonlyArray<{ cardId: string; order: string }>;
   getBodyText: (params: { record: CRDTRecord }) => string;
@@ -23,13 +23,13 @@ interface CRDTModule {
     clock: LamportClock;
     timestamp: { clientId: string; clock: number };
   };
-  insertAtAnchor: (params: {
+  suggestInsert: (params: {
     doc: unknown;
     clock: LamportClock;
     content: string;
     anchor?: string;
     position?: "before" | "after";
-  }) => { success: boolean; error?: string; doc?: unknown; clock?: LamportClock; ops?: ReadonlyArray<RecordOp> };
+  }) => { success: boolean; error?: string; doc?: unknown; clock?: LamportClock; ops?: ReadonlyArray<RecordOp>; suggestionId?: string };
   receive: (params: { clock: LamportClock; remoteCounter: number }) => LamportClock;
   recordToMarkdown: (params: { record: CRDTRecord }) => string;
 }
@@ -63,12 +63,12 @@ const {
   createOperationId,
   createRecord,
   decodeRecordSnapshot,
-  editDocument,
+  suggestEdit,
   generateKeyBetween,
   getCardsInColumn,
   getBodyText,
   increment,
-  insertAtAnchor,
+  suggestInsert,
   receive,
   recordToMarkdown,
 } = crdt;
@@ -615,7 +615,7 @@ async function runReplace(flags: Map<string, string>, positionals: string[]): Pr
   });
 
   const clock = deriveClockFromRecord({ clientId, record });
-  const result = editDocument({
+  const result = suggestEdit({
     doc: record.body,
     clock,
     oldString,
@@ -647,6 +647,7 @@ async function runReplace(flags: Map<string, string>, positionals: string[]): Pr
     dryRun,
     docId,
     opCount: result.ops.length,
+    suggestionId: "suggestionId" in result ? result.suggestionId ?? null : null,
     body: getBodyText({ record: previewRecord }),
   }, null, 2));
 }
@@ -669,7 +670,6 @@ async function runInsert(flags: Map<string, string>, positionals: string[]): Pro
   if (position !== "before" && position !== "after") {
     throw new Error(`--position must be "before" or "after". Received: ${position}`);
   }
-
   const dryRun = hasFlag(flags, "dry-run");
 
   const { ws, record } = await syncDocument({
@@ -681,7 +681,7 @@ async function runInsert(flags: Map<string, string>, positionals: string[]): Pro
   });
 
   const clock = deriveClockFromRecord({ clientId, record });
-  const result = insertAtAnchor({
+  const result = suggestInsert({
     doc: record.body,
     clock,
     content,
@@ -714,6 +714,7 @@ async function runInsert(flags: Map<string, string>, positionals: string[]): Pro
     dryRun,
     docId,
     opCount: result.ops.length,
+    suggestionId: "suggestionId" in result ? result.suggestionId ?? null : null,
     body: getBodyText({ record: previewRecord }),
   }, null, 2));
 }

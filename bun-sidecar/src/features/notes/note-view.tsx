@@ -4,7 +4,7 @@ import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { todosAPI } from "@/hooks/useTodosAPI";
 import { EditorState, Selection, NodeSelection, TextSelection, Plugin } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
+import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
 import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
 import { keymap } from "prosemirror-keymap";
@@ -261,6 +261,106 @@ function summarizeErrorForDebug(error: unknown): Record<string, unknown> {
     };
 }
 
+function createSuggestionInlineActionsPlugin(params: {
+    onDecision: (decision: { suggestionId: string; decision: "accept" | "reject" }) => void;
+}): Plugin<DecorationSet> {
+    const buildDecorations = (doc: EditorState["doc"]): DecorationSet => {
+        const suggestionAnchorById = new Map<string, number>();
+
+        doc.descendants((node, pos) => {
+            if (!node.isText) return;
+
+            const suggestionMark = node.marks.find(
+                (mark) => mark.type.name === "suggestion" && typeof mark.attrs?.id === "string" && mark.attrs.id.trim() !== ""
+            );
+            if (!suggestionMark) return;
+
+            const suggestionId = String(suggestionMark.attrs?.id || "").trim();
+            if (!suggestionId) return;
+
+            const existingPos = suggestionAnchorById.get(suggestionId);
+            if (existingPos === undefined || pos < existingPos) {
+                suggestionAnchorById.set(suggestionId, pos);
+            }
+        });
+
+        const decorations = Array.from(suggestionAnchorById.entries())
+            .sort((a, b) => a[1] - b[1])
+            .map(([suggestionId, pos]) => {
+                return Decoration.widget(pos, () => {
+                    const anchor = document.createElement("span");
+                    anchor.className = "suggestion-inline-actions-anchor";
+                    anchor.contentEditable = "false";
+
+                    const actions = document.createElement("span");
+                    actions.className = "suggestion-inline-actions";
+
+                    const makeButton = (options: {
+                        label: "Y" | "N";
+                        title: string;
+                        className: string;
+                        decision: "accept" | "reject";
+                    }) => {
+                        const button = document.createElement("button");
+                        button.type = "button";
+                        button.className = `suggestion-inline-action ${options.className}`;
+                        button.title = options.title;
+                        button.textContent = options.label;
+                        button.addEventListener("mousedown", (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        });
+                        button.addEventListener("click", (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            params.onDecision({ suggestionId, decision: options.decision });
+                        });
+                        return button;
+                    };
+
+                    actions.append(
+                        makeButton({
+                            label: "Y",
+                            title: "Accept suggestion",
+                            className: "suggestion-inline-action-accept",
+                            decision: "accept",
+                        }),
+                        makeButton({
+                            label: "N",
+                            title: "Reject suggestion",
+                            className: "suggestion-inline-action-reject",
+                            decision: "reject",
+                        }),
+                    );
+
+                    anchor.appendChild(actions);
+                    return anchor;
+                }, { side: -1, key: `suggestion-inline-actions-${suggestionId}` });
+            });
+
+        return DecorationSet.create(doc, decorations);
+    };
+
+    const plugin = new Plugin<DecorationSet>({
+        state: {
+            init: (_config, state) => buildDecorations(state.doc),
+            apply: (tr, previous) => {
+                if (!tr.docChanged) {
+                    return previous.map(tr.mapping, tr.doc);
+                }
+                return buildDecorations(tr.doc);
+            },
+        },
+        props: {
+            decorations(state) {
+                return plugin.getState(state) ?? DecorationSet.empty;
+            },
+        },
+    });
+
+    return plugin;
+}
+
 export function NotesView(props: NotesViewProps) {
     const { noteFileName, tabId, autoFocus = true, compact = false, scrollToLine } = props;
     if (!tabId) {
@@ -317,6 +417,76 @@ export function NotesView(props: NotesViewProps) {
     const hasCollab = Boolean(collab);
     const collabScope = getWorkspaceCollabScope({ activeWorkspace });
     const collabDocId = buildNoteDocId({ scope: collabScope, noteFileName });
+
+    const applySuggestionDecision = useCallback((params: {
+        suggestionId: string;
+        decision: "accept" | "reject";
+    }) => {
+        const view = viewRef.current;
+        if (!view) return;
+
+        const suggestionMarkType = view.state.schema.marks.suggestion;
+        if (!suggestionMarkType) return;
+
+        const deleteRanges: Array<{ from: number; to: number }> = [];
+        const unmarkRanges: Array<{ from: number; to: number; action: "insert" | "delete" }> = [];
+
+        view.state.doc.descendants((node, pos) => {
+            if (!node.isText) return;
+
+            const suggestionMark = node.marks.find((mark) => (
+                mark.type === suggestionMarkType
+                && String(mark.attrs?.id || "") === params.suggestionId
+            ));
+            if (!suggestionMark) return;
+
+            const action = suggestionMark.attrs?.action === "delete" ? "delete" : "insert";
+            const from = pos;
+            const to = pos + node.nodeSize;
+
+            if (params.decision === "accept") {
+                if (action === "insert") {
+                    unmarkRanges.push({ from, to, action });
+                } else {
+                    deleteRanges.push({ from, to });
+                }
+            } else if (action === "delete") {
+                unmarkRanges.push({ from, to, action });
+            } else {
+                deleteRanges.push({ from, to });
+            }
+        });
+
+        if (deleteRanges.length === 0 && unmarkRanges.length === 0) {
+            toast("Suggestion not found");
+            return;
+        }
+
+        let tr = view.state.tr;
+
+        for (const range of unmarkRanges) {
+            tr = tr.removeMark(
+                range.from,
+                range.to,
+                suggestionMarkType.create({
+                    id: params.suggestionId,
+                    action: range.action,
+                })
+            );
+        }
+
+        deleteRanges
+            .sort((a, b) => b.from - a.from)
+            .forEach((range) => {
+                tr = tr.delete(range.from, range.to);
+            });
+
+        if (!tr.docChanged && tr.steps.length === 0) {
+            return;
+        }
+
+        view.dispatch(tr);
+    }, []);
 
     useEffect(() => {
         const view = viewRef.current;
@@ -971,6 +1141,9 @@ export function NotesView(props: NotesViewProps) {
 
         // Spellcheck plugin for spell checking
         const spellcheckPlugin = createSpellcheckPlugin();
+        const suggestionInlineActionsPlugin = createSuggestionInlineActionsPlugin({
+            onDecision: applySuggestionDecision,
+        });
 
         // Build CRDT plugin + cursor plugin + undo/redo keymap for collab mode
         let crdtPlugin: Plugin<CRDTPluginState> | null = null;
@@ -1065,6 +1238,7 @@ export function NotesView(props: NotesViewProps) {
                 wikiLinkPlugin,
                 tagLinkPlugin,
                 tagDecorationPlugin,
+                suggestionInlineActionsPlugin,
                 searchPlugin,
                 spellcheckPlugin,
             ]
@@ -1077,6 +1251,7 @@ export function NotesView(props: NotesViewProps) {
                 wikiLinkPlugin,
                 tagLinkPlugin,
                 tagDecorationPlugin,
+                suggestionInlineActionsPlugin,
                 searchPlugin,
                 spellcheckPlugin,
             ];
@@ -1683,6 +1858,9 @@ export function NotesView(props: NotesViewProps) {
 
             // Spellcheck plugin for spell checking
             const spellcheckPlugin = createSpellcheckPlugin();
+            const suggestionInlineActionsPlugin = createSuggestionInlineActionsPlugin({
+                onDecision: applySuggestionDecision,
+            });
 
             let newState = EditorState.create({
                 doc,
@@ -1695,6 +1873,7 @@ export function NotesView(props: NotesViewProps) {
                     wikiLinkPlugin,
                     tagLinkPlugin,
                     tagDecorationPlugin,
+                    suggestionInlineActionsPlugin,
                     searchPlugin, // Search highlighting
                     spellcheckPlugin, // Spellcheck
                 ],
@@ -1715,7 +1894,7 @@ export function NotesView(props: NotesViewProps) {
             viewRef.current.updateState(newState);
             initializedContentRef.current = content;
         }
-    }, [content, isRichTextMode, hasNote, hasCollab]);
+    }, [content, isRichTextMode, hasNote, hasCollab, applySuggestionDecision]);
 
     // Move ProseMirror menubar into the header toolbar container
     useEffect(() => {
@@ -2068,6 +2247,7 @@ export function NotesView(props: NotesViewProps) {
                         <ProjectInput project={project} onProjectChange={handleProjectChange} />
                         <TagInput tags={tags} onTagsChange={handleTagsChange} placeholder="Add tag..." />
                     </div>
+
                 </div>
             )}
 

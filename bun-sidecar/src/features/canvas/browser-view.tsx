@@ -5,6 +5,16 @@ import { useCanvasAPI } from "@/hooks/useCanvasAPI";
 import { useTheme } from "@/hooks/useTheme";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { canvasPluginSerial, type CanvasItem } from "./index";
 import { cn } from "@/lib/utils";
@@ -39,6 +49,8 @@ export function CanvasBrowserView(props: CanvasBrowserViewProps) {
     const [newCanvasTitle, setNewCanvasTitle] = useState("");
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
+    const [deletingCanvasId, setDeletingCanvasId] = useState<string | null>(null);
+    const [pendingDeleteCanvasId, setPendingDeleteCanvasId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const hasSetTabNameRef = useRef(false);
@@ -96,17 +108,20 @@ export function CanvasBrowserView(props: CanvasBrowserViewProps) {
         }
     }, [canvasAPI, handleOpenCanvas, newCanvasTitle]);
 
-    const handleDeleteCanvas = useCallback(async (canvasId: string) => {
-        const didConfirm = window.confirm("Delete this canvas?");
-        if (!didConfirm) return;
-
+    const handleConfirmDeleteCanvas = useCallback(async () => {
+        if (!pendingDeleteCanvasId || deletingCanvasId) return;
+        const canvasId = pendingDeleteCanvasId;
         try {
+            setDeletingCanvasId(canvasId);
             await canvasAPI.deleteCanvas({ canvasId });
             setCanvases((prev) => prev.filter((canvas) => canvas.id !== canvasId));
+            setPendingDeleteCanvasId(null);
         } catch (deleteError) {
             setError(deleteError instanceof Error ? deleteError.message : "Failed to delete canvas");
+        } finally {
+            setDeletingCanvasId(null);
         }
-    }, [canvasAPI]);
+    }, [canvasAPI, deletingCanvasId, pendingDeleteCanvasId]);
 
     if (loading) {
         return (
@@ -187,16 +202,25 @@ export function CanvasBrowserView(props: CanvasBrowserViewProps) {
                 ) : (
                     <div className="space-y-2">
                         {filteredCanvases.map((canvas) => (
-                            <button
+                            <div
                                 key={canvas.id}
                                 className={cn(
                                     "w-full text-left rounded-md border px-3 py-2 transition-colors",
+                                    "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
                                     "hover:bg-muted/40"
                                 )}
                                 style={{
                                     borderColor: currentTheme.styles.borderDefault,
                                 }}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => handleOpenCanvas(canvas.id)}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        handleOpenCanvas(canvas.id);
+                                    }
+                                }}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
@@ -219,18 +243,53 @@ export function CanvasBrowserView(props: CanvasBrowserViewProps) {
                                         className="h-7 w-7 flex-shrink-0"
                                         onClick={(event) => {
                                             event.stopPropagation();
-                                            void handleDeleteCanvas(canvas.id);
+                                            setPendingDeleteCanvasId(canvas.id);
                                         }}
                                         title="Delete canvas"
                                     >
                                         <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>
-                            </button>
+                            </div>
                         ))}
                     </div>
                 )}
             </div>
+
+            <AlertDialog
+                open={pendingDeleteCanvasId !== null}
+                onOpenChange={(open) => {
+                    if (!open && !deletingCanvasId) {
+                        setPendingDeleteCanvasId(null);
+                    }
+                }}
+            >
+                <AlertDialogContent style={{ backgroundColor: currentTheme.styles.surfacePrimary }}>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Canvas</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete this canvas? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel
+                            disabled={!!deletingCanvasId}
+                            onClick={() => setPendingDeleteCanvasId(null)}
+                        >
+                            Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            disabled={!!deletingCanvasId}
+                            onClick={(event) => {
+                                event.preventDefault();
+                                void handleConfirmDeleteCanvas();
+                            }}
+                        >
+                            {deletingCanvasId ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

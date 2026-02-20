@@ -730,7 +730,7 @@ export function createGitClient(config: GitClientConfig) {
                 // Check our custom merge state first
                 const state = await this.getMergeState();
                 const hasCustomState = state?.inProgress ?? false;
-                logger.info("Checking merge conflict - custom state", { hasCustomState, state: state ? JSON.stringify(state).slice(0, 200) : null });
+                logger.debug("Checking merge conflict - custom state", { hasCustomState, state: state ? JSON.stringify(state).slice(0, 200) : null });
 
                 if (hasCustomState) {
                     return true;
@@ -739,7 +739,7 @@ export function createGitClient(config: GitClientConfig) {
                 // Also check standard MERGE_HEAD for compatibility
                 const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
                 const hasMergeHead = await Bun.file(mergeHeadPath).exists();
-                logger.info("Checking merge conflict - MERGE_HEAD", { hasMergeHead, path: mergeHeadPath });
+                logger.debug("Checking merge conflict - MERGE_HEAD", { hasMergeHead, path: mergeHeadPath });
 
                 return hasMergeHead;
             } catch (e) {
@@ -1146,14 +1146,14 @@ export function createGitClient(config: GitClientConfig) {
         async getMergeState(): Promise<MergeState | null> {
             try {
                 const statePath = this.getMergeStatePath();
-                logger.info("Reading merge state file", { statePath });
+                logger.debug("Reading merge state file", { statePath });
                 const file = Bun.file(statePath);
                 const exists = await file.exists();
-                logger.info("Merge state file exists check", { exists, statePath });
+                logger.debug("Merge state file exists check", { exists, statePath });
                 if (!exists) return null;
                 const content = await file.text();
                 const state = JSON.parse(content) as MergeState;
-                logger.info("Loaded merge state from file", {
+                logger.debug("Loaded merge state from file", {
                     inProgress: state.inProgress,
                     conflictFilesCount: state.conflictFiles?.length,
                     oursRef: state.oursRef,

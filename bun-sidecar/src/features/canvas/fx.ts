@@ -1,4 +1,5 @@
 import { createServiceLogger } from "@/lib/logger";
+import { emitOTelLog } from "@/lib/otel-logs";
 import { FeatureStorage } from "@/storage/FeatureStorage";
 import { getCanvasesPath, hasActiveWorkspace } from "@/storage/root-path";
 import { CanvasItem, CanvasItemSchema } from "./index";
@@ -19,6 +20,21 @@ let storage: FeatureStorage | null = null;
 
 function nowIso(): string {
     return new Date().toISOString();
+}
+
+function emitCanvasTelemetry(params: {
+    event: string;
+    level?: "debug" | "info" | "warn" | "error";
+    data?: Record<string, unknown>;
+}) {
+    emitOTelLog({
+        event: params.event,
+        level: params.level ?? "info",
+        context: "canvas.persistence",
+        message: params.event,
+        data: params.data ?? {},
+        source: "server",
+    });
 }
 
 function normalizeTitle(title: string | undefined): string {
@@ -160,6 +176,11 @@ export async function deleteCanvas(input: { canvasId: string }): Promise<{ succe
     const items = await readIndex();
     const nextItems = items.filter((item) => item.id !== input.canvasId);
     if (nextItems.length === items.length) {
+        emitCanvasTelemetry({
+            event: "canvas_delete_missing",
+            level: "warn",
+            data: { canvasId: input.canvasId },
+        });
         return { success: false };
     }
 
@@ -171,13 +192,28 @@ export async function deleteCanvas(input: { canvasId: string }): Promise<{ succe
         // Ignore missing snapshot files.
     }
 
+    emitCanvasTelemetry({
+        event: "canvas_delete_success",
+        data: { canvasId: input.canvasId },
+    });
+
     return { success: true };
 }
 
 export async function getCanvasSnapshot(input: {
     canvasId: string;
 }): Promise<{ snapshot: string | null }> {
+    const startedAt = Date.now();
     const snapshot = await getStorage().readFile(snapshotFileName(input.canvasId));
+    emitCanvasTelemetry({
+        event: "canvas_snapshot_get",
+        data: {
+            canvasId: input.canvasId,
+            found: !!snapshot,
+            bytes: snapshot?.length ?? 0,
+            durationMs: Date.now() - startedAt,
+        },
+    });
     return { snapshot };
 }
 
@@ -185,26 +221,56 @@ export async function saveCanvasSnapshot(input: {
     canvasId: string;
     snapshot: string;
 }): Promise<{ success: boolean; updatedAt: string }> {
-    const items = await readIndex();
-    let updatedAt = nowIso();
-    let found = false;
+    const startedAt = Date.now();
+    try {
+        const items = await readIndex();
+        let updatedAt = nowIso();
+        let found = false;
 
-    const nextItems = items.map((item) => {
-        if (item.id !== input.canvasId) return item;
-        found = true;
-        const nextItem = {
-            ...item,
-            updatedAt,
-        };
-        return nextItem;
-    });
+        const nextItems = items.map((item) => {
+            if (item.id !== input.canvasId) return item;
+            found = true;
+            const nextItem = {
+                ...item,
+                updatedAt,
+            };
+            return nextItem;
+        });
 
-    if (!found) {
-        throw new Error(`Canvas not found: ${input.canvasId}`);
+        if (!found) {
+            emitCanvasTelemetry({
+                event: "canvas_snapshot_save_missing",
+                level: "warn",
+                data: { canvasId: input.canvasId, bytes: input.snapshot.length },
+            });
+            throw new Error(`Canvas not found: ${input.canvasId}`);
+        }
+
+        await getStorage().writeFile(snapshotFileName(input.canvasId), input.snapshot);
+        await writeIndex(nextItems);
+
+        emitCanvasTelemetry({
+            event: "canvas_snapshot_save_success",
+            data: {
+                canvasId: input.canvasId,
+                bytes: input.snapshot.length,
+                updatedAt,
+                durationMs: Date.now() - startedAt,
+            },
+        });
+
+        return { success: true, updatedAt };
+    } catch (error) {
+        emitCanvasTelemetry({
+            event: "canvas_snapshot_save_error",
+            level: "error",
+            data: {
+                canvasId: input.canvasId,
+                bytes: input.snapshot.length,
+                durationMs: Date.now() - startedAt,
+                message: error instanceof Error ? error.message : String(error),
+            },
+        });
+        throw error;
     }
-
-    await getStorage().writeFile(snapshotFileName(input.canvasId), input.snapshot);
-    await writeIndex(nextItems);
-
-    return { success: true, updatedAt };
 }

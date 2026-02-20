@@ -173,12 +173,12 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
     GET: async (_req) => {
         try {
             const git = getGitClient();
-            logger.info("Getting git status", { path: getRootPath() });
+            logger.debug("Getting git status", { path: getRootPath() });
 
             const isInitialized = await git.isRepo();
 
             if (!isInitialized) {
-                logger.info("Git not initialized, returning early");
+                logger.debug("Git not initialized, returning early");
                 return Response.json({
                     success: true,
                     initialized: false,
@@ -188,7 +188,7 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
 
             // Get current branch
             const currentBranch = await git.currentBranch();
-            logger.info("Current branch", { currentBranch });
+            logger.debug("Current branch", { currentBranch });
 
             // Check if remote exists
             const hasRemote = await git.hasRemote("origin");
@@ -216,14 +216,14 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
             const hasUncommittedChanges = statusResult.hasUncommittedChanges;
 
             // Check for merge conflicts
-            logger.info("=== /api/git/status: checking hasMergeConflict ===");
+            logger.debug("=== /api/git/status: checking hasMergeConflict ===");
             const hasMergeConflict = await git.hasMergeConflict();
-            logger.info("=== /api/git/status: hasMergeConflict result ===", { hasMergeConflict });
+            logger.debug("=== /api/git/status: hasMergeConflict result ===", { hasMergeConflict });
             let conflictCount = 0;
             if (hasMergeConflict) {
                 const conflicts = await git.getConflictFiles();
                 conflictCount = conflicts.filter((c) => !c.resolved).length;
-                logger.info("Conflict count from getConflictFiles", { conflictCount, totalConflicts: conflicts.length });
+                logger.debug("Conflict count from getConflictFiles", { conflictCount, totalConflicts: conflicts.length });
             }
 
             // Get recent commits
@@ -252,7 +252,7 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
                 recentCommits,
             };
 
-            logger.info("Returning git status", {
+            logger.debug("Returning git status", {
                 initialized: response.initialized,
                 hasRemote: response.hasRemote,
                 currentBranch: response.currentBranch,

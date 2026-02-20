@@ -210,7 +210,7 @@ async function deleteTodo(input: { todoId: string }) {
 }
 
 async function getProjects() {
-    todosLogger.info(`Getting unique projects`);
+    todosLogger.debug(`Getting unique projects`);
     
     try {
         const todos = await getDb().findAll();
@@ -225,7 +225,7 @@ async function getProjects() {
         }
         
         const projects = Array.from(projectSet).sort();
-        todosLogger.info(`Found ${projects.length} unique projects`);
+        todosLogger.debug(`Found ${projects.length} unique projects`);
         return projects;
     } catch (error) {
         todosLogger.error(`Failed to get projects`, { error });

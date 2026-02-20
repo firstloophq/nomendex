@@ -24,13 +24,13 @@ bun .agents/skills/crdt-agent-edit/scripts/crdt_doc_ws.ts build-doc-id \
 bun .agents/skills/crdt-agent-edit/scripts/crdt_doc_ws.ts read \
   --doc-id "ws:<scope>:note:daily.md"
 
-# 4) Replace text via content-addressed edit
+# 4) Replace text (always suggestion-marked)
 bun .agents/skills/crdt-agent-edit/scripts/crdt_doc_ws.ts replace \
   --doc-id "ws:<scope>:note:daily.md" \
   --old "old sentence" \
   --new "new sentence"
 
-# 5) Insert text relative to an anchor string
+# 5) Insert text relative to an anchor string (always suggestion-marked)
 bun .agents/skills/crdt-agent-edit/scripts/crdt_doc_ws.ts insert \
   --doc-id "ws:<scope>:note:daily.md" \
   --content "Added line" \
@@ -71,6 +71,7 @@ bun .agents/skills/crdt-agent-edit/scripts/crdt_doc_ws.ts move-card \
 
 ## Notes
 
+- `replace` and `insert` always create suggestion-marked edits for review in the UI.
 - `replace` requires a unique `--old` match in current document text.
 - `insert --anchor` requires a unique anchor match when provided.
 - Metadata commands (`set-field`, `add-set`, `remove-set`, `move-card`) operate directly on CRDT record fields/sets.

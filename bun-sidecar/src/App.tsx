@@ -16,6 +16,7 @@ import { McpServerFormPage } from "./pages/McpServerFormPage";
 import { NewAgentPage } from "./pages/NewAgentPage";
 import { TestEditorPage } from "./features/test-editor";
 import { CollabTestPage } from "./pages/CollabTestPage";
+import { CanvasTestPage } from "./pages/CanvasTestPage";
 import { TeamSettingsPage } from "./pages/TeamSettingsPage";
 import { Toaster } from "@/components/ui/sonner";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
@@ -129,6 +130,7 @@ export function App() {
                                                 <Route path="/team" element={<TeamSettingsPage />} />
                                                 <Route path="/test-editor" element={<TestEditorPage />} />
                                                 <Route path="/collab-test" element={<CollabTestPage />} />
+                                                <Route path="/canvas-test" element={<CanvasTestPage />} />
 
                                                 {/* Catch-all redirect to root */}
                                                 <Route path="*" element={<Navigate to="/" replace />} />

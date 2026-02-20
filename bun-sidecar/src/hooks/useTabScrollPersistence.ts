@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 // Module-level storage survives component unmounts
 const scrollPositions = new Map<string, number>();
 
-const DEBUG = true;
+const DEBUG = typeof window !== "undefined" && window.localStorage.getItem("debug:scroll-persist") === "1";
 function debugLog(...args: unknown[]) {
     if (DEBUG) console.log("[ScrollPersistence]", ...args);
 }

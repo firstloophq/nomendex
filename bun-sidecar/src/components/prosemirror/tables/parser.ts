@@ -68,12 +68,68 @@ function wikiLinkPlugin(md: MarkdownIt): void {
 }
 
 /**
+ * Markdown-it plugin for serialized suggestion marks.
+ *
+ * Syntax:
+ * - insert open: `[[[+<suggestion-id>]]]`
+ * - insert close: `[[[/+]]]`
+ * - delete open: `[[[-<suggestion-id>]]]`
+ * - delete close: `[[[/-]]]`
+ */
+function suggestionMarkPlugin(md: MarkdownIt): void {
+    md.inline.ruler.before("wiki_link", "suggestion_mark", (state: StateInline, silent: boolean) => {
+        const start = state.pos;
+
+        if (!state.src.startsWith("[[[", start)) return false;
+
+        const closeIdx = state.src.indexOf("]]]", start + 3);
+        if (closeIdx === -1) return false;
+
+        const marker = state.src.slice(start + 3, closeIdx).trim();
+        let tokenType: "suggestion_insert_open" | "suggestion_insert_close" | "suggestion_delete_open" | "suggestion_delete_close" | null = null;
+        let id = "";
+
+        if (marker.startsWith("+")) {
+            id = marker.slice(1).trim();
+            if (!id) return false;
+            tokenType = "suggestion_insert_open";
+        } else if (marker === "/+") {
+            tokenType = "suggestion_insert_close";
+        } else if (marker.startsWith("-")) {
+            id = marker.slice(1).trim();
+            if (!id) return false;
+            tokenType = "suggestion_delete_open";
+        } else if (marker === "/-") {
+            tokenType = "suggestion_delete_close";
+        } else {
+            return false;
+        }
+
+        if (!silent && tokenType) {
+            const isOpen = tokenType.endsWith("_open");
+            const isInsert = tokenType.startsWith("suggestion_insert");
+            const token = state.push(tokenType, "span", isOpen ? 1 : -1);
+            if (isOpen) {
+                token.attrs = [
+                    ["data-suggestion-id", id],
+                    ["data-suggestion-action", isInsert ? "insert" : "delete"],
+                ];
+            }
+        }
+
+        state.pos = closeIdx + 3;
+        return true;
+    });
+}
+
+/**
  * Create a markdown-it instance with GFM table support and wiki links
  * Note: Default preset includes table support, commonmark does not
  */
 function createMarkdownIt(): MarkdownIt {
     const md = new MarkdownIt({ html: false });
     md.use(wikiLinkPlugin);
+    md.use(suggestionMarkPlugin);
     return md;
 }
 
@@ -133,6 +189,20 @@ const tableTokens = {
     },
     code_inline: { mark: "code" },
     softbreak: { node: "hard_break" },
+    suggestion_insert: {
+        mark: "suggestion",
+        getAttrs: (token: Token) => ({
+            id: token.attrGet("data-suggestion-id") || "",
+            action: "insert",
+        }),
+    },
+    suggestion_delete: {
+        mark: "suggestion",
+        getAttrs: (token: Token) => ({
+            id: token.attrGet("data-suggestion-id") || "",
+            action: "delete",
+        }),
+    },
 
     // Table tokens
     table: { block: "table" },

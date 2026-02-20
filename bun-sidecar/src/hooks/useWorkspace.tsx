@@ -7,6 +7,17 @@ import { emit } from "@/lib/events";
 // Helper to generate unique IDs
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+function isWorkspaceDebugEnabled(): boolean {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("debug:workspace") === "1";
+}
+
+function workspaceDebugLog(...args: unknown[]) {
+    if (isWorkspaceDebugEnabled()) {
+        console.log("[useWorkspace]", ...args);
+    }
+}
+
 export function useWorkspace(_initialRoute?: RouteParams) {
     const [workspace, setWorkspace] = useState<WorkspaceState>({
         tabs: [],
@@ -27,6 +38,9 @@ export function useWorkspace(_initialRoute?: RouteParams) {
     });
     const [loading, setLoading] = useState(true);
     const initialRouteHandledRef = useRef(false);
+    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingWorkspaceSaveRef = useRef<WorkspaceState | null>(null);
+    const lastSavedSnapshotRef = useRef<string | null>(null);
 
     // Load workspace state from server
     useEffect(() => {
@@ -55,7 +69,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
     }, [loading, _initialRoute]);
 
     const fetchWorkspace = async () => {
-        console.log("[useWorkspace] Fetching workspace...");
+        workspaceDebugLog("Fetching workspace...");
         const response = await fetch("/api/workspace");
 
         if (!response.ok) {
@@ -63,7 +77,7 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         }
 
         const result = await response.json();
-        console.log("[useWorkspace] Raw result from server:", result);
+        workspaceDebugLog("Raw result from server:", result);
 
         // Handle Result<WorkspaceState> structure
         if (!result.success) {
@@ -71,15 +85,16 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         }
 
         const dataValidated = WorkspaceStateSchema.parse(result.data);
-        console.log("[useWorkspace] Parsed workspace, chatInputEnterToSend:", dataValidated.chatInputEnterToSend);
+        workspaceDebugLog("Parsed workspace, chatInputEnterToSend:", dataValidated.chatInputEnterToSend);
 
         setWorkspace(dataValidated);
+        lastSavedSnapshotRef.current = JSON.stringify(dataValidated);
         setLoading(false);
     };
 
     const saveWorkspace = useCallback(async (newWorkspace: WorkspaceState) => {
-        console.log("[useWorkspace] Saving workspace, chatInputEnterToSend:", newWorkspace.chatInputEnterToSend);
-        console.log("[useWorkspace] Full workspace to save:", newWorkspace);
+        workspaceDebugLog("Saving workspace, chatInputEnterToSend:", newWorkspace.chatInputEnterToSend);
+        workspaceDebugLog("Full workspace to save:", newWorkspace);
         const response = await fetch("/api/workspace", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -91,12 +106,51 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         }
 
         const result = await response.json();
-        console.log("[useWorkspace] Save response:", result);
+        workspaceDebugLog("Save response:", result);
 
         // Handle Result structure
         if (!result.success) {
             throw new Error(result.error || "Failed to save workspace");
         }
+    }, []);
+
+    const scheduleWorkspaceSave = useCallback((nextWorkspace: WorkspaceState) => {
+        const nextSnapshot = JSON.stringify(nextWorkspace);
+        if (nextSnapshot === lastSavedSnapshotRef.current) {
+            return;
+        }
+
+        pendingWorkspaceSaveRef.current = nextWorkspace;
+
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        saveTimeoutRef.current = setTimeout(() => {
+            const pending = pendingWorkspaceSaveRef.current;
+            if (!pending) return;
+
+            const pendingSnapshot = JSON.stringify(pending);
+            if (pendingSnapshot === lastSavedSnapshotRef.current) {
+                return;
+            }
+
+            void saveWorkspace(pending)
+                .then(() => {
+                    lastSavedSnapshotRef.current = pendingSnapshot;
+                })
+                .catch((error) => {
+                    console.error("[useWorkspace] Failed to persist workspace:", error);
+                });
+        }, 250);
+    }, [saveWorkspace]);
+
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
     }, []);
 
     // Centralized updater to avoid sync effects
@@ -107,11 +161,11 @@ export function useWorkspace(_initialRoute?: RouteParams) {
                     typeof partialOrUpdater === "function"
                         ? (partialOrUpdater as (p: WorkspaceState) => WorkspaceState)(prev)
                         : { ...prev, ...partialOrUpdater };
-                void saveWorkspace(nextState);
+                scheduleWorkspaceSave(nextState);
                 return nextState;
             });
         },
-        [saveWorkspace]
+        [scheduleWorkspaceSave]
     );
 
     const createPluginInstance = useCallback(

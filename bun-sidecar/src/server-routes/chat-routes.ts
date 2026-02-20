@@ -14,6 +14,13 @@ import { acquireFileLock, getActiveNoteFileNameForPath, releaseFileLockForToolUs
 
 // Create logger for chat routes
 const chatLogger = createServiceLogger("CHAT");
+const chatDebugEnabled = process.env.NOMENDEX_CHAT_DEBUG === "1";
+
+function chatDebug(...args: unknown[]) {
+    if (chatDebugEnabled) {
+        console.log(...args);
+    }
+}
 
 // Helper to read image from uploads folder and convert to base64
 async function readImageAsBase64(imageUrl: string): Promise<{ data: string; mediaType: string } | null> {
@@ -231,7 +238,7 @@ setInterval(() => {
     const now = Date.now();
     for (const [id, permission] of pendingPermissions.entries()) {
         if (now - permission.createdAt > 5 * 60 * 1000) {
-            console.log(`[Permissions] Cleaning up stale permission: ${id}`);
+            chatDebug(`[Permissions] Cleaning up stale permission: ${id}`);
             permission.resolve({ decision: "deny" });
             pendingPermissions.delete(id);
         }
@@ -447,11 +454,11 @@ async function updateJSONL<T extends { id: string }>(
 export const chatRoutes = {
     "/api/chat": {
         async POST(req: Request) {
-            console.log("[API] Received chat request");
+            chatDebug("[API] Received chat request");
 
             try {
                 const body = await req.json();
-                console.log("[API] Request body:", body);
+                chatDebug("[API] Request body:", body);
 
                 const { message, images, sessionId, agentId: requestAgentId } = body as {
                     message: string;
@@ -461,7 +468,7 @@ export const chatRoutes = {
                 };
 
                 if (!message && (!images || images.length === 0)) {
-                    console.log("[API] Error: No message or images provided");
+                    chatDebug("[API] Error: No message or images provided");
                     return Response.json(
                         { error: "Message or images required" },
                         { status: 400 }
@@ -470,7 +477,7 @@ export const chatRoutes = {
 
                 // Log images if present
                 if (images && images.length > 0) {
-                    console.log("[API] Images attached:", images.length);
+                    chatDebug("[API] Images attached:", images.length);
                 }
 
                 // Determine which agent to use
@@ -493,17 +500,17 @@ export const chatRoutes = {
                 // Load agent configuration
                 const loadedAgent = await getAgent({ agentId });
                 agentConfig = loadedAgent || DEFAULT_AGENT;
-                console.log("[API] Using agent:", agentConfig.name, "(", agentConfig.id, ")");
-                console.log("[API] Agent mcpServers:", agentConfig.mcpServers);
+                chatDebug("[API] Using agent:", agentConfig.name, "(", agentConfig.id, ")");
+                chatDebug("[API] Agent mcpServers:", agentConfig.mcpServers);
 
                 // Update last used agent preference
                 await savePreferences({ lastUsedAgentId: agentConfig.id });
 
                 const targetDir = getRootPath();
-                console.log("[API] User message:", message);
-                console.log("[API] Session ID:", sessionId || "none (new session)");
-                console.log("[API] Agent ID:", agentConfig.id);
-                console.log("[API] Target directory:", targetDir);
+                chatDebug("[API] User message:", message);
+                chatDebug("[API] Session ID:", sessionId || "none (new session)");
+                chatDebug("[API] Agent ID:", agentConfig.id);
+                chatDebug("[API] Target directory:", targetDir);
 
                 const encoder = new TextEncoder();
                 const messageQueue: string[] = [];
@@ -520,7 +527,7 @@ export const chatRoutes = {
 
                 // Load allowed tools for this agent
                 const agentAllowedTools = await getAgentAllowedTools({ agentId: agentConfig.id });
-                console.log(`[Permissions] Agent ${agentConfig.id} has ${agentAllowedTools.length} allowed tools:`, agentAllowedTools);
+                chatDebug(`[Permissions] Agent ${agentConfig.id} has ${agentAllowedTools.length} allowed tools:`, agentAllowedTools);
 
                 const canUseTool = async (
                     toolName: string,
@@ -528,7 +535,7 @@ export const chatRoutes = {
                 ) => {
                     // Check if tool is already allowed for this agent
                     if (agentAllowedTools.includes(toolName)) {
-                        console.log(`[Permissions] Tool "${toolName}" auto-allowed for agent ${agentConfig.id}`);
+                        chatDebug(`[Permissions] Tool "${toolName}" auto-allowed for agent ${agentConfig.id}`);
                         return {
                             behavior: "allow" as const,
                             updatedInput: input,
@@ -536,7 +543,7 @@ export const chatRoutes = {
                     }
 
                     const permissionId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                    console.log(`[Permissions] Tool "${toolName}" requesting permission, id: ${permissionId}`);
+                    chatDebug(`[Permissions] Tool "${toolName}" requesting permission, id: ${permissionId}`);
 
                     pushToQueue({
                         type: "permission_request",
@@ -556,12 +563,12 @@ export const chatRoutes = {
                     });
 
                     pendingPermissions.delete(permissionId);
-                    console.log(`[Permissions] Decision for ${permissionId}: ${response.decision}, alwaysAllow: ${response.alwaysAllow}`);
+                    chatDebug(`[Permissions] Decision for ${permissionId}: ${response.decision}, alwaysAllow: ${response.alwaysAllow}`);
 
                     if (response.decision === "allow") {
                         // If "Always Allow" was selected, persist the permission for this agent
                         if (response.alwaysAllow) {
-                            console.log(`[Permissions] Persisting always-allow for tool: ${toolName} on agent: ${agentConfig.id}`);
+                            chatDebug(`[Permissions] Persisting always-allow for tool: ${toolName} on agent: ${agentConfig.id}`);
                             await addAllowedTool({ agentId: agentConfig.id, toolName });
                             // Also add to our local cache so subsequent calls in this session auto-allow
                             agentAllowedTools.push(toolName);
@@ -634,7 +641,7 @@ export const chatRoutes = {
                     return {};
                 };
 
-                console.log("[API] Starting SDK query iterator...");
+                chatDebug("[API] Starting SDK query iterator...");
 
                 // Create AbortController for this query
                 const abortController = new AbortController();
@@ -683,21 +690,21 @@ export const chatRoutes = {
 
                 // Log MCP server names (can't stringify SDK servers due to cyclic refs)
                 const mcpServerNames = Object.keys(mcpServers);
-                console.log("[API] SDK options:", {
+                chatDebug("[API] SDK options:", {
                     ...sdkOptions,
                     resume: sessionId || "(new session)",
                     systemPrompt: agentConfig.systemPrompt ? "(custom + context)" : "(context only)",
                     mcpServers: mcpServerNames,
                     pathToClaudeCodeExecutable: claudeCliPath,
                 });
-                console.log("[API] mcpServers being passed to SDK:", mcpServerNames);
+                chatDebug("[API] mcpServers being passed to SDK:", mcpServerNames);
 
                 let queryIterator: AsyncIterable<SDKMessage>;
                 // Generate a temporary ID for tracking if no session yet
                 const queryTrackingId = sessionId || `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
                 try {
-                    console.log("[API] Calling query()...");
+                    chatDebug("[API] Calling query()...");
 
                     // Build prompt - use multimodal format if images are present
                     type ContentBlock =
@@ -736,7 +743,7 @@ export const chatRoutes = {
                             contentBlocks.push({ type: "text", text: message });
                         }
 
-                        console.log("[API] Images processed:", contentBlocks.filter(b => b.type === "image").length);
+                        chatDebug("[API] Images processed:", contentBlocks.filter(b => b.type === "image").length);
 
                         // Create async iterable for multimodal message
                         async function* generateUserMessage(): AsyncIterable<UserMessageInput> {
@@ -779,9 +786,9 @@ export const chatRoutes = {
                         abortController,
                         startedAt: Date.now(),
                     });
-                    console.log(`[API] Tracking query: ${queryTrackingId}`);
-                    console.log("[API] SDK query() returned:", typeof queryIterator);
-                    console.log("[API] SDK query() is AsyncIterable:", Symbol.asyncIterator in queryIterator);
+                    chatDebug(`[API] Tracking query: ${queryTrackingId}`);
+                    chatDebug("[API] SDK query() returned:", typeof queryIterator);
+                    chatDebug("[API] SDK query() is AsyncIterable:", Symbol.asyncIterator in queryIterator);
                 } catch (sdkInitError) {
                     console.error("[API] SDK query() failed to initialize:", sdkInitError);
                     if (sdkInitError instanceof Error) {
@@ -806,37 +813,37 @@ export const chatRoutes = {
                     const startTime = Date.now();
                     let currentTrackingId = queryTrackingId;
 
-                    console.log("[API] Starting SDK iterator consumption (outside stream)...");
+                    chatDebug("[API] Starting SDK iterator consumption (outside stream)...");
 
                     // Heartbeat to detect if we're stuck waiting for first message
                     let receivedFirstMessage = false;
                     const heartbeatInterval = setInterval(() => {
                         if (!receivedFirstMessage) {
                             const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-                            console.log(`[API] [Heartbeat] Still waiting for first SDK message... (${elapsed}s elapsed)`);
+                            chatDebug(`[API] [Heartbeat] Still waiting for first SDK message... (${elapsed}s elapsed)`);
                         }
                     }, 5000);
 
                     try {
-                        console.log("[API] Entering for-await loop over queryIterator...");
-                        console.log("[API] Getting async iterator...");
+                        chatDebug("[API] Entering for-await loop over queryIterator...");
+                        chatDebug("[API] Getting async iterator...");
                         const iterator = queryIterator[Symbol.asyncIterator]();
-                        console.log("[API] Got iterator, calling first next()...");
+                        chatDebug("[API] Got iterator, calling first next()...");
 
                         let iterResult = await iterator.next();
-                        console.log("[API] First next() returned, done:", iterResult.done);
+                        chatDebug("[API] First next() returned, done:", iterResult.done);
 
                         while (!iterResult.done) {
                             const msg = iterResult.value;
                             if (!receivedFirstMessage) {
                                 receivedFirstMessage = true;
                                 clearInterval(heartbeatInterval);
-                                console.log(`[API] First message received after ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
+                                chatDebug(`[API] First message received after ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
                             }
                             messageCount++;
                             const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
 
-                            console.log(`[API] [${elapsed}s] Message #${messageCount}: ${msg.type}`);
+                            chatDebug(`[API] [${elapsed}s] Message #${messageCount}: ${msg.type}`);
 
                             if (msg.type === "system" && msg.subtype === "init") {
                                 newSessionId = msg.session_id;
@@ -867,9 +874,9 @@ export const chatRoutes = {
                                 }
                             } else if (msg.type === "assistant" && 'message' in msg) {
                                 const content = (msg.message as { content: Array<{ type: string }> }).content;
-                                console.log(`[API]   Content blocks: ${content.map((b) => b.type).join(", ")}`);
+                                chatDebug(`[API]   Content blocks: ${content.map((b) => b.type).join(", ")}`);
                             } else if (msg.type === "result") {
-                                console.log(`[API]   Result received`);
+                                chatDebug(`[API]   Result received`);
                             }
 
                             pushToQueue({
@@ -881,17 +888,17 @@ export const chatRoutes = {
                             });
 
                             if (msg.type === "result") {
-                                console.log(`[API] Query complete in ${elapsed}s, ${messageCount} messages`);
+                                chatDebug(`[API] Query complete in ${elapsed}s, ${messageCount} messages`);
                                 break;
                             }
 
                             // Get next message
-                            console.log("[API] Calling next()...");
+                            chatDebug("[API] Calling next()...");
                             iterResult = await iterator.next();
-                            console.log("[API] next() returned, done:", iterResult.done);
+                            chatDebug("[API] next() returned, done:", iterResult.done);
                         }
 
-                        console.log("[API] Iterator loop finished");
+                        chatDebug("[API] Iterator loop finished");
                     } catch (error) {
                         clearInterval(heartbeatInterval);
                         const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -903,7 +910,7 @@ export const chatRoutes = {
                              abortController.signal.aborted);
 
                         if (isAbort) {
-                            console.log(`[API] Query cancelled by user after ${elapsed}s, ${messageCount} messages received`);
+                            chatDebug(`[API] Query cancelled by user after ${elapsed}s, ${messageCount} messages received`);
                             pushToQueue({
                                 type: "cancelled",
                             });
@@ -923,7 +930,7 @@ export const chatRoutes = {
                         clearInterval(heartbeatInterval);
                         // Clean up active query tracking
                         activeQueries.delete(currentTrackingId);
-                        console.log(`[API] Cleaned up query tracking: ${currentTrackingId}`);
+                        chatDebug(`[API] Cleaned up query tracking: ${currentTrackingId}`);
                     }
 
                     pushToQueue({
@@ -1010,7 +1017,7 @@ export const chatRoutes = {
                 const body = await req.json();
                 const { permissionId, decision, alwaysAllow, toolName } = body;
 
-                console.log(`[Permissions] Received response for ${permissionId}: ${decision}, alwaysAllow: ${alwaysAllow}`);
+                chatDebug(`[Permissions] Received response for ${permissionId}: ${decision}, alwaysAllow: ${alwaysAllow}`);
 
                 if (!permissionId || !decision) {
                     return Response.json(
@@ -1028,7 +1035,7 @@ export const chatRoutes = {
 
                 const pending = pendingPermissions.get(permissionId);
                 if (!pending) {
-                    console.log(`[Permissions] No pending permission found for ${permissionId}`);
+                    chatDebug(`[Permissions] No pending permission found for ${permissionId}`);
                     return Response.json(
                         { error: "No pending permission request found" },
                         { status: 404 }
@@ -1036,7 +1043,7 @@ export const chatRoutes = {
                 }
 
                 pending.resolve({ decision, alwaysAllow, toolName });
-                console.log(`[Permissions] Resolved permission ${permissionId} with ${decision}, alwaysAllow: ${alwaysAllow}`);
+                chatDebug(`[Permissions] Resolved permission ${permissionId} with ${decision}, alwaysAllow: ${alwaysAllow}`);
 
                 return Response.json({ success: true });
             } catch (error) {
@@ -1062,11 +1069,11 @@ export const chatRoutes = {
                     );
                 }
 
-                console.log(`[API] Cancel requested for query: ${queryTrackingId}`);
+                chatDebug(`[API] Cancel requested for query: ${queryTrackingId}`);
 
                 const activeQuery = activeQueries.get(queryTrackingId);
                 if (!activeQuery) {
-                    console.log(`[API] No active query found for: ${queryTrackingId}`);
+                    chatDebug(`[API] No active query found for: ${queryTrackingId}`);
                     return Response.json(
                         { error: "No active query found" },
                         { status: 404 }
@@ -1077,7 +1084,7 @@ export const chatRoutes = {
                 activeQuery.abortController.abort();
                 activeQueries.delete(queryTrackingId);
 
-                console.log(`[API] Cancelled query: ${queryTrackingId}`);
+                chatDebug(`[API] Cancelled query: ${queryTrackingId}`);
 
                 return Response.json({ success: true });
             } catch (error) {
@@ -1106,7 +1113,7 @@ export const chatRoutes = {
                 // Check if session already exists to prevent duplicates
                 const existingSessions = await readJSONL<SessionMetadata>(getSessionsFile());
                 if (existingSessions.some((s) => s.id === id)) {
-                    console.log("[API] Session already exists, skipping save:", id);
+                    chatDebug("[API] Session already exists, skipping save:", id);
                     return Response.json({ success: true, session: existingSessions.find((s) => s.id === id) });
                 }
 
@@ -1120,7 +1127,7 @@ export const chatRoutes = {
                 };
 
                 await appendJSONL(getSessionsFile(), session);
-                console.log("[API] Saved session:", id);
+                chatDebug("[API] Saved session:", id);
 
                 return Response.json({ success: true, session });
             } catch (error) {
@@ -1225,7 +1232,7 @@ export const chatRoutes = {
                     updatedAt: new Date().toISOString(),
                 }));
 
-                console.log("[API] Updated session:", id);
+                chatDebug("[API] Updated session:", id);
                 return Response.json({ success: true });
             } catch (error) {
                 console.error("[API] Error updating session:", error);
@@ -1402,7 +1409,7 @@ export const chatRoutes = {
                 }
 
                 const messages = await readJSONL<SDKMessage>(sessionFile);
-                console.log(`[API] Loaded ${messages.length} messages for session ${sessionId}`);
+                chatDebug(`[API] Loaded ${messages.length} messages for session ${sessionId}`);
 
                 return Response.json({ messages });
             } catch (error) {
