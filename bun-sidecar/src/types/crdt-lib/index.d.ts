@@ -146,6 +146,16 @@ export interface LWWRegister<T> {
 
 export type StateVector = ReadonlyMap<ClientId, number>;
 
+export interface MissingRange {
+    readonly clientId: ClientId;
+    readonly from: number; // inclusive
+    readonly to: number; // inclusive
+}
+
+// --- Snapshot helpers ---
+
+export type SnapshotMergeBias = "local" | "remote";
+
 // --- Transport ---
 
 export interface MultiDocTransport {
@@ -179,10 +189,21 @@ export declare function createClock(params: {
     clientId: ClientId;
 }): LamportClock;
 
+export declare function increment(params: {
+    clock: LamportClock;
+}): { clock: LamportClock; timestamp: Timestamp };
+
 export declare function receive(params: {
     clock: LamportClock;
     remoteCounter: number;
 }): LamportClock;
+
+// --- Operation helpers ---
+
+export declare function createOperationId(params: {
+    clientId: ClientId;
+    clock: number;
+}): OperationId;
 
 // --- Record Docs / Board ---
 
@@ -198,6 +219,8 @@ export interface DocManager {
     readonly docs: ReadonlyMap<string, CRDTRecord>;
 }
 
+export type SnapshotHydrationMode = "replace" | "merge";
+
 export declare function createDocManager(): DocManager;
 
 export declare function applyDocOperation(params: {
@@ -206,10 +229,54 @@ export declare function applyDocOperation(params: {
     op: RecordOp;
 }): DocManager;
 
+export declare function applySnapshotToDoc(params: {
+    manager: DocManager;
+    docId: string;
+    snapshot: CRDTRecord | Uint8Array;
+    mode?: SnapshotHydrationMode;
+    mergeBias?: SnapshotMergeBias;
+}): DocManager;
+
 export declare function getDoc(params: {
     manager: DocManager;
     docId: string;
 }): CRDTRecord | undefined;
+
+export declare function getFields(params: {
+    record: CRDTRecord;
+}): ReadonlyMap<string, string>;
+
+export declare function encodeRecordSnapshot(params: {
+    record: CRDTRecord;
+}): Uint8Array;
+
+export declare function decodeRecordSnapshot(params: {
+    data: Uint8Array;
+}): CRDTRecord;
+
+export declare function mergeRecordSnapshots(params: {
+    local: CRDTRecord;
+    remote: CRDTRecord;
+    bias?: SnapshotMergeBias;
+}): CRDTRecord;
+
+export declare function getRecordSnapshotVersion(params: {
+    data: Uint8Array;
+}): string;
+
+export declare function isRecordSnapshotVersion(params: {
+    data: Uint8Array;
+    expectedVersion: string;
+}): boolean;
+
+export declare function getRecordSnapshotStateVector(params: {
+    data: Uint8Array;
+}): StateVector;
+
+export declare function missingFromRecordSnapshot(params: {
+    data: Uint8Array;
+    remoteStateVector: StateVector;
+}): ReadonlyArray<MissingRange>;
 
 export interface CardApiState {
     manager: DocManager;

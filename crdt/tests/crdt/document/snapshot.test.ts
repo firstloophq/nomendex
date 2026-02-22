@@ -4,6 +4,11 @@ import {
   decodeSnapshot,
   encodeRecordSnapshot,
   decodeRecordSnapshot,
+  mergeRecordSnapshots,
+  getRecordSnapshotVersion,
+  isRecordSnapshotVersion,
+  getRecordSnapshotStateVector,
+  missingFromRecordSnapshot,
 } from "@/crdt/document/snapshot";
 import {
   createEmptyDocument,
@@ -421,5 +426,110 @@ describe("Record Snapshot", () => {
     expect(tags).toContain("from-B");
     expect(restored.stateVector.get("A")).toBe(2);
     expect(restored.stateVector.get("B")).toBe(2);
+  });
+});
+
+describe("Record Snapshot Merge", () => {
+  it("merges local and remote snapshots (LWW fields, OR-Set removals, body union)", () => {
+    let local = createRecord();
+    local = applyRecordOps({
+      record: local,
+      ops: [
+        fieldOp({ clientId: "A", clock: 1, fieldName: "title", value: "Local title" }),
+        setAddOp({ clientId: "A", clock: 2, fieldName: "tags", value: "shared-tag" }),
+        createInsertOp({
+          id: makeId("A", 4),
+          parentId: null,
+          side: "right",
+          content: { type: "text", value: "L" },
+        }),
+      ],
+    });
+
+    let remote = createRecord();
+    remote = applyRecordOps({
+      record: remote,
+      ops: [
+        fieldOp({ clientId: "B", clock: 5, fieldName: "title", value: "Remote title" }),
+        // Same add op id + later remove so merged set should stay removed.
+        setAddOp({ clientId: "A", clock: 2, fieldName: "tags", value: "shared-tag" }),
+        setRemoveOp({
+          clientId: "B",
+          clock: 6,
+          fieldName: "tags",
+          value: "shared-tag",
+          removeIds: [makeId("A", 2)],
+        }),
+        createInsertOp({
+          id: makeId("B", 2),
+          parentId: null,
+          side: "right",
+          content: { type: "text", value: "R" },
+        }),
+      ],
+    });
+
+    const merged = mergeRecordSnapshots({
+      local: encodeRecordSnapshot({ record: local }),
+      remote: encodeRecordSnapshot({ record: remote }),
+    });
+
+    expect(getField({ record: merged, fieldName: "title" })).toBe("Remote title");
+    expect(getSetField({ record: merged, fieldName: "tags" })).not.toContain("shared-tag");
+    expect(getBodyText({ record: merged })).toBe("RL");
+    expect(merged.stateVector.get("A")).toBe(4);
+    expect(merged.stateVector.get("B")).toBe(6);
+  });
+});
+
+describe("Record Snapshot Version + State Vector Helpers", () => {
+  it("computes stable deterministic snapshot versions", () => {
+    let record = createRecord();
+    record = applyRecordOp({
+      record,
+      op: fieldOp({ clientId: "A", clock: 1, fieldName: "title", value: "Version 1" }),
+    });
+
+    const data1 = encodeRecordSnapshot({ record });
+    const version1 = getRecordSnapshotVersion({ data: data1 });
+    expect(isRecordSnapshotVersion({ data: data1, expectedVersion: version1 })).toBe(true);
+
+    record = applyRecordOp({
+      record,
+      op: fieldOp({ clientId: "A", clock: 2, fieldName: "title", value: "Version 2" }),
+    });
+    const data2 = encodeRecordSnapshot({ record });
+    const version2 = getRecordSnapshotVersion({ data: data2 });
+
+    expect(version1).not.toBe(version2);
+    expect(version1.startsWith("fnv1a64:")).toBe(true);
+  });
+
+  it("extracts state vector and computes missing ranges from a record snapshot", () => {
+    let record = createRecord();
+    record = applyRecordOps({
+      record,
+      ops: [
+        fieldOp({ clientId: "A", clock: 5, fieldName: "title", value: "x" }),
+        fieldOp({ clientId: "B", clock: 2, fieldName: "title", value: "y" }),
+      ],
+    });
+
+    const data = encodeRecordSnapshot({ record });
+    const sv = getRecordSnapshotStateVector({ data });
+    expect(sv.get("A")).toBe(5);
+    expect(sv.get("B")).toBe(2);
+
+    const missing = missingFromRecordSnapshot({
+      data,
+      remoteStateVector: new Map([
+        ["A", 2],
+        ["B", 2],
+      ]),
+    });
+
+    expect(missing).toEqual([
+      { clientId: "A", from: 3, to: 5 },
+    ]);
   });
 });

@@ -75,9 +75,9 @@ export function TagFilter({ availableTags, selectedTags, onTagToggle, onClearAll
     return (
         <>
             <div className="flex items-center gap-2 flex-wrap">
-                {selectedTags.map((tag) => (
+                {selectedTags.map((tag, tagIndex) => (
                     <span
-                        key={tag}
+                        key={`${tag}-${tagIndex}`}
                         className="group/tag flex items-center gap-0.5 text-xs"
                         style={{
                             color: currentTheme.styles.contentSecondary,
@@ -139,9 +139,9 @@ export function TagFilter({ availableTags, selectedTags, onTagToggle, onClearAll
                         {/* Current filter tags */}
                         {selectedTags.length > 0 && (
                             <div className="flex flex-wrap gap-3">
-                                {selectedTags.map((tag) => (
+                                {selectedTags.map((tag, tagIndex) => (
                                     <span
-                                        key={tag}
+                                        key={`${tag}-${tagIndex}`}
                                         className="group/tag flex items-center gap-1 text-sm"
                                         style={{
                                             color: currentTheme.styles.contentPrimary,
@@ -198,7 +198,7 @@ export function TagFilter({ availableTags, selectedTags, onTagToggle, onClearAll
                         {displayedSuggestions.length > 0 && (
                             <div className="flex flex-wrap items-center gap-x-1 text-xs" style={{ color: currentTheme.styles.contentTertiary }}>
                                 {displayedSuggestions.map((tag, index) => (
-                                    <span key={tag} className="flex items-center">
+                                    <span key={`${tag}-${index}`} className="flex items-center">
                                         <button
                                             onClick={() => addTag(tag)}
                                             className="hover:underline transition-all"

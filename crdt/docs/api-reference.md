@@ -133,6 +133,13 @@ getCardPosition(params: { record: CRDTRecord; cardId: string }): CardPosition | 
 createDocManager(): DocManager
 getOrCreateDoc(params: { manager: DocManager; docId: string }): { manager: DocManager; doc: CRDTRecord }
 applyDocOperation(params: { manager: DocManager; docId: string; op: RecordOp }): DocManager
+applySnapshotToDoc(params: {
+  manager: DocManager;
+  docId: string;
+  snapshot: CRDTRecord | Uint8Array;
+  mode?: "replace" | "merge";           // default "replace"
+  mergeBias?: "local" | "remote";       // default "remote" for merge mode
+}): DocManager
 getDoc(params: { manager: DocManager; docId: string }): CRDTRecord | undefined
 listDocIds(params: { manager: DocManager }): ReadonlyArray<string>
 deleteDoc(params: { manager: DocManager; docId: string }): DocManager
@@ -151,6 +158,24 @@ markdownToRecordOps(params: { markdown: string; clientId: string; clock: Lamport
 // Binary record snapshots — lossless encode/decode of full CRDTRecord state
 encodeRecordSnapshot(params: { record: CRDTRecord }): Uint8Array
 decodeRecordSnapshot(params: { data: Uint8Array }): CRDTRecord
+
+// Merge two snapshots/records into a single CRDTRecord
+mergeRecordSnapshots(params: {
+  local: CRDTRecord | Uint8Array;
+  remote: CRDTRecord | Uint8Array;
+  bias?: "local" | "remote";            // default "remote"
+}): CRDTRecord
+
+// Deterministic snapshot version helpers for optimistic CAS
+getRecordSnapshotVersion(params: { data: Uint8Array }): string
+isRecordSnapshotVersion(params: { data: Uint8Array; expectedVersion: string }): boolean
+
+// Snapshot state-vector helpers
+getRecordSnapshotStateVector(params: { data: Uint8Array }): StateVector
+missingFromRecordSnapshot(params: {
+  data: Uint8Array;
+  remoteStateVector: StateVector;
+}): ReadonlyArray<MissingRange>
 ```
 
 ### Network / Sync

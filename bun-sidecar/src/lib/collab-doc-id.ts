@@ -112,6 +112,17 @@ export function buildKanbanCardDocId(params: {
     });
 }
 
+export function buildFileIndexDocId(params: {
+    scope: WorkspaceCollabScope;
+    namespace: string; // "notes", "canvases", etc.
+}): string {
+    return buildWorkspaceScopedDocId({
+        scope: params.scope,
+        namespace: "fileindex",
+        resourceId: params.namespace,
+    });
+}
+
 export function buildCanvasDocId(params: {
     scope: WorkspaceCollabScope;
     canvasId: string;

@@ -97,6 +97,7 @@ interface Heading {
 
 const BOOTSTRAP_CLAIM_KEY_PREFIX = "nomendex:crdt-bootstrap";
 const BOOTSTRAP_CLAIM_TTL_MS = 4000;
+const SHOW_NOTES_RIGHT_SIDEBAR = true; // Temporary debug toggle to isolate duplicate-key crashes.
 
 function tryClaimBootstrap(params: { docId: string; clientId: string }): boolean {
     if (typeof window === "undefined") return true;
@@ -2360,7 +2361,7 @@ export function NotesView(props: NotesViewProps) {
                 </div>
 
                 {/* Sidebar with TOC and Backlinks - only visible when content is loaded */}
-                {!loading && !error && note && isRichTextMode && !compact && (
+                {!loading && !error && note && isRichTextMode && !compact && SHOW_NOTES_RIGHT_SIDEBAR && (
                     <div
                         ref={minimapRef}
                         tabIndex={-1}
@@ -2408,7 +2409,7 @@ export function NotesView(props: NotesViewProps) {
 
                                             return (
                                                 <button
-                                                    key={heading.id}
+                                                    key={`${heading.id}-${index}`}
                                                     onClick={() => {
                                                         scrollToHeading(heading.id);
                                                         setFocusedHeadingIndex(index);

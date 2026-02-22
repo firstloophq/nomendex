@@ -58,7 +58,18 @@ export {
   getPlainText,
 } from "./document/document";
 export type { CRDTDocument, Block } from "./document/document";
-export { encodeSnapshot, decodeSnapshot, encodeRecordSnapshot, decodeRecordSnapshot } from "./document/snapshot";
+export {
+  encodeSnapshot,
+  decodeSnapshot,
+  encodeRecordSnapshot,
+  decodeRecordSnapshot,
+  mergeRecordSnapshots,
+  getRecordSnapshotVersion,
+  isRecordSnapshotVersion,
+  getRecordSnapshotStateVector,
+  missingFromRecordSnapshot,
+} from "./document/snapshot";
+export type { SnapshotMergeBias } from "./document/snapshot";
 export {
   createRecord,
   applyRecordOp,
@@ -79,12 +90,13 @@ export {
   createDocManager,
   getOrCreateDoc,
   applyDocOperation,
+  applySnapshotToDoc,
   getDoc,
   listDocIds,
   deleteDoc,
   BOARD_DOC_ID,
 } from "./document/doc-manager";
-export type { DocManager } from "./document/doc-manager";
+export type { DocManager, SnapshotHydrationMode } from "./document/doc-manager";
 export { recordToMarkdown, markdownToRecordOps } from "./document/yaml-serialization";
 
 // Network

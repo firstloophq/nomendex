@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Search, FileText, FilePlus, FolderPlus, Maximize2 } from "lucide-react";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useNotesAPI } from "@/hooks/useNotesAPI";
+import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { Note, NoteFolder, notesPluginSerial } from "./index";
+import { useFileIndex } from "./useFileIndex";
 import { useTheme } from "@/hooks/useTheme";
 import { NotesView } from "./note-view";
 import { NotesFileTree } from "./NotesFileTree";
@@ -19,6 +21,10 @@ import { useCommandDialog } from "@/components/CommandDialogProvider";
 import { CreateNoteDialog } from "./create-note-dialog";
 import { DeleteNoteDialog } from "./delete-note-dialog";
 import { DeleteFolderDialog } from "./delete-folder-dialog";
+
+// Temporary isolation switch for debugging duplicate-key/file-list issues.
+// Set to true to re-enable CRDT-backed file index integration in this view.
+const ENABLE_FILE_INDEX_CRDT = true;
 
 export function NotesBrowserView({ tabId }: { tabId: string }) {
     if (!tabId) {
@@ -51,6 +57,11 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
 
     // API hook
     const notesAPI = useNotesAPI();
+
+    // File index CRDT for team mode
+    const { appMode } = useWorkspaceSwitcher();
+    const isTeamMode = ENABLE_FILE_INDEX_CRDT && appMode === "team";
+    const fileIndex = useFileIndex({ enabled: isTeamMode });
 
     // Set tab name for browser view - only once when component mounts
     useEffect(() => {
@@ -109,6 +120,30 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [notesAPI, setLoading, setError, loadFolders, showHiddenFiles]);
 
+    // Re-fetch notes/folders from disk once after CRDT sync completes in team mode.
+    // This ensures any files discovered via the CRDT (from other clients) trigger
+    // a fresh disk read. We intentionally only run on isSynced transitions, NOT on
+    // every CRDT state change, to avoid re-render storms.
+    const fileIndexSyncedRef = useRef(false);
+    useEffect(() => {
+        if (!isTeamMode || !fileIndex.isSynced) {
+            fileIndexSyncedRef.current = false;
+            return;
+        }
+        if (fileIndexSyncedRef.current) return;
+        fileIndexSyncedRef.current = true;
+
+        Promise.all([
+            notesAPI.getNotes({ showHiddenFiles }),
+            notesAPI.getFolders({ showHiddenFiles }),
+        ]).then(([notesResult, foldersResult]) => {
+            setNotes(notesResult);
+            setFolders(foldersResult);
+        }).catch((err) => {
+            console.error("Failed to sync file index:", err);
+        });
+    }, [isTeamMode, fileIndex.isSynced, notesAPI, showHiddenFiles]);
+
     const handleCreateNote = async () => {
         const finalNoteId = newNoteName.trim();
         if (!finalNoteId) return;
@@ -124,6 +159,14 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
 
             const result = await notesAPI.getNotes({ showHiddenFiles });
             setNotes(result);
+
+            // Notify CRDT file index
+            if (isTeamMode) {
+                const path = createNoteInFolderPath
+                    ? `${createNoteInFolderPath}/${finalNoteId}`
+                    : finalNoteId;
+                fileIndex.addFile({ path });
+            }
 
             setCreateDialogOpen(false);
             setNewNoteName("");
@@ -172,11 +215,20 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
                                 setSelectedNote(result[0] || null);
                             }
                         });
+                        // Notify CRDT file index
+                        if (isTeamMode) {
+                            // Find the note to get its folder path for the full relative path
+                            const note = notes.find(n => n.fileName === noteFileName);
+                            const path = note?.folderPath
+                                ? `${note.folderPath}/${noteFileName}`
+                                : noteFileName;
+                            fileIndex.removeFile({ path });
+                        }
                     }}
                 />
             ),
         });
-    }, [openDialog, notesAPI, selectedNote, showHiddenFiles]);
+    }, [openDialog, notesAPI, selectedNote, showHiddenFiles, isTeamMode, fileIndex, notes]);
 
     const handleSelectNote = useCallback((note: Note) => {
         setSelectedNote(note);
@@ -204,22 +256,31 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
                         await loadFolders();
                         const result = await notesAPI.getNotes({ showHiddenFiles });
                         setNotes(result);
+                        // Notify CRDT file index
+                        if (isTeamMode) {
+                            fileIndex.removeFolder({ path: folder.path });
+                        }
                     }}
                 />
             ),
         });
-    }, [openDialog, notesAPI, loadFolders, showHiddenFiles]);
+    }, [openDialog, notesAPI, loadFolders, showHiddenFiles, isTeamMode, fileIndex]);
 
     const handleFolderCreate = useCallback(async (name: string, parentPath: string | null) => {
         try {
             await notesAPI.createFolder({ name, parentPath: parentPath ?? undefined });
             toast.success(`Created folder "${name}"`);
             await loadFolders();
+            // Notify CRDT file index
+            if (isTeamMode) {
+                const path = parentPath ? `${parentPath}/${name}` : name;
+                fileIndex.addFolder({ path });
+            }
         } catch (err) {
             console.error("Failed to create folder:", err);
             toast.error("Failed to create folder");
         }
-    }, [notesAPI, loadFolders]);
+    }, [notesAPI, loadFolders, isTeamMode, fileIndex]);
 
     const handleFolderRename = useCallback(async (oldPath: string, newName: string) => {
         try {
@@ -228,11 +289,18 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
             await loadFolders();
             const notesResult = await notesAPI.getNotes({ showHiddenFiles });
             setNotes(notesResult);
+            // Notify CRDT file index
+            if (isTeamMode) {
+                const lastSlash = oldPath.lastIndexOf("/");
+                const parentPath = lastSlash === -1 ? "" : oldPath.slice(0, lastSlash);
+                const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+                fileIndex.renameFolder({ oldPath, newPath });
+            }
         } catch (err) {
             console.error("Failed to rename folder:", err);
             toast.error("Failed to rename folder");
         }
-    }, [notesAPI, loadFolders, showHiddenFiles]);
+    }, [notesAPI, loadFolders, showHiddenFiles, isTeamMode, fileIndex]);
 
     const handleMoveToFolder = useCallback((note: Note) => {
         setNoteToMove(note);
@@ -241,16 +309,30 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
 
     const handleMoveNoteToFolder = useCallback(async (fileName: string, targetFolder: string | null) => {
         try {
+            // Find the note's current folder before moving
+            const currentNote = notes.find(n => n.fileName === fileName);
+            const oldPath = currentNote?.folderPath
+                ? `${currentNote.folderPath}/${fileName}`
+                : fileName;
+
             await notesAPI.moveNoteToFolder({ fileName, targetFolder });
             const folderName = targetFolder ? folders.find(f => f.path === targetFolder)?.name ?? "folder" : "root";
             toast.success(`Moved to ${folderName}`);
             const result = await notesAPI.getNotes({ showHiddenFiles });
             setNotes(result);
+
+            // Notify CRDT file index
+            if (isTeamMode) {
+                const newPath = targetFolder
+                    ? `${targetFolder}/${fileName}`
+                    : fileName;
+                fileIndex.renameFile({ oldPath, newPath });
+            }
         } catch (err) {
             console.error("Failed to move note:", err);
             toast.error("Failed to move note");
         }
-    }, [notesAPI, folders, showHiddenFiles]);
+    }, [notesAPI, folders, notes, showHiddenFiles, isTeamMode, fileIndex]);
 
     // Get parent folder name for create dialog
     const createFolderParentName = createFolderParentPath

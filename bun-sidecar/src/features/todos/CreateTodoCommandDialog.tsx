@@ -290,9 +290,9 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
                 {/* Tags Row - displayed inline */}
                 {tags.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 pt-2">
-                        {tags.map((tag) => (
+                        {tags.map((tag, tagIndex) => (
                             <span
-                                key={tag}
+                                key={`${tag}-${tagIndex}`}
                                 className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium"
                                 style={{
                                     backgroundColor: styles.surfaceTertiary,
@@ -423,7 +423,7 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
                                             const isActive = project === proj;
                                             return (
                                                 <button
-                                                    key={proj}
+                                                    key={`${proj}-${index}`}
                                                     type="button"
                                                     onClick={() => {
                                                         setProject(proj);
@@ -515,9 +515,9 @@ export function CreateTodoCommandDialog({ onSuccess }: CreateTodoCommandDialogPr
                                             {availableTags
                                                 .filter(t => !tags.includes(t))
                                                 .slice(0, 6)
-                                                .map((tag) => (
+                                                .map((tag, tagIndex) => (
                                                     <button
-                                                        key={tag}
+                                                        key={`${tag}-${tagIndex}`}
                                                         type="button"
                                                         onClick={() => addTag(tag)}
                                                         className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"

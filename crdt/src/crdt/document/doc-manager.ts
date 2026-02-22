@@ -1,5 +1,10 @@
 import type { CRDTRecord, RecordOp } from "./record";
 import { createRecord, applyRecordOp } from "./record";
+import {
+  decodeRecordSnapshot,
+  mergeRecordSnapshots,
+  type SnapshotMergeBias,
+} from "./snapshot";
 
 // --- Multi-Document Manager ---
 // Routes operations to the correct document by docId.
@@ -10,6 +15,8 @@ export const BOARD_DOC_ID = "__board__";
 export interface DocManager {
   readonly docs: ReadonlyMap<string, CRDTRecord>;
 }
+
+export type SnapshotHydrationMode = "replace" | "merge";
 
 export function createDocManager(): DocManager {
   return {
@@ -48,6 +55,40 @@ export function applyDocOperation(params: {
   newDocs.set(docId, updatedDoc);
 
   return { ...m, docs: newDocs };
+}
+
+function toRecordSnapshot(snapshot: CRDTRecord | Uint8Array): CRDTRecord {
+  if (snapshot instanceof Uint8Array) {
+    return decodeRecordSnapshot({ data: snapshot });
+  }
+  return snapshot;
+}
+
+export function applySnapshotToDoc(params: {
+  manager: DocManager;
+  docId: string;
+  snapshot: CRDTRecord | Uint8Array;
+  mode?: SnapshotHydrationMode;
+  mergeBias?: SnapshotMergeBias;
+}): DocManager {
+  const incoming = toRecordSnapshot(params.snapshot);
+  const mode = params.mode ?? "replace";
+  const current = params.manager.docs.get(params.docId);
+
+  const next = mode === "merge" && current
+    ? mergeRecordSnapshots({
+        local: current,
+        remote: incoming,
+        bias: params.mergeBias ?? "remote",
+      })
+    : incoming;
+
+  const newDocs = new Map(params.manager.docs);
+  newDocs.set(params.docId, next);
+  return {
+    ...params.manager,
+    docs: newDocs,
+  };
 }
 
 export function getDoc(params: {

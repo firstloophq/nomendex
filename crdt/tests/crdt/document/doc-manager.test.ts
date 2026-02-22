@@ -3,14 +3,23 @@ import {
   createDocManager,
   getOrCreateDoc,
   applyDocOperation,
+  applySnapshotToDoc,
   getDoc,
   listDocIds,
   deleteDoc,
   BOARD_DOC_ID,
 } from "@/crdt/document/doc-manager";
-import { getField, getSetField, type FieldOp, type SetOp } from "@/crdt/document/record";
+import {
+  createRecord,
+  applyRecordOp,
+  getField,
+  getSetField,
+  type FieldOp,
+  type SetOp,
+} from "@/crdt/document/record";
 import { getColumns, getCardPosition } from "@/crdt/document/board-document";
 import { createOperationId } from "@/crdt/core/operations";
+import { encodeRecordSnapshot } from "@/crdt/document/snapshot";
 
 function makeId(clientId: string, clock: number) {
   return createOperationId({ clientId, clock });
@@ -158,6 +167,105 @@ describe("Doc Manager", () => {
       expect(ids).toContain("card-2");
       expect(ids).toContain("card-3");
       expect(ids.length).toBe(3);
+    });
+  });
+
+  describe("applySnapshotToDoc", () => {
+    it("replaces an existing doc from snapshot bytes", () => {
+      let mgr = createDocManager();
+      mgr = applyDocOperation({
+        manager: mgr,
+        docId: "card-1",
+        op: {
+          type: "field",
+          id: makeId("A", 1),
+          fieldName: "title",
+          value: "Old title",
+          timestamp: { clientId: "A", clock: 1 },
+        },
+      });
+
+      let snapshotRecord = createRecord();
+      snapshotRecord = applyRecordOp({
+        record: snapshotRecord,
+        op: {
+          type: "field",
+          id: makeId("B", 1),
+          fieldName: "title",
+          value: "Snapshot title",
+          timestamp: { clientId: "B", clock: 1 },
+        },
+      });
+
+      mgr = applySnapshotToDoc({
+        manager: mgr,
+        docId: "card-1",
+        snapshot: encodeRecordSnapshot({ record: snapshotRecord }),
+        mode: "replace",
+      });
+
+      const doc = getDoc({ manager: mgr, docId: "card-1" });
+      expect(getField({ record: doc!, fieldName: "title" })).toBe("Snapshot title");
+    });
+
+    it("merges snapshot into existing doc by defaulting conflicts to remote", () => {
+      let mgr = createDocManager();
+      mgr = applyDocOperation({
+        manager: mgr,
+        docId: "card-1",
+        op: {
+          type: "field",
+          id: makeId("A", 1),
+          fieldName: "title",
+          value: "Local title",
+          timestamp: { clientId: "A", clock: 1 },
+        },
+      });
+      mgr = applyDocOperation({
+        manager: mgr,
+        docId: "card-1",
+        op: {
+          type: "field",
+          id: makeId("A", 2),
+          fieldName: "localOnly",
+          value: "keep me",
+          timestamp: { clientId: "A", clock: 2 },
+        },
+      });
+
+      let remote = createRecord();
+      remote = applyRecordOp({
+        record: remote,
+        op: {
+          type: "field",
+          id: makeId("B", 5),
+          fieldName: "title",
+          value: "Remote title",
+          timestamp: { clientId: "B", clock: 5 },
+        },
+      });
+      remote = applyRecordOp({
+        record: remote,
+        op: {
+          type: "field",
+          id: makeId("B", 6),
+          fieldName: "remoteOnly",
+          value: "from remote",
+          timestamp: { clientId: "B", clock: 6 },
+        },
+      });
+
+      mgr = applySnapshotToDoc({
+        manager: mgr,
+        docId: "card-1",
+        snapshot: encodeRecordSnapshot({ record: remote }),
+        mode: "merge",
+      });
+
+      const doc = getDoc({ manager: mgr, docId: "card-1" });
+      expect(getField({ record: doc!, fieldName: "title" })).toBe("Remote title");
+      expect(getField({ record: doc!, fieldName: "localOnly" })).toBe("keep me");
+      expect(getField({ record: doc!, fieldName: "remoteOnly" })).toBe("from remote");
     });
   });
 });

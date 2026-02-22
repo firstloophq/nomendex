@@ -291,9 +291,9 @@ export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, avail
                                 Collaborator editing now
                             </span>
                             <div className="flex items-center gap-1.5">
-                                {editingViewers.slice(0, 3).map((viewer) => (
+                                {editingViewers.slice(0, 3).map((viewer, viewerIndex) => (
                                     <span
-                                        key={`${viewer.name}-${viewer.color}`}
+                                        key={`${viewer.name}-${viewer.color}-${viewerIndex}`}
                                         className="inline-flex items-center justify-center size-5 rounded-full text-[10px] font-semibold text-white"
                                         style={{ backgroundColor: viewer.color }}
                                         title={viewer.name}
@@ -353,9 +353,9 @@ export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, avail
                     {/* Tags Row - displayed inline */}
                     {editedTodo.tags && editedTodo.tags.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 pt-2">
-                            {editedTodo.tags.map((tag) => (
+                            {editedTodo.tags.map((tag, tagIndex) => (
                                 <span
-                                    key={tag}
+                                    key={`${tag}-${tagIndex}`}
                                     className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium"
                                     style={{
                                         backgroundColor: styles.surfaceTertiary,
@@ -484,7 +484,7 @@ export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, avail
                                                 const isActive = editedTodo.project === project;
                                                 return (
                                                     <button
-                                                        key={project}
+                                                        key={`${project}-${index}`}
                                                         type="button"
                                                         onClick={() => {
                                                             setEditedTodo({ ...editedTodo, project });
@@ -574,9 +574,9 @@ export function TaskCardEditor({ todo, open, onOpenChange, onSave, saving, avail
                                                 {availableTags
                                                     .filter(t => !editedTodo.tags?.includes(t))
                                                     .slice(0, 6)
-                                                    .map((tag) => (
+                                                    .map((tag, tagIndex) => (
                                                         <button
-                                                            key={tag}
+                                                            key={`${tag}-${tagIndex}`}
                                                             type="button"
                                                             onClick={() => addTag(tag)}
                                                             className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"

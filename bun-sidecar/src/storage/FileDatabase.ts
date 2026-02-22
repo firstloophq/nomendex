@@ -96,6 +96,11 @@ export class FileDatabase<T extends DatabaseRecord> {
             }
         }
 
+        // Normalize tags: YAML bare value "tags: safe" parses as string, not array
+        if (typeof metadata.tags === "string") {
+            metadata.tags = [metadata.tags];
+        }
+
         // Add description from body if present
         if (bodyContent) {
             metadata.description = bodyContent;

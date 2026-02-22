@@ -78,8 +78,8 @@ export function TodoCard({
                 {!hideProject && todo.project && <p className="text-[10px] text-blue-600">{todo.project}</p>}
                 {todo.tags && todo.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                        {todo.tags.map((tag) => (
-                            <Badge key={tag} variant="outline" className="text-[10px] px-1 py-0 h-4">
+                        {todo.tags.map((tag, tagIndex) => (
+                            <Badge key={`${tag}-${tagIndex}`} variant="outline" className="text-[10px] px-1 py-0 h-4">
                                 {tag}
                             </Badge>
                         ))}

@@ -65,9 +65,9 @@ export function TagInput({ value, onChange, availableTags, placeholder = "Add ta
     return (
         <div className="space-y-2">
             <div className="flex flex-wrap gap-2 min-h-[2rem] p-2 border rounded-md bg-background">
-                {value.map((tag) => (
+                {value.map((tag, tagIndex) => (
                     <Badge
-                        key={tag}
+                        key={`${tag}-${tagIndex}`}
                         variant="secondary"
                         className="flex items-center gap-1 px-2 py-1 text-xs"
                     >
@@ -97,9 +97,9 @@ export function TagInput({ value, onChange, availableTags, placeholder = "Add ta
                 <div className="border rounded-md bg-popover p-2 shadow-md max-h-40 overflow-y-auto">
                     <div className="text-xs text-muted-foreground mb-1 px-2">Suggestions:</div>
                     <div className="flex flex-wrap gap-1">
-                        {suggestions.map((tag) => (
+                        {suggestions.map((tag, tagIndex) => (
                             <Badge
-                                key={tag}
+                                key={`${tag}-${tagIndex}`}
                                 variant="outline"
                                 className="cursor-pointer hover:bg-accent text-xs"
                                 onClick={() => addTag(tag)}

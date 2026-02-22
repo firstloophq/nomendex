@@ -655,6 +655,12 @@ Use `encodeRecordSnapshot` / `decodeRecordSnapshot` for lossless binary serializ
 import {
   encodeRecordSnapshot,
   decodeRecordSnapshot,
+  mergeRecordSnapshots,
+  getRecordSnapshotVersion,
+  isRecordSnapshotVersion,
+  getRecordSnapshotStateVector,
+  missingFromRecordSnapshot,
+  applySnapshotToDoc,
   getDoc,
 } from "@crdt/lib";
 
@@ -669,6 +675,39 @@ if (record) {
 const data = new Uint8Array(await Bun.file("snapshot.bin").arrayBuffer());
 const restored = decodeRecordSnapshot({ data });
 // restored is a full CRDTRecord with fields, sets, body, stateVector, appliedOps
+
+// Merge local and remote snapshots (snapshot-only persistence flows)
+const localBytes = new Uint8Array(await Bun.file("local.bin").arrayBuffer());
+const remoteBytes = new Uint8Array(await Bun.file("remote.bin").arrayBuffer());
+const merged = mergeRecordSnapshots({
+  local: localBytes,
+  remote: remoteBytes,
+  bias: "remote", // prefer remote content on equal-content conflicts
+});
+
+// Optional: deterministic version for optimistic compare-and-swap writes
+const mergedBytes = encodeRecordSnapshot({ record: merged });
+const version = getRecordSnapshotVersion({ data: mergedBytes });
+const stillCurrent = isRecordSnapshotVersion({
+  data: mergedBytes,
+  expectedVersion: version,
+});
+
+// Optional: read state-vector directly from snapshot bytes
+const snapshotSV = getRecordSnapshotStateVector({ data: mergedBytes });
+const missing = missingFromRecordSnapshot({
+  data: mergedBytes,
+  remoteStateVector: snapshotSV, // returns []
+});
+
+// Hydrate a DocManager document from snapshot bytes
+manager = applySnapshotToDoc({
+  manager,
+  docId: "my-doc",
+  snapshot: mergedBytes,
+  mode: "merge",      // or "replace"
+  mergeBias: "remote",
+});
 ```
 
 The snapshot preserves everything: LWW timestamps, OR-Set entries (including tombstones for remove tracking), body items, state vectors, and applied op IDs for idempotency. You can continue applying new ops to a restored record.
