@@ -41,8 +41,15 @@ export type { CardApiState, CardApiResult } from "./card-api";
 
 // Core/doc helpers used by backend persistence + hydration paths
 export { receive } from "../core/lamport-clock";
-export { applyDocOperation, getDoc } from "../document/doc-manager";
-export { encodeRecordSnapshot, decodeRecordSnapshot } from "../document/snapshot";
+export { applyDocOperation, applySnapshotToDoc, getDoc } from "../document/doc-manager";
+export {
+  encodeRecordSnapshot,
+  decodeRecordSnapshot,
+  mergeRecordSnapshots,
+  getRecordSnapshotVersion,
+  isRecordSnapshotVersion,
+  getRecordSnapshotStateVector,
+} from "../document/snapshot";
 export type { RecordOp } from "../document/record";
 
 // Relay (sidecar pattern — bridges local handler with remote server)

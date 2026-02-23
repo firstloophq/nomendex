@@ -5,6 +5,8 @@ import { WorkspaceStateSchema, NotesLocation } from "@/types/Workspace";
 interface PathCache {
     rootPath: string;
     nomendexPath: string;
+    notesCRDTPath: string;
+    canvasesCRDTPath: string;
     todosPath: string;
     notesPath: string;
     canvasesPath: string;
@@ -53,6 +55,8 @@ export async function initializePaths(): Promise<void> {
     paths = {
         rootPath: workspace.path,
         nomendexPath,
+        notesCRDTPath: path.join(nomendexPath, "crdt", "notes"),
+        canvasesCRDTPath: path.join(nomendexPath, "crdt", "canvases"),
         todosPath: path.join(workspace.path, "todos"),
         notesPath,
         canvasesPath: path.join(workspace.path, "canvases"),
@@ -93,6 +97,24 @@ export function getRootPath(): string {
 export function getNomendexPath(): string {
     if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
     return paths.nomendexPath;
+}
+
+/**
+ * Get the local CRDT notes snapshot cache path under .nomendex.
+ * @throws Error if no workspace is active
+ */
+export function getNotesCRDTPath(): string {
+    if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
+    return paths.notesCRDTPath;
+}
+
+/**
+ * Get the local CRDT canvas snapshot cache path under .nomendex.
+ * @throws Error if no workspace is active
+ */
+export function getCanvasesCRDTPath(): string {
+    if (!paths) throw new Error("No active workspace. Call initializePaths() first.");
+    return paths.canvasesCRDTPath;
 }
 
 /**

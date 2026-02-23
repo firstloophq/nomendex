@@ -33,9 +33,19 @@ interface SyncResponseMessage {
   readonly docId: string;
   readonly ops: ReadonlyArray<RecordOp>;
   readonly snapshot?: string; // base64-encoded CRDTRecord snapshot
+  readonly snapshotVersion?: string;
 }
 
-type IncomingMessage = DocOpsMessage | SyncResponseMessage | AwarenessMessage;
+interface SnapshotPublishMessage {
+  readonly type: "snapshot-publish";
+  readonly docId: string;
+  readonly snapshot: string; // base64-encoded CRDTRecord snapshot
+  readonly snapshotVersion?: string;
+  readonly expectedVersion?: string;
+  readonly mergeBias?: "local" | "remote";
+}
+
+type IncomingMessage = DocOpsMessage | SyncResponseMessage | AwarenessMessage | SnapshotPublishMessage;
 
 // --- Public interface ---
 
@@ -43,6 +53,12 @@ export interface MultiDocTransport {
   readonly subscribe: (params: { docId: string; initialStateVector?: StateVector }) => void;
   readonly unsubscribe: (params: { docId: string }) => void;
   readonly send: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+  readonly sendSnapshot?: (params: {
+    docId: string;
+    snapshot: Uint8Array;
+    expectedVersion?: string;
+    mergeBias?: "local" | "remote";
+  }) => void;
   readonly sendAwareness: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
   readonly disconnect: () => void;
   readonly reconnect: () => void;
@@ -56,8 +72,8 @@ export function createMultiDocTransport(params: {
   url: string;
   clientId: string;
   onOps: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+  onSnapshot?: (params: { docId: string; data: Uint8Array; version?: string }) => void;
   onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
-  onSnapshot?: (params: { docId: string; data: Uint8Array }) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
   onDocSyncComplete?: (params: { docId: string }) => void;
@@ -77,6 +93,20 @@ export function createMultiDocTransport(params: {
   const subscribedDocs = new Set<string>();
   // Global offline queue
   const pendingOps: Array<{ docId: string; ops: ReadonlyArray<RecordOp> }> = [];
+
+  function encodeSnapshot(data: Uint8Array): string {
+    const binary = String.fromCharCode(...data);
+    return btoa(binary);
+  }
+
+  function decodeSnapshot(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
 
   function updateDocSV(docId: string, ops: ReadonlyArray<RecordOp>) {
     const sv = new Map<string, number>(docStateVectors.get(docId) ?? []);
@@ -129,12 +159,11 @@ export function createMultiDocTransport(params: {
         if (msg.type === "sync-response" && msg.docId) {
           // If a snapshot is included, decode and apply it first
           if (msg.snapshot && params.onSnapshot) {
-            const binaryStr = atob(msg.snapshot);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
-            }
-            params.onSnapshot({ docId: msg.docId, data: bytes });
+            params.onSnapshot({
+              docId: msg.docId,
+              data: decodeSnapshot(msg.snapshot),
+              version: msg.snapshotVersion,
+            });
           }
 
           // Apply sync-response ops
@@ -184,6 +213,14 @@ export function createMultiDocTransport(params: {
             clientId: msg.clientId,
             state: msg.state,
           });
+        } else if (msg.type === "snapshot-publish" && msg.docId) {
+          if (msg.snapshot && params.onSnapshot) {
+            params.onSnapshot({
+              docId: msg.docId,
+              data: decodeSnapshot(msg.snapshot),
+              version: msg.snapshotVersion,
+            });
+          }
         }
       } catch {
         // Ignore non-JSON messages
@@ -247,6 +284,17 @@ export function createMultiDocTransport(params: {
       } else {
         pendingOps.push({ docId, ops });
       }
+    },
+
+    sendSnapshot({ docId, snapshot, expectedVersion, mergeBias }) {
+      if (!ws || !connected) return;
+      ws.send(JSON.stringify({
+        type: "snapshot-publish",
+        docId,
+        snapshot: encodeSnapshot(snapshot),
+        expectedVersion,
+        mergeBias,
+      }));
     },
 
     sendAwareness({ docId, clientId, state }) {

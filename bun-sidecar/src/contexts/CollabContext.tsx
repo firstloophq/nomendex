@@ -20,6 +20,11 @@ export type AwarenessListener = (params: {
 }) => void;
 
 export type SyncCompleteListener = (params: { docId: string }) => void;
+export type SnapshotListener = (params: {
+    docId: string;
+    snapshot: Uint8Array;
+    version?: string;
+}) => void;
 
 // --- Context value ---
 
@@ -32,6 +37,7 @@ export interface CollabContextValue {
         onOps: OpsListener;
         initialStateVector?: StateVector;
         onSyncComplete?: SyncCompleteListener;
+        onSnapshot?: SnapshotListener;
     }) => () => void;
     readonly subscribeAwareness: (params: {
         docId: string;
@@ -44,6 +50,12 @@ export interface CollabContextValue {
     readonly sendOps: (params: {
         docId: string;
         ops: ReadonlyArray<RecordOp>;
+    }) => void;
+    readonly sendSnapshot: (params: {
+        docId: string;
+        snapshot: Uint8Array;
+        expectedVersion?: string;
+        mergeBias?: "local" | "remote";
     }) => void;
 }
 
@@ -137,6 +149,7 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
     const opsListenersRef = useRef(new Map<string, Set<OpsListener>>());
     const awarenessListenersRef = useRef(new Map<string, Set<AwarenessListener>>());
     const syncListenersRef = useRef(new Map<string, Set<SyncCompleteListener>>());
+    const snapshotListenersRef = useRef(new Map<string, Set<SnapshotListener>>());
 
     // Ref-counting for transport subscriptions
     const docRefCountRef = useRef(new Map<string, number>());
@@ -201,6 +214,22 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                     }
                 }
             },
+            onSnapshot({ docId, data, version }) {
+                crdtDebugLog({
+                    event: "transport_on_snapshot",
+                    data: {
+                        docId,
+                        bytes: data.byteLength,
+                        version: version ?? null,
+                    },
+                });
+                const listeners = snapshotListenersRef.current.get(docId);
+                if (listeners) {
+                    for (const listener of listeners) {
+                        listener({ docId, snapshot: data, version });
+                    }
+                }
+            },
             onConnect() {
                 setIsConnected(true);
                 crdtDebugLog({ event: "transport_connected", data: { clientId } });
@@ -248,8 +277,9 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         onOps: OpsListener;
         initialStateVector?: StateVector;
         onSyncComplete?: SyncCompleteListener;
+        onSnapshot?: SnapshotListener;
     }): (() => void) => {
-        const { docId, onOps, initialStateVector, onSyncComplete } = subParams;
+        const { docId, onOps, initialStateVector, onSyncComplete, onSnapshot } = subParams;
 
         // Register ops listener
         let opsSet = opsListenersRef.current.get(docId);
@@ -269,6 +299,15 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
             syncSet.add(onSyncComplete);
         }
 
+        if (onSnapshot) {
+            let snapshotSet = snapshotListenersRef.current.get(docId);
+            if (!snapshotSet) {
+                snapshotSet = new Set();
+                snapshotListenersRef.current.set(docId, snapshotSet);
+            }
+            snapshotSet.add(onSnapshot);
+        }
+
         // Ref-count: first subscriber triggers transport.subscribe
         const prevCount = docRefCountRef.current.get(docId) ?? 0;
         docRefCountRef.current.set(docId, prevCount + 1);
@@ -280,6 +319,7 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                 nextCount: prevCount + 1,
                 hasInitialStateVector: !!initialStateVector,
                 hasSyncListener: !!onSyncComplete,
+                hasSnapshotListener: !!onSnapshot,
             },
         });
 
@@ -316,6 +356,16 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                     currentSyncSet.delete(onSyncComplete);
                     if (currentSyncSet.size === 0) {
                         syncListenersRef.current.delete(docId);
+                    }
+                }
+            }
+
+            if (onSnapshot) {
+                const currentSnapshotSet = snapshotListenersRef.current.get(docId);
+                if (currentSnapshotSet) {
+                    currentSnapshotSet.delete(onSnapshot);
+                    if (currentSnapshotSet.size === 0) {
+                        snapshotListenersRef.current.delete(docId);
                     }
                 }
             }
@@ -407,6 +457,29 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         });
     }, []);
 
+    const sendSnapshot = useCallback((sendParams: {
+        docId: string;
+        snapshot: Uint8Array;
+        expectedVersion?: string;
+        mergeBias?: "local" | "remote";
+    }) => {
+        transportRef.current?.sendSnapshot?.({
+            docId: sendParams.docId,
+            snapshot: sendParams.snapshot,
+            expectedVersion: sendParams.expectedVersion,
+            mergeBias: sendParams.mergeBias,
+        });
+        crdtDebugLog({
+            event: "send_snapshot",
+            data: {
+                docId: sendParams.docId,
+                bytes: sendParams.snapshot.byteLength,
+                expectedVersion: sendParams.expectedVersion ?? null,
+                mergeBias: sendParams.mergeBias ?? null,
+            },
+        });
+    }, []);
+
     const contextValue: CollabContextValue = useMemo(() => ({
         clientId,
         userInfo,
@@ -415,7 +488,8 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         subscribeAwareness,
         sendAwareness,
         sendOps,
-    }), [clientId, userInfo, isConnected, subscribeDoc, subscribeAwareness, sendAwareness, sendOps]);
+        sendSnapshot,
+    }), [clientId, userInfo, isConnected, subscribeDoc, subscribeAwareness, sendAwareness, sendOps, sendSnapshot]);
 
     return (
         <CollabContext.Provider value={contextValue}>

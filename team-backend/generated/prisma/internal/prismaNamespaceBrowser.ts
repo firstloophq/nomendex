@@ -57,7 +57,6 @@ export const ModelName = {
   GitHubInstallation: 'GitHubInstallation',
   OrgWorkspace: 'OrgWorkspace',
   CollabDoc: 'CollabDoc',
-  CollabOp: 'CollabOp',
   CollabSnapshot: 'CollabSnapshot',
   AuthCode: 'AuthCode'
 } as const
@@ -145,25 +144,13 @@ export const CollabDocScalarFieldEnum = {
   id: 'id',
   orgWorkspaceId: 'orgWorkspaceId',
   docId: 'docId',
-  lastSnapshotSeq: 'lastSnapshotSeq',
+  snapshotVersion: 'snapshotVersion',
+  stateVectorJson: 'stateVectorJson',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type CollabDocScalarFieldEnum = (typeof CollabDocScalarFieldEnum)[keyof typeof CollabDocScalarFieldEnum]
-
-
-export const CollabOpScalarFieldEnum = {
-  seq: 'seq',
-  collabDocId: 'collabDocId',
-  docId: 'docId',
-  opJson: 'opJson',
-  sourceClientId: 'sourceClientId',
-  sourceClock: 'sourceClock',
-  createdAt: 'createdAt'
-} as const
-
-export type CollabOpScalarFieldEnum = (typeof CollabOpScalarFieldEnum)[keyof typeof CollabOpScalarFieldEnum]
 
 
 export const CollabSnapshotScalarFieldEnum = {
@@ -173,8 +160,10 @@ export const CollabSnapshotScalarFieldEnum = {
   bucketKey: 'bucketKey',
   byteSize: 'byteSize',
   etag: 'etag',
-  baseSeq: 'baseSeq',
-  createdAt: 'createdAt'
+  snapshotVersion: 'snapshotVersion',
+  stateVectorJson: 'stateVectorJson',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 } as const
 
 export type CollabSnapshotScalarFieldEnum = (typeof CollabSnapshotScalarFieldEnum)[keyof typeof CollabSnapshotScalarFieldEnum]

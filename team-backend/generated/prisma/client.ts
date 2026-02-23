@@ -70,11 +70,6 @@ export type OrgWorkspace = Prisma.OrgWorkspaceModel
  */
 export type CollabDoc = Prisma.CollabDocModel
 /**
- * Model CollabOp
- * 
- */
-export type CollabOp = Prisma.CollabOpModel
-/**
  * Model CollabSnapshot
  * 
  */

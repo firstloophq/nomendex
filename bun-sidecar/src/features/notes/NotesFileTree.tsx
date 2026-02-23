@@ -60,7 +60,10 @@ function extractTitle(content: string): string | null {
 
 // Helper: Format filename to display name
 function formatDisplayName(fileName: string): string {
-    return fileName.replace(/\.md$/, "");
+    const leafName = fileName.includes("/")
+        ? fileName.substring(fileName.lastIndexOf("/") + 1)
+        : fileName;
+    return leafName.replace(/\.md$/, "");
 }
 
 function buildFileTree(folders: NoteFolder[], notes: Note[]): TreeNode[] {
@@ -103,12 +106,14 @@ function buildFileTree(folders: NoteFolder[], notes: Note[]): TreeNode[] {
 
     // Add notes to appropriate folders or root
     notes.forEach((note) => {
+        const canonicalPath = note.fileName;
+        const leafName = canonicalPath.includes("/")
+            ? canonicalPath.substring(canonicalPath.lastIndexOf("/") + 1)
+            : canonicalPath;
         const noteNode: TreeNode = {
             type: "note",
-            name: note.fileName,
-            path: note.folderPath
-                ? `${note.folderPath}/${note.fileName}`
-                : note.fileName,
+            name: leafName,
+            path: canonicalPath,
             note,
             children: [],
         };

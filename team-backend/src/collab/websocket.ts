@@ -1,13 +1,14 @@
 import {
   applyDocOperation,
+  applySnapshotToDoc,
+  createCRDTWebSocketHandler,
   decodeRecordSnapshot,
   encodeRecordSnapshot,
   getDoc,
+  getRecordSnapshotVersion,
+  mergeRecordSnapshots,
   receive,
   type RecordOp,
-} from "@crdt/lib/server";
-import {
-  createCRDTWebSocketHandler,
   type WSClient,
 } from "@crdt/lib/server";
 import { upgradeWebSocket } from "hono/bun";
@@ -16,13 +17,9 @@ import { authenticateBearerToken, type AuthIdentity } from "../auth";
 import { prisma } from "../db";
 import { parseWorkspaceScopedDocId } from "./doc-id";
 import {
-  appendCollabOps,
-  getLatestCollabOpSeq,
-  loadCollabOps,
-  loadLatestCollabSnapshot,
-  saveCollabSnapshot,
+  loadCanonicalSnapshot,
+  saveCanonicalSnapshot,
 } from "./persistence";
-import { isSnapshotStoreEnabled } from "./snapshot-store";
 
 interface SocketState {
   client: WSClient;
@@ -30,22 +27,46 @@ interface SocketState {
   workspaceAccessCache: Map<string, boolean>;
 }
 
+interface SnapshotPublishPayload {
+  type: "snapshot-publish";
+  docId: string;
+  snapshot: string;
+  expectedVersion?: string;
+  mergeBias?: "local" | "remote";
+}
+
 const socketStateByRaw = new WeakMap<object, SocketState>();
 const hydratedDocs = new Set<string>();
 const hydrateByDoc = new Map<string, Promise<void>>();
-const checkpointInFlight = new Set<string>();
+const persistedVersionByDoc = new Map<string, string>();
+const persistTimerByDoc = new Map<string, ReturnType<typeof setTimeout>>();
+const persistInFlightByDoc = new Set<string>();
 
-function getCheckpointThreshold(): number {
-  const raw = process.env.CRDT_CHECKPOINT_OP_THRESHOLD;
-  if (!raw) return 500;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 500;
+function logCollabInfo(event: string, data: Record<string, unknown>): void {
+  console.info(`[COLLAB] ${event} ${JSON.stringify(data)}`);
+}
+
+function logCollabWarn(event: string, data: Record<string, unknown>): void {
+  console.warn(`[COLLAB] ${event} ${JSON.stringify(data)}`);
+}
+
+function logCollabError(event: string, data: Record<string, unknown>): void {
+  console.error(`[COLLAB] ${event} ${JSON.stringify(data)}`);
 }
 
 function getSocketState(ws: { raw?: unknown }): SocketState | null {
   const raw = ws.raw;
   if (!raw || typeof raw !== "object") return null;
   return socketStateByRaw.get(raw) ?? null;
+}
+
+function fromBase64(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 async function canAccessWorkspace(params: {
@@ -77,72 +98,261 @@ async function canAccessWorkspace(params: {
   return allowed;
 }
 
-async function maybeCheckpointDoc(params: {
+async function persistCanonicalSnapshot(params: {
   docId: string;
   orgWorkspaceId: string;
 }): Promise<void> {
-  if (!isSnapshotStoreEnabled()) return;
+  if (persistInFlightByDoc.has(params.docId)) {
+    logCollabInfo("persist_skip_inflight", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    return;
+  }
+  persistInFlightByDoc.add(params.docId);
 
-  const threshold = getCheckpointThreshold();
-  const opCount = crdtHandler.getDocOps({ docId: params.docId }).length;
-  if (opCount < threshold) return;
-  if (checkpointInFlight.has(params.docId)) return;
-
-  checkpointInFlight.add(params.docId);
   try {
+    logCollabInfo("persist_start", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
     const state = crdtHandler.getDocManagerState();
-    const record = getDoc({ manager: state.manager, docId: params.docId });
-    if (!record) return;
+    const currentRecord = getDoc({
+      manager: state.manager,
+      docId: params.docId,
+    });
+    if (!currentRecord) {
+      logCollabWarn("persist_skip_no_record", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+      });
+      return;
+    }
 
-    const baseSeq = await getLatestCollabOpSeq({
+    const localBytes = encodeRecordSnapshot({ record: currentRecord });
+    const expectedVersion = persistedVersionByDoc.get(params.docId);
+    const saveResult = await saveCanonicalSnapshot({
       docId: params.docId,
       orgWorkspaceId: params.orgWorkspaceId,
+      bytes: localBytes,
+      expectedVersion,
     });
-    if (baseSeq === null) return;
 
-    const snapshotBytes = encodeRecordSnapshot({ record });
-    await saveCollabSnapshot({
+    if (saveResult.status === "saved") {
+      persistedVersionByDoc.set(params.docId, saveResult.snapshotVersion);
+      logCollabInfo("persist_saved", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        bytes: localBytes.byteLength,
+        expectedVersion: expectedVersion ?? null,
+        savedVersion: saveResult.snapshotVersion,
+      });
+      return;
+    }
+
+    if (!saveResult.current) {
+      // No current remote snapshot to merge against; retry without CAS.
+      logCollabWarn("persist_conflict_no_current_retry", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        bytes: localBytes.byteLength,
+        expectedVersion: expectedVersion ?? null,
+      });
+      const forced = await saveCanonicalSnapshot({
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        bytes: localBytes,
+      });
+      if (forced.status === "saved") {
+        persistedVersionByDoc.set(params.docId, forced.snapshotVersion);
+        logCollabInfo("persist_retry_saved", {
+          docId: params.docId,
+          orgWorkspaceId: params.orgWorkspaceId,
+          bytes: localBytes.byteLength,
+          savedVersion: forced.snapshotVersion,
+        });
+      }
+      return;
+    }
+
+    logCollabWarn("persist_conflict_merge_retry", {
       docId: params.docId,
       orgWorkspaceId: params.orgWorkspaceId,
-      baseSeq,
-      bytes: snapshotBytes,
+      bytes: localBytes.byteLength,
+      expectedVersion: expectedVersion ?? null,
+      remoteVersion: saveResult.current.snapshotVersion ?? null,
+      remoteBytes: saveResult.current.bytes.byteLength,
     });
-
-    crdtHandler.checkpointDoc({ docId: params.docId });
+    const merged = mergeRecordSnapshots({
+      local: decodeRecordSnapshot({ data: localBytes }),
+      remote: decodeRecordSnapshot({ data: saveResult.current.bytes }),
+      bias: "remote",
+    });
+    const mergedBytes = encodeRecordSnapshot({ record: merged });
+    const retried = await saveCanonicalSnapshot({
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+      bytes: mergedBytes,
+      expectedVersion: saveResult.current.snapshotVersion ?? undefined,
+    });
+    if (retried.status === "saved") {
+      persistedVersionByDoc.set(params.docId, retried.snapshotVersion);
+      logCollabInfo("persist_merge_retry_saved", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        mergedBytes: mergedBytes.byteLength,
+        savedVersion: retried.snapshotVersion,
+      });
+    } else {
+      logCollabWarn("persist_merge_retry_conflict", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        mergedBytes: mergedBytes.byteLength,
+      });
+    }
   } catch (error) {
-    console.error(
-      "[collab] failed to checkpoint doc",
-      params.docId,
-      error instanceof Error ? error.message : String(error),
-    );
+    logCollabError("persist_error", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+      message: error instanceof Error ? error.message : String(error),
+    });
   } finally {
-    checkpointInFlight.delete(params.docId);
+    persistInFlightByDoc.delete(params.docId);
   }
 }
 
-async function persistOps(params: {
+function scheduleCanonicalPersist(params: {
   docId: string;
-  ops: ReadonlyArray<RecordOp>;
-}): Promise<void> {
-  const scopedDoc = parseWorkspaceScopedDocId({ docId: params.docId });
-  if (!scopedDoc) return;
+  orgWorkspaceId: string;
+}): void {
+  const existingTimer = persistTimerByDoc.get(params.docId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    logCollabInfo("persist_schedule_debounced", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+  }
+  const timer = setTimeout(() => {
+    persistTimerByDoc.delete(params.docId);
+    void persistCanonicalSnapshot({
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+  }, 1200);
+  persistTimerByDoc.set(params.docId, timer);
+  logCollabInfo("persist_scheduled", {
+    docId: params.docId,
+    orgWorkspaceId: params.orgWorkspaceId,
+    delayMs: 1200,
+  });
+}
 
-  await appendCollabOps({
-    docId: params.docId,
+async function handleSnapshotPublish(params: {
+  payload: SnapshotPublishPayload;
+}): Promise<void> {
+  const scopedDoc = parseWorkspaceScopedDocId({ docId: params.payload.docId });
+  if (!scopedDoc) {
+    logCollabWarn("snapshot_publish_invalid_doc", {
+      docId: params.payload.docId,
+    });
+    return;
+  }
+  logCollabInfo("snapshot_publish_received", {
+    docId: params.payload.docId,
     orgWorkspaceId: scopedDoc.orgWorkspaceId,
-    ops: params.ops,
+    payloadBytes: params.payload.snapshot.length,
+    expectedVersion: params.payload.expectedVersion ?? null,
+    mergeBias: params.payload.mergeBias ?? null,
   });
-  await maybeCheckpointDoc({
-    docId: params.docId,
+
+  await hydrateDocIfNeeded({
+    docId: params.payload.docId,
     orgWorkspaceId: scopedDoc.orgWorkspaceId,
   });
+
+  const incoming = decodeRecordSnapshot({
+    data: fromBase64(params.payload.snapshot),
+  });
+  const currentState = crdtHandler.getDocManagerState();
+  const currentRecord = getDoc({
+    manager: currentState.manager,
+    docId: params.payload.docId,
+  });
+  const mergedRecord = currentRecord
+    ? mergeRecordSnapshots({
+      local: incoming,
+      remote: currentRecord,
+      bias: params.payload.mergeBias ?? "remote",
+    })
+    : incoming;
+  const mergedBytes = encodeRecordSnapshot({ record: mergedRecord });
+  const mergedVersion = getRecordSnapshotVersion({ data: mergedBytes });
+  logCollabInfo("snapshot_publish_merged", {
+    docId: params.payload.docId,
+    orgWorkspaceId: scopedDoc.orgWorkspaceId,
+    hadCurrentRecord: !!currentRecord,
+    mergeBias: params.payload.mergeBias ?? "remote",
+    mergedBytes: mergedBytes.byteLength,
+    mergedVersion,
+  });
+
+  const nextManager = applySnapshotToDoc({
+    manager: currentState.manager,
+    docId: params.payload.docId,
+    snapshot: mergedBytes,
+    mode: currentRecord ? "merge" : "replace",
+    mergeBias: params.payload.mergeBias ?? "remote",
+  });
+  crdtHandler.setDocManagerState({
+    state: { ...currentState, manager: nextManager },
+  });
+  crdtHandler.checkpointDoc({ docId: params.payload.docId });
+  crdtHandler.broadcastSnapshot({
+    docId: params.payload.docId,
+    snapshot: mergedBytes,
+    version: mergedVersion,
+  });
+
+  const persistResult = await saveCanonicalSnapshot({
+    docId: params.payload.docId,
+    orgWorkspaceId: scopedDoc.orgWorkspaceId,
+    bytes: mergedBytes,
+    expectedVersion: persistedVersionByDoc.get(params.payload.docId),
+  });
+  if (persistResult.status === "saved") {
+    persistedVersionByDoc.set(params.payload.docId, persistResult.snapshotVersion);
+    logCollabInfo("snapshot_publish_persist_saved", {
+      docId: params.payload.docId,
+      orgWorkspaceId: scopedDoc.orgWorkspaceId,
+      persistedVersion: persistResult.snapshotVersion,
+      bucketKey: persistResult.bucketKey,
+    });
+  } else if (persistResult.current?.snapshotVersion) {
+    persistedVersionByDoc.set(params.payload.docId, persistResult.current.snapshotVersion);
+    logCollabWarn("snapshot_publish_persist_conflict", {
+      docId: params.payload.docId,
+      orgWorkspaceId: scopedDoc.orgWorkspaceId,
+      persistedVersion: persistResult.current.snapshotVersion,
+    });
+  } else {
+    logCollabWarn("snapshot_publish_persist_conflict_no_current", {
+      docId: params.payload.docId,
+      orgWorkspaceId: scopedDoc.orgWorkspaceId,
+    });
+  }
 }
 
 const crdtHandler = createCRDTWebSocketHandler({
   serverClientId: "team-backend-crdt",
   onDocChanged({ docId, ops, source }) {
     if (source !== "client" || ops.length === 0) return;
-    void persistOps({ docId, ops });
+    const scopedDoc = parseWorkspaceScopedDocId({ docId });
+    if (!scopedDoc) return;
+    scheduleCanonicalPersist({
+      docId,
+      orgWorkspaceId: scopedDoc.orgWorkspaceId,
+    });
   },
 });
 
@@ -150,50 +360,81 @@ async function hydrateDocIfNeeded(params: {
   docId: string;
   orgWorkspaceId: string;
 }): Promise<void> {
-  if (hydratedDocs.has(params.docId)) return;
+  if (hydratedDocs.has(params.docId)) {
+    logCollabInfo("hydrate_skip_already_hydrated", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    return;
+  }
   const existing = hydrateByDoc.get(params.docId);
-  if (existing) return existing;
+  if (existing) {
+    logCollabInfo("hydrate_join_existing", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    return existing;
+  }
 
   const hydration = (async () => {
-    const snapshot = await loadLatestCollabSnapshot({
+    logCollabInfo("hydrate_start", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    const snapshot = await loadCanonicalSnapshot({
       docId: params.docId,
       orgWorkspaceId: params.orgWorkspaceId,
     });
 
-    let state = crdtHandler.getDocManagerState();
-    let manager = state.manager;
-    let clock = state.clock;
-
-    if (snapshot) {
-      const restoredRecord = decodeRecordSnapshot({ data: snapshot.bytes });
-      const nextDocs = new Map(manager.docs);
-      nextDocs.set(params.docId, restoredRecord);
-      manager = { ...manager, docs: nextDocs };
+    if (!snapshot) {
+      logCollabInfo("hydrate_miss", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+      });
+      hydratedDocs.add(params.docId);
+      return;
     }
 
-    const ops = await loadCollabOps({
-      docId: params.docId,
-      orgWorkspaceId: params.orgWorkspaceId,
-      afterSeq: snapshot?.baseSeq,
+    const restored = decodeRecordSnapshot({ data: snapshot.bytes });
+    const state = crdtHandler.getDocManagerState();
+    const nextDocs = new Map(state.manager.docs);
+    nextDocs.set(params.docId, restored);
+    crdtHandler.setDocManagerState({
+      state: {
+        ...state,
+        manager: { ...state.manager, docs: nextDocs },
+      },
     });
-
-    for (const op of ops) {
-      manager = applyDocOperation({ manager, docId: params.docId, op });
-      if ("id" in op && op.id && typeof op.id.clock === "number") {
-        clock = receive({ clock, remoteCounter: op.id.clock });
-      }
+    crdtHandler.checkpointDoc({ docId: params.docId });
+    if (snapshot.snapshotVersion) {
+      persistedVersionByDoc.set(params.docId, snapshot.snapshotVersion);
+      logCollabInfo("hydrate_restored", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        bytes: snapshot.bytes.byteLength,
+        snapshotVersion: snapshot.snapshotVersion,
+      });
+    } else {
+      persistedVersionByDoc.set(
+        params.docId,
+        getRecordSnapshotVersion({ data: snapshot.bytes }),
+      );
+      logCollabInfo("hydrate_restored_inferred_version", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        bytes: snapshot.bytes.byteLength,
+      });
     }
-
-    state = { ...state, manager, clock };
-    crdtHandler.setDocManagerState({ state });
-
-    // Keep subscribe payloads compact by serving hydrated docs as snapshots.
-    if (snapshot || ops.length > 0) {
-      crdtHandler.checkpointDoc({ docId: params.docId });
-    }
-
     hydratedDocs.add(params.docId);
   })()
+    .catch((error) => {
+      logCollabError("hydrate_error", {
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    })
     .finally(() => {
       hydrateByDoc.delete(params.docId);
     });
@@ -241,6 +482,10 @@ async function authorizeAndPrepareMessage(params: {
 
   const scopedDoc = parseWorkspaceScopedDocId({ docId });
   if (!scopedDoc) {
+    logCollabWarn("authorize_invalid_doc", {
+      docId,
+      clerkUserId: params.state.identity.clerkUserId,
+    });
     return {
       ok: false,
       closeCode: 4400,
@@ -254,6 +499,11 @@ async function authorizeAndPrepareMessage(params: {
     cache: params.state.workspaceAccessCache,
   });
   if (!allowed) {
+    logCollabWarn("authorize_forbidden_workspace", {
+      docId,
+      orgWorkspaceId: scopedDoc.orgWorkspaceId,
+      clerkUserId: params.state.identity.clerkUserId,
+    });
     return {
       ok: false,
       closeCode: 4403,
@@ -261,7 +511,7 @@ async function authorizeAndPrepareMessage(params: {
     };
   }
 
-  if (parsed.type === "subscribe") {
+  if (parsed.type === "subscribe" || parsed.type === "snapshot-publish") {
     await hydrateDocIfNeeded({
       docId,
       orgWorkspaceId: scopedDoc.orgWorkspaceId,
@@ -282,10 +532,9 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
   try {
     identity = await authenticateBearerToken({ token });
   } catch (error) {
-    console.error(
-      "[collab] websocket auth failed",
-      error instanceof Error ? error.message : String(error),
-    );
+    logCollabError("websocket_auth_failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
@@ -312,10 +561,11 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
         });
       }
 
-      console.log(
-        "[collab] open",
-        JSON.stringify({ connectionId, logicalClientId, clerkUserId: identity.clerkUserId }),
-      );
+      logCollabInfo("websocket_open", {
+        connectionId,
+        logicalClientId,
+        clerkUserId: identity.clerkUserId,
+      });
       crdtHandler.handleOpen({ client });
     },
 
@@ -334,8 +584,27 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
         message,
       });
       if (!authResult.ok) {
+        logCollabWarn("websocket_message_rejected", {
+          connectionId: state.client.id,
+          closeCode: authResult.closeCode,
+          reason: authResult.reason,
+        });
         ws.close(authResult.closeCode, authResult.reason);
         return;
+      }
+
+      try {
+        const parsed = JSON.parse(message) as SnapshotPublishPayload;
+        if (
+          parsed.type === "snapshot-publish"
+          && typeof parsed.docId === "string"
+          && typeof parsed.snapshot === "string"
+        ) {
+          await handleSnapshotPublish({ payload: parsed });
+          return;
+        }
+      } catch {
+        // fall through for non-JSON messages
       }
 
       crdtHandler.handleMessage({
@@ -347,6 +616,10 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
     onClose(_event, ws) {
       const state = getSocketState(ws);
       if (!state) return;
+      logCollabInfo("websocket_close", {
+        connectionId: state.client.id,
+        clerkUserId: state.identity.clerkUserId,
+      });
       crdtHandler.handleClose({ client: state.client });
       const raw = ws.raw;
       if (raw && typeof raw === "object") {

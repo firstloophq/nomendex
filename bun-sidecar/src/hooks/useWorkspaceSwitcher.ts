@@ -35,16 +35,39 @@ interface UseWorkspaceSwitcherResult {
     refresh: () => Promise<void>;
 }
 
+interface WorkspaceSwitcherCache {
+    workspaces: WorkspaceInfo[];
+    activeWorkspace: WorkspaceInfo | null;
+    appMode: "solo" | "team" | undefined;
+    hasResolved: boolean;
+}
+
+const workspaceSwitcherCache: WorkspaceSwitcherCache = {
+    workspaces: [],
+    activeWorkspace: null,
+    appMode: undefined,
+    hasResolved: false,
+};
+
 export function useWorkspaceSwitcher(): UseWorkspaceSwitcherResult {
-    const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
-    const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceInfo | null>(null);
-    const [appMode, setAppModeState] = useState<"solo" | "team" | undefined>(undefined);
-    const [loading, setLoading] = useState(true);
+    const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>(workspaceSwitcherCache.workspaces);
+    const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceInfo | null>(workspaceSwitcherCache.activeWorkspace);
+    const [appMode, setAppModeState] = useState<"solo" | "team" | undefined>(workspaceSwitcherCache.appMode);
+    const [loading, setLoading] = useState(!workspaceSwitcherCache.hasResolved);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchWorkspaces = useCallback(async () => {
+    const syncLocalState = useCallback((next: WorkspaceSwitcherCache) => {
+        setWorkspaces(next.workspaces);
+        setActiveWorkspace(next.activeWorkspace);
+        setAppModeState(next.appMode);
+        setLoading(false);
+    }, []);
+
+    const fetchWorkspaces = useCallback(async (options?: { background?: boolean }) => {
         try {
-            setLoading(true);
+            if (!options?.background) {
+                setLoading(true);
+            }
             setError(null);
 
             const [configRes, activeRes] = await Promise.all([
@@ -55,24 +78,58 @@ export function useWorkspaceSwitcher(): UseWorkspaceSwitcherResult {
             const configData = await configRes.json();
             const activeData = await activeRes.json();
 
-            if (configData.success) {
-                setWorkspaces(configData.data.workspaces || []);
-                setAppModeState(configData.data.appMode);
+            const resolvedWorkspaces: WorkspaceInfo[] = configData.success
+                ? (configData.data.workspaces || [])
+                : workspaceSwitcherCache.workspaces;
+            const resolvedAppMode: "solo" | "team" | undefined = configData.success
+                ? configData.data.appMode
+                : workspaceSwitcherCache.appMode;
+
+            let resolvedActiveWorkspace: WorkspaceInfo | null = null;
+            if (activeData.success) {
+                resolvedActiveWorkspace = activeData.data ?? null;
             }
 
-            if (activeData.success) {
-                setActiveWorkspace(activeData.data);
+            if (!resolvedActiveWorkspace && configData.success) {
+                const activeWorkspaceId = configData.data.activeWorkspaceId;
+                if (activeWorkspaceId) {
+                    resolvedActiveWorkspace = resolvedWorkspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+                }
             }
+
+            if (!resolvedActiveWorkspace) {
+                resolvedActiveWorkspace = workspaceSwitcherCache.activeWorkspace;
+            }
+
+            const nextCache: WorkspaceSwitcherCache = {
+                workspaces: resolvedWorkspaces,
+                activeWorkspace: resolvedActiveWorkspace,
+                appMode: resolvedAppMode,
+                hasResolved: true,
+            };
+            workspaceSwitcherCache.workspaces = nextCache.workspaces;
+            workspaceSwitcherCache.activeWorkspace = nextCache.activeWorkspace;
+            workspaceSwitcherCache.appMode = nextCache.appMode;
+            workspaceSwitcherCache.hasResolved = true;
+            syncLocalState(nextCache);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to load workspaces");
-        } finally {
             setLoading(false);
+        } finally {
+            if (!options?.background) {
+                setLoading(false);
+            }
         }
-    }, []);
+    }, [syncLocalState]);
 
     useEffect(() => {
-        fetchWorkspaces();
-    }, [fetchWorkspaces]);
+        if (workspaceSwitcherCache.hasResolved) {
+            syncLocalState(workspaceSwitcherCache);
+            void fetchWorkspaces({ background: true });
+            return;
+        }
+        void fetchWorkspaces();
+    }, [fetchWorkspaces, syncLocalState]);
 
     const switchWorkspace = useCallback(async (workspaceId: string) => {
         try {

@@ -68,7 +68,13 @@ import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
 import { buildNoteDocId, getWorkspaceCollabScope } from "@/lib/collab-doc-id";
 import {
     createCRDTPlugin,
+    getCRDTState,
     applyRemoteOps,
+    applyRemoteSnapshot,
+    decodeRecordSnapshot,
+    encodeRecordSnapshot,
+    getRecordSnapshotStateVector,
+    getRecordSnapshotVersion,
     undoCommand,
     redoCommand,
 } from "@crdt/lib";
@@ -98,6 +104,37 @@ interface Heading {
 const BOOTSTRAP_CLAIM_KEY_PREFIX = "nomendex:crdt-bootstrap";
 const BOOTSTRAP_CLAIM_TTL_MS = 4000;
 const SHOW_NOTES_RIGHT_SIDEBAR = true; // Temporary debug toggle to isolate duplicate-key crashes.
+const NOTE_SNAPSHOT_DEBOUNCE_MS = 1000;
+
+function decodeBase64Bytes(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function encodeBase64Bytes(data: Uint8Array): string {
+    return btoa(String.fromCharCode(...data));
+}
+
+function snapshotRecordHasVisibleContent(record: unknown): boolean {
+    const body = (record as { body?: { store?: { items?: Array<{
+        deleted?: boolean;
+        content?: { type?: string; value?: string; blockType?: string };
+    }> } } })?.body;
+    const items = body?.store?.items ?? [];
+    for (const item of items) {
+        if (item.deleted) continue;
+        const content = item.content;
+        if (!content) continue;
+        if (content.type === "text" && (content.value ?? "").trim().length > 0) return true;
+        if (content.type === "inline_atom") return true;
+        if (content.type === "block" && content.blockType && content.blockType !== "paragraph") return true;
+    }
+    return false;
+}
 
 function tryClaimBootstrap(params: { docId: string; clientId: string }): boolean {
     if (typeof window === "undefined") return true;
@@ -410,14 +447,54 @@ export function NotesView(props: NotesViewProps) {
     const minimapRef = useRef<HTMLDivElement>(null);
     const lastKnownMtimeRef = useRef<number | null>(null);
     const prevActiveTabIdRef = useRef<string | undefined>(undefined);
+    const localSnapshotSeedRef = useRef<{
+        bytes: Uint8Array;
+        version: string;
+        stateVector: Map<string, number>;
+    } | null>(null);
+    const backendSnapshotVersionRef = useRef<string | null>(null);
+    const hydrationRequestIdRef = useRef(0);
     const { currentTheme } = useTheme();
     const { isLocked: isFileLocked } = useFileLocks();
     const isLocked = isFileLocked(noteFileName);
 
     const hasNote = Boolean(note);
     const hasCollab = Boolean(collab);
+    const workspaceId = activeWorkspace?.id?.trim();
+    if (!workspaceId) {
+        crdtDebugLog({
+            event: "note_missing_workspace_scope",
+            level: "error",
+            data: {
+                noteFileName,
+                tabId,
+                hasActiveWorkspace: Boolean(activeWorkspace),
+                activeWorkspaceKeys: activeWorkspace ? Object.keys(activeWorkspace) : [],
+            },
+        });
+        throw new Error(`Missing workspace id while building note collab doc id for "${noteFileName}"`);
+    }
     const collabScope = getWorkspaceCollabScope({ activeWorkspace });
     const collabDocId = buildNoteDocId({ scope: collabScope, noteFileName });
+
+    const logHydration = useCallback((params: {
+        event: string;
+        source?: string;
+        reqId?: number;
+        data?: Record<string, unknown>;
+    }) => {
+        crdtDebugLog({
+            event: params.event,
+            data: {
+                noteFileName,
+                tabId,
+                collabDocId,
+                source: params.source ?? null,
+                reqId: params.reqId ?? null,
+                ...(params.data ?? {}),
+            },
+        });
+    }, [collabDocId, noteFileName, tabId]);
 
     const applySuggestionDecision = useCallback((params: {
         suggestionId: string;
@@ -950,9 +1027,16 @@ export function NotesView(props: NotesViewProps) {
 
     useEffect(() => {
         let cancelled = false;
+        const effectStartReqId = hydrationRequestIdRef.current;
 
         const fetchData = async () => {
+            const reqId = ++hydrationRequestIdRef.current;
             try {
+                logHydration({
+                    event: "note_fetch_start",
+                    reqId,
+                    source: "fetch",
+                });
                 setLoading(true);
                 setError(null);
                 if (!notesAPI || !notesAPI.getNotes) {
@@ -961,15 +1045,142 @@ export function NotesView(props: NotesViewProps) {
                 const noteResult = await notesAPI.getNoteByFileName({ fileName: noteFileName, skipCache: true });
 
                 // Don't update state if component unmounted or note changed
-                if (cancelled) return;
+                if (cancelled) {
+                    logHydration({
+                        event: "note_fetch_cancelled_before_apply",
+                        reqId,
+                        source: "fetch",
+                    });
+                    return;
+                }
+                if (reqId !== hydrationRequestIdRef.current) {
+                    logHydration({
+                        event: "note_fetch_stale_skip",
+                        reqId,
+                        source: "fetch",
+                        data: {
+                            latestReqId: hydrationRequestIdRef.current,
+                            reason: "superseded_after_note_load",
+                        },
+                    });
+                    return;
+                }
 
                 const noteContent = noteResult?.content || "";
+                logHydration({
+                    event: "note_fetch_done",
+                    reqId,
+                    source: "fetch",
+                    data: {
+                        contentLen: noteContent.length,
+                        mtime: noteResult?.mtime ?? null,
+                    },
+                });
+                if (collab) {
+                    try {
+                        const snapshotRes = await fetch("/api/crdt/note-snapshot/get", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ docId: collabDocId }),
+                        });
+
+                        if (snapshotRes.ok) {
+                            const payload = await snapshotRes.json() as {
+                                snapshot: string | null;
+                                meta: {
+                                    snapshotVersion?: string;
+                                    lastKnownBackendVersion?: string;
+                                } | null;
+                            };
+                            if (payload.snapshot) {
+                                const bytes = decodeBase64Bytes(payload.snapshot);
+                                const version = payload.meta?.snapshotVersion
+                                    ?? getRecordSnapshotVersion({ data: bytes });
+                                const stateVector = new Map(getRecordSnapshotStateVector({ data: bytes }));
+                                localSnapshotSeedRef.current = { bytes, version, stateVector };
+                                backendSnapshotVersionRef.current = payload.meta?.lastKnownBackendVersion
+                                    ?? payload.meta?.snapshotVersion
+                                    ?? null;
+                                crdtDebugLog({
+                                    event: "note_snapshot_seed_loaded",
+                                    data: {
+                                        docId: collabDocId,
+                                        hasSnapshot: true,
+                                        bytes: bytes.byteLength,
+                                        version,
+                                    },
+                                });
+                                logHydration({
+                                    event: "note_snapshot_seed_loaded",
+                                    reqId,
+                                    source: "fetch",
+                                    data: {
+                                        hasSnapshot: true,
+                                        bytes: bytes.byteLength,
+                                        version,
+                                    },
+                                });
+                            } else {
+                                logHydration({
+                                    event: "note_snapshot_seed_loaded",
+                                    reqId,
+                                    source: "fetch",
+                                    data: {
+                                        hasSnapshot: false,
+                                    },
+                                });
+                                localSnapshotSeedRef.current = null;
+                            }
+                        }
+                    } catch (snapshotError) {
+                        localSnapshotSeedRef.current = null;
+                        logHydration({
+                            event: "note_snapshot_seed_error",
+                            reqId,
+                            source: "fetch",
+                            data: {
+                                error: summarizeErrorForDebug(snapshotError),
+                            },
+                        });
+                    }
+                } else {
+                    localSnapshotSeedRef.current = null;
+                    backendSnapshotVersionRef.current = null;
+                }
+                if (cancelled) {
+                    logHydration({
+                        event: "note_fetch_cancelled_before_state_apply",
+                        reqId,
+                        source: "fetch",
+                    });
+                    return;
+                }
+                if (reqId !== hydrationRequestIdRef.current) {
+                    logHydration({
+                        event: "note_fetch_stale_skip",
+                        reqId,
+                        source: "fetch",
+                        data: {
+                            latestReqId: hydrationRequestIdRef.current,
+                            reason: "superseded_before_state_apply",
+                        },
+                    });
+                    return;
+                }
                 setNote(noteResult);
                 setContent(noteContent);
                 setHeadings(parseHeadings(noteContent));
                 lastSavedContentRef.current = noteContent;
                 lastKnownMtimeRef.current = noteResult?.mtime ?? null;
                 setSaveState("saved");
+                logHydration({
+                    event: "note_fetch_state_applied",
+                    reqId,
+                    source: "fetch",
+                    data: {
+                        contentLen: noteContent.length,
+                    },
+                });
 
                 // Extract tags from front matter
                 const noteTags = noteResult?.frontMatter?.tags;
@@ -988,20 +1199,43 @@ export function NotesView(props: NotesViewProps) {
                 }
             } catch (err) {
                 if (cancelled) return;
+                logHydration({
+                    event: "note_fetch_error",
+                    reqId,
+                    source: "fetch",
+                    data: {
+                        error: summarizeErrorForDebug(err),
+                    },
+                });
                 const errorMessage = err instanceof Error ? err.message : "Failed to fetch notes";
                 setError(errorMessage);
             } finally {
                 if (!cancelled) {
                     setLoading(false);
+                    logHydration({
+                        event: "note_fetch_finalized",
+                        reqId,
+                        source: "fetch",
+                        data: {
+                            isLatestReq: reqId === hydrationRequestIdRef.current,
+                        },
+                    });
                 }
             }
         };
         fetchData();
 
         return () => {
+            logHydration({
+                event: "note_fetch_effect_cleanup",
+                source: "fetch",
+                data: {
+                    effectStartReqId,
+                },
+            });
             cancelled = true;
         };
-    }, [noteFileName, notesAPI, setLoading, setError, parseHeadings]);
+    }, [noteFileName, notesAPI, setLoading, setError, parseHeadings, collab, collabDocId, logHydration]);
 
     // Listen for refresh events to reload tags and project
     useEffect(() => {
@@ -1046,17 +1280,45 @@ export function NotesView(props: NotesViewProps) {
     // Initialize ProseMirror editor - wait for content to be loaded
     useEffect(() => {
         if (!editorRef.current || !isRichTextMode || !note) {
+            logHydration({
+                event: "note_editor_guard_blocked",
+                source: "editor_effect",
+                data: {
+                    hasEditorRef: Boolean(editorRef.current),
+                    isRichTextMode,
+                    hasNote: Boolean(note),
+                },
+            });
             return;
         }
 
         // Wait until we have the correct note data loaded
         if (note.fileName !== noteFileName) {
+            logHydration({
+                event: "note_editor_guard_note_mismatch",
+                source: "editor_effect",
+                data: {
+                    loadedFileName: note.fileName,
+                    expectedFileName: noteFileName,
+                },
+            });
             return;
         }
 
         // Check if this is a different note than what's in the editor
         const isNewNote = currentNoteFileNameRef.current !== noteFileName;
         const contentToUse = note.content || "";
+        logHydration({
+            event: "note_editor_branch",
+            source: "editor_effect",
+            data: {
+                hasView: !!viewRef.current,
+                currentNoteInView: currentNoteFileNameRef.current || null,
+                isNewNote,
+                contentToUseLen: contentToUse.length,
+                initializedLen: initializedContentRef.current.length,
+            },
+        });
 
         // If editor exists and note changed, reuse the editor by swapping content
         if (isNewNote && viewRef.current) {
@@ -1068,6 +1330,14 @@ export function NotesView(props: NotesViewProps) {
                 selection: Selection.atStart(doc!),
             });
             viewRef.current.updateState(stateWithNewDoc);
+            logHydration({
+                event: "note_editor_reuse_update",
+                source: "editor_reuse",
+                data: {
+                    parsedDocTextLen: doc?.textContent?.length ?? 0,
+                    parsedMarkdownLen: tableMarkdownSerializer.serialize(doc!).length,
+                },
+            });
             currentNoteFileNameRef.current = noteFileName;
             initializedContentRef.current = contentToUse;
 
@@ -1078,12 +1348,28 @@ export function NotesView(props: NotesViewProps) {
             });
 
             return () => {
+                logHydration({
+                    event: "note_editor_reuse_cleanup",
+                    source: "editor_reuse",
+                    data: {
+                        mode: "update",
+                        noteFileName,
+                    },
+                });
                 unregisterCmdEnter();
             };
         }
 
         // If no note change and editor exists, nothing to do
         if (!isNewNote && viewRef.current) {
+            logHydration({
+                event: "note_editor_reuse_noop",
+                source: "editor_reuse",
+                data: {
+                    currentDocTextLen: viewRef.current.state.doc.textContent.length,
+                    currentMarkdownLen: tableMarkdownSerializer.serialize(viewRef.current.state.doc).length,
+                },
+            });
             // Re-register Cmd+Enter handler (cleanup from previous render unregistered it)
             const view = viewRef.current;
             const unregisterCmdEnter = registerProseMirrorCmdEnter(view.dom as HTMLElement, () => {
@@ -1091,6 +1377,14 @@ export function NotesView(props: NotesViewProps) {
             });
 
             return () => {
+                logHydration({
+                    event: "note_editor_reuse_cleanup",
+                    source: "editor_reuse",
+                    data: {
+                        mode: "noop",
+                        noteFileName,
+                    },
+                });
                 unregisterCmdEnter();
             };
         }
@@ -1329,6 +1623,88 @@ export function NotesView(props: NotesViewProps) {
             }
         };
 
+        let snapshotPersistTimer: ReturnType<typeof setTimeout> | null = null;
+        const scheduleSnapshotPersist = (source: "local" | "remote-merged") => {
+            if (!isCollabMode || !collab || !crdtPlugin || !editorView || editorView.isDestroyed) return;
+            if (snapshotPersistTimer) {
+                clearTimeout(snapshotPersistTimer);
+            }
+
+            snapshotPersistTimer = setTimeout(async () => {
+                if (!editorView || editorView.isDestroyed) return;
+                try {
+                    const pluginState = getCRDTState({
+                        state: editorView.state,
+                        plugin: crdtPlugin!,
+                    });
+                    const pluginDoc = pluginState.doc as {
+                        appliedOps: ReadonlySet<string>;
+                        stateVector: ReadonlyMap<string, number>;
+                    };
+                    const record = {
+                        fields: new Map<string, unknown>(),
+                        sets: new Map<string, unknown>(),
+                        body: pluginDoc as unknown,
+                        appliedOps: new Set(pluginDoc.appliedOps),
+                        stateVector: new Map(pluginDoc.stateVector),
+                    };
+                    const snapshot = encodeRecordSnapshot({ record: record as any });
+                    const snapshotVersion = getRecordSnapshotVersion({ data: snapshot });
+                    const stateVector = Object.fromEntries(record.stateVector);
+
+                    await fetch("/api/crdt/note-snapshot/save", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            docId: collabDocId,
+                            snapshot: encodeBase64Bytes(snapshot),
+                            meta: {
+                                docId: collabDocId,
+                                snapshotVersion,
+                                updatedAt: new Date().toISOString(),
+                                stateVector,
+                                source,
+                                lastKnownBackendVersion: backendSnapshotVersionRef.current ?? undefined,
+                            },
+                        }),
+                    });
+
+                    if (source === "local") {
+                        collab.sendSnapshot({
+                            docId: collabDocId,
+                            snapshot,
+                            expectedVersion: backendSnapshotVersionRef.current ?? undefined,
+                            mergeBias: "remote",
+                        });
+                    }
+                    localSnapshotSeedRef.current = {
+                        bytes: snapshot,
+                        version: snapshotVersion,
+                        stateVector: new Map(pluginDoc.stateVector),
+                    };
+                    crdtDebugLog({
+                        event: "note_snapshot_saved",
+                        data: {
+                            docId: collabDocId,
+                            source,
+                            bytes: snapshot.byteLength,
+                            version: snapshotVersion,
+                        },
+                    });
+                } catch (error) {
+                    crdtDebugLog({
+                        event: "note_snapshot_save_failed",
+                        level: "error",
+                        data: {
+                            docId: collabDocId,
+                            source,
+                            error: summarizeErrorForDebug(error),
+                        },
+                    });
+                }
+            }, NOTE_SNAPSHOT_DEBOUNCE_MS);
+        };
+
         const editorView = new EditorView(editorRef.current, {
             state,
             editable: () => !isLocked,
@@ -1378,6 +1754,19 @@ export function NotesView(props: NotesViewProps) {
 
                 const markdown = tableMarkdownSerializer.serialize(newState.doc);
                 updateContent(markdown);
+                if (transaction.docChanged) {
+                    logHydration({
+                        event: "note_render_state",
+                        source: "local_dispatch",
+                        data: {
+                            docTextLen: newState.doc.textContent.length,
+                            markdownLen: markdown.length,
+                        },
+                    });
+                }
+                if (transaction.docChanged && collab && crdtPlugin) {
+                    scheduleSnapshotPersist("local");
+                }
             },
             handleDOMEvents: {
                 mousedown: (_view, event) => {
@@ -1528,6 +1917,69 @@ export function NotesView(props: NotesViewProps) {
         initializedContentRef.current = contentToUse;
         currentNoteFileNameRef.current = noteFileName;
 
+        if (isCollabMode && crdtPlugin && localSnapshotSeedRef.current) {
+            try {
+                const seed = localSnapshotSeedRef.current;
+                const record = decodeRecordSnapshot({ data: seed.bytes });
+                if (!snapshotRecordHasVisibleContent(record) && contentToUse.trim().length > 0) {
+                    crdtDebugLog({
+                        event: "local_snapshot_seed_skipped",
+                        data: {
+                            docId: collabDocId,
+                            reason: "seed_empty_markdown_nonempty",
+                            bytes: seed.bytes.byteLength,
+                            version: seed.version,
+                        },
+                    });
+                    logHydration({
+                        event: "note_local_snapshot_seed_skipped",
+                        source: "local_snapshot",
+                        data: {
+                            bytes: seed.bytes.byteLength,
+                            version: seed.version,
+                            markdownLen: contentToUse.length,
+                        },
+                    });
+                } else {
+                    const seeded = applyRemoteSnapshot({
+                        state: editorView.state,
+                        plugin: crdtPlugin,
+                        snapshotDoc: record.body,
+                    });
+                    const updated = updateEditorStateSafely(editorView, seeded.state, "local_snapshot_seed");
+                    if (updated) {
+                        const markdown = tableMarkdownSerializer.serialize(seeded.state.doc);
+                        updateContent(markdown);
+                        crdtDebugLog({
+                            event: "local_snapshot_seed_applied",
+                            data: {
+                                docId: collabDocId,
+                                bytes: seed.bytes.byteLength,
+                                version: seed.version,
+                            },
+                        });
+                        logHydration({
+                            event: "note_render_state",
+                            source: "local_snapshot",
+                            data: {
+                                docTextLen: seeded.state.doc.textContent.length,
+                                markdownLen: markdown.length,
+                            },
+                        });
+                    }
+                }
+            } catch (error) {
+                crdtDebugLog({
+                    event: "local_snapshot_seed_failed",
+                    level: "error",
+                    data: {
+                        docId: collabDocId,
+                        error: summarizeErrorForDebug(error),
+                    },
+                });
+            }
+        }
+
         // Register Cmd+Enter handler for todo toggle in native Mac app
         const unregisterCmdEnter = registerProseMirrorCmdEnter(editorView.dom as HTMLElement, () => {
             return toggleTodoAtLine(editorView.state, editorView.dispatch);
@@ -1588,8 +2040,17 @@ export function NotesView(props: NotesViewProps) {
             };
 
             // Subscribe to remote doc ops
+            logHydration({
+                event: "note_collab_subscribe",
+                source: "collab",
+                data: {
+                    docId,
+                    hasInitialStateVector: !!localSnapshotSeedRef.current?.stateVector,
+                },
+            });
             unsubscribeDoc = collab.subscribeDoc({
                 docId,
+                initialStateVector: localSnapshotSeedRef.current?.stateVector,
                 onOps: ({ ops }) => {
                     if (!editorView || editorView.isDestroyed) return;
                     // Filter to only CRDT tree operations (not field/set ops)
@@ -1606,6 +2067,15 @@ export function NotesView(props: NotesViewProps) {
                             rawCount: ops.length,
                             treeCount: treeOps.length,
                             ops: summarizeOpsForDebug(treeOps),
+                        },
+                    });
+                    logHydration({
+                        event: "note_remote_ops_received",
+                        source: "remote_ops",
+                        data: {
+                            docId,
+                            rawCount: ops.length,
+                            treeCount: treeOps.length,
                         },
                     });
                     try {
@@ -1646,6 +2116,14 @@ export function NotesView(props: NotesViewProps) {
                                 docShape: summarizeDocShapeForDebug(result.state.doc),
                             },
                         });
+                        logHydration({
+                            event: "note_render_state",
+                            source: "remote_ops",
+                            data: {
+                                docTextLen: result.state.doc.textContent.length,
+                                markdownLen: tableMarkdownSerializer.serialize(result.state.doc).length,
+                            },
+                        });
                     } catch (applyError) {
                         crdtDebugLog({
                             event: "remote_ops_apply_failed",
@@ -1659,8 +2137,92 @@ export function NotesView(props: NotesViewProps) {
                         });
                     }
                 },
+                onSnapshot: ({ snapshot, version }) => {
+                    if (!editorView || editorView.isDestroyed) return;
+                    logHydration({
+                        event: "note_remote_snapshot_received",
+                        source: "remote_snapshot",
+                        data: {
+                            docId,
+                            bytes: snapshot.byteLength,
+                            version: version ?? null,
+                        },
+                    });
+                    try {
+                        const record = decodeRecordSnapshot({ data: snapshot });
+                        if (
+                            !snapshotRecordHasVisibleContent(record)
+                            && editorView.state.doc.textContent.trim().length > 0
+                            && !syncComplete
+                        ) {
+                            crdtDebugLog({
+                                event: "remote_snapshot_skipped",
+                                data: {
+                                    docId,
+                                    reason: "snapshot_empty_before_sync_complete",
+                                    bytes: snapshot.byteLength,
+                                },
+                            });
+                            return;
+                        }
+                        const result = applyRemoteSnapshot({
+                            state: editorView.state,
+                            plugin: capturedCrdtPlugin,
+                            snapshotDoc: record.body,
+                        });
+                        const updated = updateEditorStateSafely(editorView, result.state, "remote_snapshot");
+                        if (!updated) return;
+
+                        const resolvedVersion = version ?? getRecordSnapshotVersion({ data: snapshot });
+                        backendSnapshotVersionRef.current = resolvedVersion;
+                        localSnapshotSeedRef.current = {
+                            bytes: snapshot,
+                            version: resolvedVersion,
+                            stateVector: new Map(getRecordSnapshotStateVector({ data: snapshot })),
+                        };
+
+                        const markdown = tableMarkdownSerializer.serialize(result.state.doc);
+                        updateContent(markdown);
+                        scheduleSnapshotPersist("remote-merged");
+                        logHydration({
+                            event: "note_render_state",
+                            source: "remote_snapshot",
+                            data: {
+                                docTextLen: result.state.doc.textContent.length,
+                                markdownLen: markdown.length,
+                            },
+                        });
+                        crdtDebugLog({
+                            event: "remote_snapshot_applied",
+                            data: {
+                                docId,
+                                bytes: snapshot.byteLength,
+                                version: resolvedVersion,
+                            },
+                        });
+                    } catch (error) {
+                        crdtDebugLog({
+                            event: "remote_snapshot_apply_failed",
+                            level: "error",
+                            data: {
+                                docId,
+                                error: summarizeErrorForDebug(error),
+                            },
+                        });
+                    }
+                },
                 onSyncComplete: () => {
                     syncComplete = true;
+                    logHydration({
+                        event: "note_sync_complete",
+                        source: "collab",
+                        data: {
+                            docId,
+                            receivedRemoteOps,
+                            pendingLocalOps: pendingLocalOps.length,
+                            bootstrapQueued,
+                        },
+                    });
                     crdtDebugLog({
                         event: "sync_complete",
                         data: {
@@ -1802,6 +2364,10 @@ export function NotesView(props: NotesViewProps) {
         const toolbarContainer = toolbarContainerRef.current;
 
         return () => {
+            if (snapshotPersistTimer) {
+                clearTimeout(snapshotPersistTimer);
+                snapshotPersistTimer = null;
+            }
             unregisterCmdEnter();
             unsubscribeDoc?.();
             unsubscribeAwareness?.();
@@ -1819,6 +2385,21 @@ export function NotesView(props: NotesViewProps) {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isRichTextMode, noteFileName, hasNote, updateContent, saveImmediately, collab?.clientId, collabDocId]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
+
+    useEffect(() => {
+        if (loading || error || !note || !isRichTextMode) return;
+        if (viewRef.current) return;
+        logHydration({
+            event: "note_editor_view_missing_after_load",
+            source: "editor_effect",
+            data: {
+                hasEditorRef: Boolean(editorRef.current),
+                noteFileNameFromState: note.fileName,
+                expectedNoteFileName: noteFileName,
+                contentLen: note.content.length,
+            },
+        });
+    }, [loading, error, note, isRichTextMode, noteFileName, logHydration]);
 
     // Update editor content when content changes externally (only after initial load)
     // In collab mode, CRDT handles doc sync, so skip external content updates.

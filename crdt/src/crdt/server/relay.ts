@@ -1,8 +1,15 @@
 import { createCRDTWebSocketHandler, type CRDTWebSocketHandler } from "./websocket-handler";
-import type { RecordOp } from "../document/record";
 import type { AwarenessState } from "../network/awareness";
 import { createMultiDocTransport, type MultiDocTransport } from "../network/multi-doc-transport";
-import { applyDocOperation, getDoc } from "../document/doc-manager";
+import {
+  applyDocOperation,
+  applySnapshotToDoc,
+  getDoc,
+} from "../document/doc-manager";
+import {
+  encodeRecordSnapshot,
+  getRecordSnapshotVersion,
+} from "../document/snapshot";
 import { receive } from "../core/lamport-clock";
 
 // --- Public interface ---
@@ -90,6 +97,38 @@ export function createCRDTRelay(params: {
       if (!relayedDocs.has(docId)) return;
       // Forward remote awareness to local clients
       handlerRef.broadcastAwareness({ docId, clientId: remoteClientId, state });
+    },
+
+    onSnapshot({ docId, data, version }) {
+      if (!relayedDocs.has(docId)) return;
+      const currentState = handlerRef.getDocManagerState();
+      const hasLocalRecord = !!getDoc({
+        manager: currentState.manager,
+        docId,
+      });
+      const nextManager = applySnapshotToDoc({
+        manager: currentState.manager,
+        docId,
+        snapshot: data,
+        mode: hasLocalRecord ? "merge" : "replace",
+        mergeBias: "remote",
+      });
+      handlerRef.setDocManagerState({ state: { ...currentState, manager: nextManager } });
+      handlerRef.checkpointDoc({ docId });
+      handlerRef.appendDocOps({ docId, ops: [] });
+      const mergedRecord = getDoc({
+        manager: handlerRef.getDocManagerState().manager,
+        docId,
+      });
+      if (!mergedRecord) return;
+
+      const mergedBytes = encodeRecordSnapshot({ record: mergedRecord });
+      const mergedVersion = version ?? getRecordSnapshotVersion({ data: mergedBytes });
+      handlerRef.broadcastSnapshot({
+        docId,
+        snapshot: mergedBytes,
+        version: mergedVersion,
+      });
     },
 
     onConnect() {

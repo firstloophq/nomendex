@@ -19,6 +19,7 @@ export interface CRDTWebSocketHandler {
     handleClose(params: { client: WSClient }): void;
     broadcastDocOps(params: { docId: string; ops: ReadonlyArray<RecordOp> }): void;
     broadcastAwareness(params: { docId: string; clientId: string; state: AwarenessState }): void;
+    broadcastSnapshot(params: { docId: string; snapshot: Uint8Array; version?: string }): void;
     getDocManagerState(): CardApiState;
     setDocManagerState(params: { state: CardApiState }): void;
     getDocOps(params: { docId: string }): ReadonlyArray<RecordOp>;

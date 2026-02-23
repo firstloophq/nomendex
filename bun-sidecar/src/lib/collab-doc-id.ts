@@ -27,15 +27,21 @@ function resolveScopeId(params: WorkspaceCollabScope): string {
     const orgWorkspaceId = params.orgWorkspaceId?.trim();
     if (orgWorkspaceId) return orgWorkspaceId;
 
-    const workspaceId = params.workspaceId.trim();
-    return workspaceId || "unknown-workspace";
+    const workspaceId = params.workspaceId?.trim();
+    if (workspaceId) return workspaceId;
+
+    throw new Error("Missing workspace scope for CRDT document id");
 }
 
 export function getWorkspaceCollabScope(params: {
     activeWorkspace: WorkspaceInfo | null;
 }): WorkspaceCollabScope {
+    const workspaceId = params.activeWorkspace?.id?.trim();
+    if (!workspaceId) {
+        throw new Error("activeWorkspace.id is required to build collab doc ids");
+    }
     return {
-        workspaceId: params.activeWorkspace?.id ?? "unknown-workspace",
+        workspaceId,
         orgWorkspaceId: params.activeWorkspace?.orgWorkspaceId,
     };
 }

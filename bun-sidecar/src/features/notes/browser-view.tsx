@@ -217,18 +217,15 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
                         });
                         // Notify CRDT file index
                         if (isTeamMode) {
-                            // Find the note to get its folder path for the full relative path
-                            const note = notes.find(n => n.fileName === noteFileName);
-                            const path = note?.folderPath
-                                ? `${note.folderPath}/${noteFileName}`
-                                : noteFileName;
+                            // fileName is already the canonical relative path.
+                            const path = noteFileName;
                             fileIndex.removeFile({ path });
                         }
                     }}
                 />
             ),
         });
-    }, [openDialog, notesAPI, selectedNote, showHiddenFiles, isTeamMode, fileIndex, notes]);
+    }, [openDialog, notesAPI, selectedNote, showHiddenFiles, isTeamMode, fileIndex]);
 
     const handleSelectNote = useCallback((note: Note) => {
         setSelectedNote(note);
@@ -556,6 +553,7 @@ export function NotesBrowserView({ tabId }: { tabId: string }) {
                             </Button>
                             <div className="flex-1 overflow-hidden">
                                 <NotesView
+                                    key={selectedNote.fileName}
                                     noteFileName={selectedNote.fileName}
                                     tabId={tabId}
                                     autoFocus={false}

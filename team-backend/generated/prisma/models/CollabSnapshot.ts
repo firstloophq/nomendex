@@ -28,12 +28,10 @@ export type AggregateCollabSnapshot = {
 
 export type CollabSnapshotAvgAggregateOutputType = {
   byteSize: number | null
-  baseSeq: number | null
 }
 
 export type CollabSnapshotSumAggregateOutputType = {
   byteSize: number | null
-  baseSeq: bigint | null
 }
 
 export type CollabSnapshotMinAggregateOutputType = {
@@ -43,8 +41,10 @@ export type CollabSnapshotMinAggregateOutputType = {
   bucketKey: string | null
   byteSize: number | null
   etag: string | null
-  baseSeq: bigint | null
+  snapshotVersion: string | null
+  stateVectorJson: string | null
   createdAt: Date | null
+  updatedAt: Date | null
 }
 
 export type CollabSnapshotMaxAggregateOutputType = {
@@ -54,8 +54,10 @@ export type CollabSnapshotMaxAggregateOutputType = {
   bucketKey: string | null
   byteSize: number | null
   etag: string | null
-  baseSeq: bigint | null
+  snapshotVersion: string | null
+  stateVectorJson: string | null
   createdAt: Date | null
+  updatedAt: Date | null
 }
 
 export type CollabSnapshotCountAggregateOutputType = {
@@ -65,20 +67,20 @@ export type CollabSnapshotCountAggregateOutputType = {
   bucketKey: number
   byteSize: number
   etag: number
-  baseSeq: number
+  snapshotVersion: number
+  stateVectorJson: number
   createdAt: number
+  updatedAt: number
   _all: number
 }
 
 
 export type CollabSnapshotAvgAggregateInputType = {
   byteSize?: true
-  baseSeq?: true
 }
 
 export type CollabSnapshotSumAggregateInputType = {
   byteSize?: true
-  baseSeq?: true
 }
 
 export type CollabSnapshotMinAggregateInputType = {
@@ -88,8 +90,10 @@ export type CollabSnapshotMinAggregateInputType = {
   bucketKey?: true
   byteSize?: true
   etag?: true
-  baseSeq?: true
+  snapshotVersion?: true
+  stateVectorJson?: true
   createdAt?: true
+  updatedAt?: true
 }
 
 export type CollabSnapshotMaxAggregateInputType = {
@@ -99,8 +103,10 @@ export type CollabSnapshotMaxAggregateInputType = {
   bucketKey?: true
   byteSize?: true
   etag?: true
-  baseSeq?: true
+  snapshotVersion?: true
+  stateVectorJson?: true
   createdAt?: true
+  updatedAt?: true
 }
 
 export type CollabSnapshotCountAggregateInputType = {
@@ -110,8 +116,10 @@ export type CollabSnapshotCountAggregateInputType = {
   bucketKey?: true
   byteSize?: true
   etag?: true
-  baseSeq?: true
+  snapshotVersion?: true
+  stateVectorJson?: true
   createdAt?: true
+  updatedAt?: true
   _all?: true
 }
 
@@ -208,8 +216,10 @@ export type CollabSnapshotGroupByOutputType = {
   bucketKey: string
   byteSize: number
   etag: string | null
-  baseSeq: bigint
+  snapshotVersion: string | null
+  stateVectorJson: string | null
   createdAt: Date
+  updatedAt: Date
   _count: CollabSnapshotCountAggregateOutputType | null
   _avg: CollabSnapshotAvgAggregateOutputType | null
   _sum: CollabSnapshotSumAggregateOutputType | null
@@ -242,8 +252,10 @@ export type CollabSnapshotWhereInput = {
   bucketKey?: Prisma.StringFilter<"CollabSnapshot"> | string
   byteSize?: Prisma.IntFilter<"CollabSnapshot"> | number
   etag?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
-  baseSeq?: Prisma.BigIntFilter<"CollabSnapshot"> | bigint | number
+  snapshotVersion?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
+  stateVectorJson?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
   createdAt?: Prisma.DateTimeFilter<"CollabSnapshot"> | Date | string
+  updatedAt?: Prisma.DateTimeFilter<"CollabSnapshot"> | Date | string
   collabDoc?: Prisma.XOR<Prisma.CollabDocScalarRelationFilter, Prisma.CollabDocWhereInput>
 }
 
@@ -254,25 +266,29 @@ export type CollabSnapshotOrderByWithRelationInput = {
   bucketKey?: Prisma.SortOrder
   byteSize?: Prisma.SortOrder
   etag?: Prisma.SortOrderInput | Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
+  snapshotVersion?: Prisma.SortOrderInput | Prisma.SortOrder
+  stateVectorJson?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
   collabDoc?: Prisma.CollabDocOrderByWithRelationInput
 }
 
 export type CollabSnapshotWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  collabDocId?: string
   AND?: Prisma.CollabSnapshotWhereInput | Prisma.CollabSnapshotWhereInput[]
   OR?: Prisma.CollabSnapshotWhereInput[]
   NOT?: Prisma.CollabSnapshotWhereInput | Prisma.CollabSnapshotWhereInput[]
-  collabDocId?: Prisma.StringFilter<"CollabSnapshot"> | string
   docId?: Prisma.StringFilter<"CollabSnapshot"> | string
   bucketKey?: Prisma.StringFilter<"CollabSnapshot"> | string
   byteSize?: Prisma.IntFilter<"CollabSnapshot"> | number
   etag?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
-  baseSeq?: Prisma.BigIntFilter<"CollabSnapshot"> | bigint | number
+  snapshotVersion?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
+  stateVectorJson?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
   createdAt?: Prisma.DateTimeFilter<"CollabSnapshot"> | Date | string
+  updatedAt?: Prisma.DateTimeFilter<"CollabSnapshot"> | Date | string
   collabDoc?: Prisma.XOR<Prisma.CollabDocScalarRelationFilter, Prisma.CollabDocWhereInput>
-}, "id">
+}, "id" | "collabDocId">
 
 export type CollabSnapshotOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -281,8 +297,10 @@ export type CollabSnapshotOrderByWithAggregationInput = {
   bucketKey?: Prisma.SortOrder
   byteSize?: Prisma.SortOrder
   etag?: Prisma.SortOrderInput | Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
+  snapshotVersion?: Prisma.SortOrderInput | Prisma.SortOrder
+  stateVectorJson?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
   _count?: Prisma.CollabSnapshotCountOrderByAggregateInput
   _avg?: Prisma.CollabSnapshotAvgOrderByAggregateInput
   _max?: Prisma.CollabSnapshotMaxOrderByAggregateInput
@@ -300,8 +318,10 @@ export type CollabSnapshotScalarWhereWithAggregatesInput = {
   bucketKey?: Prisma.StringWithAggregatesFilter<"CollabSnapshot"> | string
   byteSize?: Prisma.IntWithAggregatesFilter<"CollabSnapshot"> | number
   etag?: Prisma.StringNullableWithAggregatesFilter<"CollabSnapshot"> | string | null
-  baseSeq?: Prisma.BigIntWithAggregatesFilter<"CollabSnapshot"> | bigint | number
+  snapshotVersion?: Prisma.StringNullableWithAggregatesFilter<"CollabSnapshot"> | string | null
+  stateVectorJson?: Prisma.StringNullableWithAggregatesFilter<"CollabSnapshot"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"CollabSnapshot"> | Date | string
+  updatedAt?: Prisma.DateTimeWithAggregatesFilter<"CollabSnapshot"> | Date | string
 }
 
 export type CollabSnapshotCreateInput = {
@@ -310,8 +330,10 @@ export type CollabSnapshotCreateInput = {
   bucketKey: string
   byteSize: number
   etag?: string | null
-  baseSeq: bigint | number
+  snapshotVersion?: string | null
+  stateVectorJson?: string | null
   createdAt?: Date | string
+  updatedAt?: Date | string
   collabDoc: Prisma.CollabDocCreateNestedOneWithoutSnapshotsInput
 }
 
@@ -322,8 +344,10 @@ export type CollabSnapshotUncheckedCreateInput = {
   bucketKey: string
   byteSize: number
   etag?: string | null
-  baseSeq: bigint | number
+  snapshotVersion?: string | null
+  stateVectorJson?: string | null
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type CollabSnapshotUpdateInput = {
@@ -332,8 +356,10 @@ export type CollabSnapshotUpdateInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   collabDoc?: Prisma.CollabDocUpdateOneRequiredWithoutSnapshotsNestedInput
 }
 
@@ -344,8 +370,10 @@ export type CollabSnapshotUncheckedUpdateInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CollabSnapshotCreateManyInput = {
@@ -355,8 +383,10 @@ export type CollabSnapshotCreateManyInput = {
   bucketKey: string
   byteSize: number
   etag?: string | null
-  baseSeq: bigint | number
+  snapshotVersion?: string | null
+  stateVectorJson?: string | null
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type CollabSnapshotUpdateManyMutationInput = {
@@ -365,8 +395,10 @@ export type CollabSnapshotUpdateManyMutationInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CollabSnapshotUncheckedUpdateManyInput = {
@@ -376,8 +408,10 @@ export type CollabSnapshotUncheckedUpdateManyInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CollabSnapshotListRelationFilter = {
@@ -397,13 +431,14 @@ export type CollabSnapshotCountOrderByAggregateInput = {
   bucketKey?: Prisma.SortOrder
   byteSize?: Prisma.SortOrder
   etag?: Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
+  snapshotVersion?: Prisma.SortOrder
+  stateVectorJson?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type CollabSnapshotAvgOrderByAggregateInput = {
   byteSize?: Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
 }
 
 export type CollabSnapshotMaxOrderByAggregateInput = {
@@ -413,8 +448,10 @@ export type CollabSnapshotMaxOrderByAggregateInput = {
   bucketKey?: Prisma.SortOrder
   byteSize?: Prisma.SortOrder
   etag?: Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
+  snapshotVersion?: Prisma.SortOrder
+  stateVectorJson?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type CollabSnapshotMinOrderByAggregateInput = {
@@ -424,13 +461,14 @@ export type CollabSnapshotMinOrderByAggregateInput = {
   bucketKey?: Prisma.SortOrder
   byteSize?: Prisma.SortOrder
   etag?: Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
+  snapshotVersion?: Prisma.SortOrder
+  stateVectorJson?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type CollabSnapshotSumOrderByAggregateInput = {
   byteSize?: Prisma.SortOrder
-  baseSeq?: Prisma.SortOrder
 }
 
 export type CollabSnapshotCreateNestedManyWithoutCollabDocInput = {
@@ -481,8 +519,10 @@ export type CollabSnapshotCreateWithoutCollabDocInput = {
   bucketKey: string
   byteSize: number
   etag?: string | null
-  baseSeq: bigint | number
+  snapshotVersion?: string | null
+  stateVectorJson?: string | null
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type CollabSnapshotUncheckedCreateWithoutCollabDocInput = {
@@ -491,8 +531,10 @@ export type CollabSnapshotUncheckedCreateWithoutCollabDocInput = {
   bucketKey: string
   byteSize: number
   etag?: string | null
-  baseSeq: bigint | number
+  snapshotVersion?: string | null
+  stateVectorJson?: string | null
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type CollabSnapshotCreateOrConnectWithoutCollabDocInput = {
@@ -531,8 +573,10 @@ export type CollabSnapshotScalarWhereInput = {
   bucketKey?: Prisma.StringFilter<"CollabSnapshot"> | string
   byteSize?: Prisma.IntFilter<"CollabSnapshot"> | number
   etag?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
-  baseSeq?: Prisma.BigIntFilter<"CollabSnapshot"> | bigint | number
+  snapshotVersion?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
+  stateVectorJson?: Prisma.StringNullableFilter<"CollabSnapshot"> | string | null
   createdAt?: Prisma.DateTimeFilter<"CollabSnapshot"> | Date | string
+  updatedAt?: Prisma.DateTimeFilter<"CollabSnapshot"> | Date | string
 }
 
 export type CollabSnapshotCreateManyCollabDocInput = {
@@ -541,8 +585,10 @@ export type CollabSnapshotCreateManyCollabDocInput = {
   bucketKey: string
   byteSize: number
   etag?: string | null
-  baseSeq: bigint | number
+  snapshotVersion?: string | null
+  stateVectorJson?: string | null
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type CollabSnapshotUpdateWithoutCollabDocInput = {
@@ -551,8 +597,10 @@ export type CollabSnapshotUpdateWithoutCollabDocInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CollabSnapshotUncheckedUpdateWithoutCollabDocInput = {
@@ -561,8 +609,10 @@ export type CollabSnapshotUncheckedUpdateWithoutCollabDocInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type CollabSnapshotUncheckedUpdateManyWithoutCollabDocInput = {
@@ -571,8 +621,10 @@ export type CollabSnapshotUncheckedUpdateManyWithoutCollabDocInput = {
   bucketKey?: Prisma.StringFieldUpdateOperationsInput | string
   byteSize?: Prisma.IntFieldUpdateOperationsInput | number
   etag?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  baseSeq?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  snapshotVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stateVectorJson?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 
@@ -584,8 +636,10 @@ export type CollabSnapshotSelect<ExtArgs extends runtime.Types.Extensions.Intern
   bucketKey?: boolean
   byteSize?: boolean
   etag?: boolean
-  baseSeq?: boolean
+  snapshotVersion?: boolean
+  stateVectorJson?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
   collabDoc?: boolean | Prisma.CollabDocDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["collabSnapshot"]>
 
@@ -596,8 +650,10 @@ export type CollabSnapshotSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   bucketKey?: boolean
   byteSize?: boolean
   etag?: boolean
-  baseSeq?: boolean
+  snapshotVersion?: boolean
+  stateVectorJson?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
   collabDoc?: boolean | Prisma.CollabDocDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["collabSnapshot"]>
 
@@ -608,8 +664,10 @@ export type CollabSnapshotSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   bucketKey?: boolean
   byteSize?: boolean
   etag?: boolean
-  baseSeq?: boolean
+  snapshotVersion?: boolean
+  stateVectorJson?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
   collabDoc?: boolean | Prisma.CollabDocDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["collabSnapshot"]>
 
@@ -620,11 +678,13 @@ export type CollabSnapshotSelectScalar = {
   bucketKey?: boolean
   byteSize?: boolean
   etag?: boolean
-  baseSeq?: boolean
+  snapshotVersion?: boolean
+  stateVectorJson?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
 }
 
-export type CollabSnapshotOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "collabDocId" | "docId" | "bucketKey" | "byteSize" | "etag" | "baseSeq" | "createdAt", ExtArgs["result"]["collabSnapshot"]>
+export type CollabSnapshotOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "collabDocId" | "docId" | "bucketKey" | "byteSize" | "etag" | "snapshotVersion" | "stateVectorJson" | "createdAt" | "updatedAt", ExtArgs["result"]["collabSnapshot"]>
 export type CollabSnapshotInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   collabDoc?: boolean | Prisma.CollabDocDefaultArgs<ExtArgs>
 }
@@ -647,8 +707,10 @@ export type $CollabSnapshotPayload<ExtArgs extends runtime.Types.Extensions.Inte
     bucketKey: string
     byteSize: number
     etag: string | null
-    baseSeq: bigint
+    snapshotVersion: string | null
+    stateVectorJson: string | null
     createdAt: Date
+    updatedAt: Date
   }, ExtArgs["result"]["collabSnapshot"]>
   composites: {}
 }
@@ -1079,8 +1141,10 @@ export interface CollabSnapshotFieldRefs {
   readonly bucketKey: Prisma.FieldRef<"CollabSnapshot", 'String'>
   readonly byteSize: Prisma.FieldRef<"CollabSnapshot", 'Int'>
   readonly etag: Prisma.FieldRef<"CollabSnapshot", 'String'>
-  readonly baseSeq: Prisma.FieldRef<"CollabSnapshot", 'BigInt'>
+  readonly snapshotVersion: Prisma.FieldRef<"CollabSnapshot", 'String'>
+  readonly stateVectorJson: Prisma.FieldRef<"CollabSnapshot", 'String'>
   readonly createdAt: Prisma.FieldRef<"CollabSnapshot", 'DateTime'>
+  readonly updatedAt: Prisma.FieldRef<"CollabSnapshot", 'DateTime'>
 }
     
 

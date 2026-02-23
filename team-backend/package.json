@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --hot src/server.ts",
+    "dev": "bun run db:up && bun --hot src/server.ts",
     "build": "bun run tsc --noEmit",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",

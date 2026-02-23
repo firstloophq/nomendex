@@ -390,7 +390,6 @@ export const ModelName = {
   GitHubInstallation: 'GitHubInstallation',
   OrgWorkspace: 'OrgWorkspace',
   CollabDoc: 'CollabDoc',
-  CollabOp: 'CollabOp',
   CollabSnapshot: 'CollabSnapshot',
   AuthCode: 'AuthCode'
 } as const
@@ -408,7 +407,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "org" | "orgMembership" | "gitHubInstallation" | "orgWorkspace" | "collabDoc" | "collabOp" | "collabSnapshot" | "authCode"
+    modelProps: "user" | "org" | "orgMembership" | "gitHubInstallation" | "orgWorkspace" | "collabDoc" | "collabSnapshot" | "authCode"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -856,80 +855,6 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    CollabOp: {
-      payload: Prisma.$CollabOpPayload<ExtArgs>
-      fields: Prisma.CollabOpFieldRefs
-      operations: {
-        findUnique: {
-          args: Prisma.CollabOpFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload> | null
-        }
-        findUniqueOrThrow: {
-          args: Prisma.CollabOpFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
-        }
-        findFirst: {
-          args: Prisma.CollabOpFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload> | null
-        }
-        findFirstOrThrow: {
-          args: Prisma.CollabOpFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
-        }
-        findMany: {
-          args: Prisma.CollabOpFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>[]
-        }
-        create: {
-          args: Prisma.CollabOpCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
-        }
-        createMany: {
-          args: Prisma.CollabOpCreateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        createManyAndReturn: {
-          args: Prisma.CollabOpCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>[]
-        }
-        delete: {
-          args: Prisma.CollabOpDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
-        }
-        update: {
-          args: Prisma.CollabOpUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
-        }
-        deleteMany: {
-          args: Prisma.CollabOpDeleteManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateMany: {
-          args: Prisma.CollabOpUpdateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateManyAndReturn: {
-          args: Prisma.CollabOpUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>[]
-        }
-        upsert: {
-          args: Prisma.CollabOpUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$CollabOpPayload>
-        }
-        aggregate: {
-          args: Prisma.CollabOpAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateCollabOp>
-        }
-        groupBy: {
-          args: Prisma.CollabOpGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.CollabOpGroupByOutputType>[]
-        }
-        count: {
-          args: Prisma.CollabOpCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.CollabOpCountAggregateOutputType> | number
-        }
-      }
-    }
     CollabSnapshot: {
       payload: Prisma.$CollabSnapshotPayload<ExtArgs>
       fields: Prisma.CollabSnapshotFieldRefs
@@ -1184,25 +1109,13 @@ export const CollabDocScalarFieldEnum = {
   id: 'id',
   orgWorkspaceId: 'orgWorkspaceId',
   docId: 'docId',
-  lastSnapshotSeq: 'lastSnapshotSeq',
+  snapshotVersion: 'snapshotVersion',
+  stateVectorJson: 'stateVectorJson',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type CollabDocScalarFieldEnum = (typeof CollabDocScalarFieldEnum)[keyof typeof CollabDocScalarFieldEnum]
-
-
-export const CollabOpScalarFieldEnum = {
-  seq: 'seq',
-  collabDocId: 'collabDocId',
-  docId: 'docId',
-  opJson: 'opJson',
-  sourceClientId: 'sourceClientId',
-  sourceClock: 'sourceClock',
-  createdAt: 'createdAt'
-} as const
-
-export type CollabOpScalarFieldEnum = (typeof CollabOpScalarFieldEnum)[keyof typeof CollabOpScalarFieldEnum]
 
 
 export const CollabSnapshotScalarFieldEnum = {
@@ -1212,8 +1125,10 @@ export const CollabSnapshotScalarFieldEnum = {
   bucketKey: 'bucketKey',
   byteSize: 'byteSize',
   etag: 'etag',
-  baseSeq: 'baseSeq',
-  createdAt: 'createdAt'
+  snapshotVersion: 'snapshotVersion',
+  stateVectorJson: 'stateVectorJson',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 } as const
 
 export type CollabSnapshotScalarFieldEnum = (typeof CollabSnapshotScalarFieldEnum)[keyof typeof CollabSnapshotScalarFieldEnum]
@@ -1302,20 +1217,6 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
-    
-
-
-/**
- * Reference to a field of type 'BigInt'
- */
-export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
-    
-
-
-/**
- * Reference to a field of type 'BigInt[]'
- */
-export type ListBigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt[]'>
     
 
 
@@ -1440,7 +1341,6 @@ export type GlobalOmitConfig = {
   gitHubInstallation?: Prisma.GitHubInstallationOmit
   orgWorkspace?: Prisma.OrgWorkspaceOmit
   collabDoc?: Prisma.CollabDocOmit
-  collabOp?: Prisma.CollabOpOmit
   collabSnapshot?: Prisma.CollabSnapshotOmit
   authCode?: Prisma.AuthCodeOmit
 }

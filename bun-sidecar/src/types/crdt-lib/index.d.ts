@@ -162,6 +162,12 @@ export interface MultiDocTransport {
     readonly subscribe: (params: { docId: string; initialStateVector?: StateVector }) => void;
     readonly unsubscribe: (params: { docId: string }) => void;
     readonly send: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+    readonly sendSnapshot?: (params: {
+        docId: string;
+        snapshot: Uint8Array;
+        expectedVersion?: string;
+        mergeBias?: SnapshotMergeBias;
+    }) => void;
     readonly sendAwareness: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
     readonly disconnect: () => void;
     readonly reconnect: () => void;
@@ -176,7 +182,7 @@ export declare function createMultiDocTransport(params: {
     clientId: string;
     onOps: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
     onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
-    onSnapshot?: (params: { docId: string; data: Uint8Array }) => void;
+    onSnapshot?: (params: { docId: string; data: Uint8Array; version?: string }) => void;
     onConnect?: () => void;
     onDisconnect?: () => void;
     onDocSyncComplete?: (params: { docId: string }) => void;
@@ -368,6 +374,7 @@ export declare function createCRDTPlugin(params: {
     clientId: string;
     schema: Schema;
     onLocalOps?: (ops: ReadonlyArray<Operation>) => void;
+    initialDoc?: unknown;
     captureTimeoutMs?: number;
 }): Plugin<CRDTPluginState>;
 
@@ -380,6 +387,12 @@ export declare function applyRemoteOps(params: {
     state: EditorState;
     plugin: Plugin<CRDTPluginState>;
     ops: ReadonlyArray<Operation>;
+}): { state: EditorState };
+
+export declare function applyRemoteSnapshot(params: {
+    state: EditorState;
+    plugin: Plugin<CRDTPluginState>;
+    snapshotDoc: unknown;
 }): { state: EditorState };
 
 export declare function undoCommand(params: {

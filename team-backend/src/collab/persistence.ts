@@ -1,4 +1,7 @@
-import type { RecordOp } from "@crdt/lib/server";
+import {
+  getRecordSnapshotStateVector,
+  getRecordSnapshotVersion,
+} from "@crdt/lib/server";
 import { prisma } from "../db";
 import {
   buildSnapshotKey,
@@ -7,30 +10,38 @@ import {
   writeSnapshotBytes,
 } from "./snapshot-store";
 
-function getSourceId(op: RecordOp): { clientId: string | null; clock: number | null } {
-  if ("id" in op && op.id) {
-    return {
-      clientId: op.id.clientId ?? null,
-      clock: typeof op.id.clock === "number" ? op.id.clock : null,
-    };
-  }
-  return { clientId: null, clock: null };
+function logCollabPersistenceInfo(event: string, data: Record<string, unknown>): void {
+  console.info(`[COLLAB-PERSISTENCE] ${event} ${JSON.stringify(data)}`);
+}
+
+function logCollabPersistenceWarn(event: string, data: Record<string, unknown>): void {
+  console.warn(`[COLLAB-PERSISTENCE] ${event} ${JSON.stringify(data)}`);
 }
 
 async function getOrCreateCollabDoc(params: {
   docId: string;
   orgWorkspaceId: string;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; snapshotVersion: string | null }> {
   const existing = await prisma.collabDoc.findUnique({
     where: { docId: params.docId },
-    select: { id: true, orgWorkspaceId: true },
+    select: {
+      id: true,
+      orgWorkspaceId: true,
+      snapshotVersion: true,
+    },
   });
 
   if (existing) {
     if (existing.orgWorkspaceId !== params.orgWorkspaceId) {
       throw new Error("Doc/workspace ownership mismatch");
     }
-    return { id: existing.id };
+    logCollabPersistenceInfo("collab_doc_found", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+      collabDocId: existing.id,
+      snapshotVersion: existing.snapshotVersion,
+    });
+    return { id: existing.id, snapshotVersion: existing.snapshotVersion };
   }
 
   const created = await prisma.collabDoc.create({
@@ -38,112 +49,41 @@ async function getOrCreateCollabDoc(params: {
       docId: params.docId,
       orgWorkspaceId: params.orgWorkspaceId,
     },
-    select: { id: true },
+    select: { id: true, snapshotVersion: true },
+  });
+  logCollabPersistenceInfo("collab_doc_created", {
+    docId: params.docId,
+    orgWorkspaceId: params.orgWorkspaceId,
+    collabDocId: created.id,
   });
   return created;
 }
 
-export async function appendCollabOps(params: {
-  docId: string;
-  orgWorkspaceId: string;
-  ops: ReadonlyArray<RecordOp>;
-}): Promise<void> {
-  if (params.ops.length === 0) return;
-
-  const collabDoc = await getOrCreateCollabDoc({
-    docId: params.docId,
-    orgWorkspaceId: params.orgWorkspaceId,
-  });
-
-  await prisma.collabOp.createMany({
-    data: params.ops.map((op) => {
-      const source = getSourceId(op);
-      return {
-        collabDocId: collabDoc.id,
-        docId: params.docId,
-        opJson: JSON.stringify(op),
-        sourceClientId: source.clientId,
-        sourceClock: source.clock,
-      };
-    }),
-  });
+function serializeStateVector(params: { bytes: Uint8Array }): string {
+  const sv = getRecordSnapshotStateVector({ data: params.bytes });
+  return JSON.stringify(Object.fromEntries(sv));
 }
 
-export async function loadCollabOps(params: {
-  docId: string;
-  orgWorkspaceId: string;
-  afterSeq?: bigint;
-}): Promise<ReadonlyArray<RecordOp>> {
-  const collabDoc = await prisma.collabDoc.findUnique({
-    where: { docId: params.docId },
-    select: {
-      id: true,
-      orgWorkspaceId: true,
-    },
-  });
-
-  if (!collabDoc) return [];
-  if (collabDoc.orgWorkspaceId !== params.orgWorkspaceId) {
-    throw new Error("Doc/workspace ownership mismatch");
-  }
-
-  const rows = await prisma.collabOp.findMany({
-    where: {
-      collabDocId: collabDoc.id,
-      ...(params.afterSeq !== undefined ? { seq: { gt: params.afterSeq } } : {}),
-    },
-    orderBy: { seq: "asc" },
-    select: { opJson: true },
-  });
-
-  const ops: RecordOp[] = [];
-  for (const row of rows) {
-    try {
-      const parsed = JSON.parse(row.opJson) as RecordOp;
-      ops.push(parsed);
-    } catch {
-      // Skip malformed records to keep hydration resilient.
-    }
-  }
-
-  return ops;
-}
-
-export async function getLatestCollabOpSeq(params: {
-  docId: string;
-  orgWorkspaceId: string;
-}): Promise<bigint | null> {
-  const collabDoc = await prisma.collabDoc.findUnique({
-    where: { docId: params.docId },
-    select: { id: true, orgWorkspaceId: true },
-  });
-
-  if (!collabDoc) return null;
-  if (collabDoc.orgWorkspaceId !== params.orgWorkspaceId) {
-    throw new Error("Doc/workspace ownership mismatch");
-  }
-
-  const row = await prisma.collabOp.findFirst({
-    where: { collabDocId: collabDoc.id },
-    orderBy: { seq: "desc" },
-    select: { seq: true },
-  });
-  return row?.seq ?? null;
-}
-
-export interface CollabSnapshotRecord {
+export interface CanonicalSnapshotRecord {
   id: string;
   docId: string;
   bucketKey: string;
-  baseSeq: bigint;
+  snapshotVersion: string | null;
+  stateVectorJson: string | null;
   bytes: Uint8Array;
 }
 
-export async function loadLatestCollabSnapshot(params: {
+export async function loadCanonicalSnapshot(params: {
   docId: string;
   orgWorkspaceId: string;
-}): Promise<CollabSnapshotRecord | null> {
-  if (!isSnapshotStoreEnabled()) return null;
+}): Promise<CanonicalSnapshotRecord | null> {
+  if (!isSnapshotStoreEnabled()) {
+    logCollabPersistenceWarn("load_skip_store_disabled", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    return null;
+  }
 
   const collabDoc = await prisma.collabDoc.findUnique({
     where: { docId: params.docId },
@@ -153,50 +93,118 @@ export async function loadLatestCollabSnapshot(params: {
     },
   });
 
-  if (!collabDoc) return null;
+  if (!collabDoc) {
+    logCollabPersistenceInfo("load_miss_no_collab_doc", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    return null;
+  }
   if (collabDoc.orgWorkspaceId !== params.orgWorkspaceId) {
     throw new Error("Doc/workspace ownership mismatch");
   }
 
-  const snapshot = await prisma.collabSnapshot.findFirst({
+  const snapshot = await prisma.collabSnapshot.findUnique({
     where: { collabDocId: collabDoc.id },
-    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       docId: true,
       bucketKey: true,
-      baseSeq: true,
+      snapshotVersion: true,
+      stateVectorJson: true,
     },
   });
 
-  if (!snapshot) return null;
+  if (!snapshot) {
+    logCollabPersistenceInfo("load_miss_no_snapshot_row", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+      collabDocId: collabDoc.id,
+    });
+    return null;
+  }
 
   const bytes = await readSnapshotBytes({ key: snapshot.bucketKey });
-  if (!bytes) return null;
+  if (!bytes) {
+    logCollabPersistenceWarn("load_miss_snapshot_bytes", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+      bucketKey: snapshot.bucketKey,
+    });
+    return null;
+  }
+
+  logCollabPersistenceInfo("load_hit", {
+    docId: params.docId,
+    orgWorkspaceId: params.orgWorkspaceId,
+    snapshotId: snapshot.id,
+    snapshotVersion: snapshot.snapshotVersion,
+    bytes: bytes.byteLength,
+    bucketKey: snapshot.bucketKey,
+  });
 
   return {
     id: snapshot.id,
     docId: snapshot.docId,
     bucketKey: snapshot.bucketKey,
-    baseSeq: snapshot.baseSeq,
+    snapshotVersion: snapshot.snapshotVersion,
+    stateVectorJson: snapshot.stateVectorJson,
     bytes,
   };
 }
 
-export async function saveCollabSnapshot(params: {
+export type SaveCanonicalSnapshotResult =
+  | {
+    status: "saved";
+    snapshotVersion: string;
+    stateVectorJson: string;
+    bucketKey: string;
+  }
+  | {
+    status: "conflict";
+    current: CanonicalSnapshotRecord | null;
+  };
+
+export async function saveCanonicalSnapshot(params: {
   docId: string;
   orgWorkspaceId: string;
-  baseSeq: bigint;
   bytes: Uint8Array;
-}): Promise<void> {
+  expectedVersion?: string;
+}): Promise<SaveCanonicalSnapshotResult> {
   if (!isSnapshotStoreEnabled()) {
     throw new Error("Snapshot store is not configured");
   }
+  logCollabPersistenceInfo("save_start", {
+    docId: params.docId,
+    orgWorkspaceId: params.orgWorkspaceId,
+    bytes: params.bytes.byteLength,
+    expectedVersion: params.expectedVersion ?? null,
+  });
 
   const collabDoc = await getOrCreateCollabDoc({
     docId: params.docId,
     orgWorkspaceId: params.orgWorkspaceId,
   });
+
+  if (
+    params.expectedVersion
+    && collabDoc.snapshotVersion
+    && collabDoc.snapshotVersion !== params.expectedVersion
+  ) {
+    logCollabPersistenceWarn("save_conflict", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+      expectedVersion: params.expectedVersion,
+      currentVersion: collabDoc.snapshotVersion,
+    });
+    return {
+      status: "conflict",
+      current: await loadCanonicalSnapshot({
+        docId: params.docId,
+        orgWorkspaceId: params.orgWorkspaceId,
+      }),
+    };
+  }
 
   const snapshotId = crypto.randomUUID();
   const bucketKey = buildSnapshotKey({
@@ -207,28 +215,53 @@ export async function saveCollabSnapshot(params: {
     key: bucketKey,
     data: params.bytes,
   });
+  const snapshotVersion = getRecordSnapshotVersion({ data: params.bytes });
+  const stateVectorJson = serializeStateVector({ bytes: params.bytes });
 
   await prisma.$transaction([
-    prisma.collabSnapshot.create({
-      data: {
+    prisma.collabSnapshot.upsert({
+      where: { collabDocId: collabDoc.id },
+      create: {
         id: snapshotId,
         collabDocId: collabDoc.id,
         docId: params.docId,
         bucketKey,
-        baseSeq: params.baseSeq,
         byteSize: writeResult.byteSize,
         etag: writeResult.etag,
+        snapshotVersion,
+        stateVectorJson,
+      },
+      update: {
+        docId: params.docId,
+        bucketKey,
+        byteSize: writeResult.byteSize,
+        etag: writeResult.etag,
+        snapshotVersion,
+        stateVectorJson,
       },
     }),
     prisma.collabDoc.update({
       where: { id: collabDoc.id },
-      data: { lastSnapshotSeq: params.baseSeq },
-    }),
-    prisma.collabOp.deleteMany({
-      where: {
-        collabDocId: collabDoc.id,
-        seq: { lte: params.baseSeq },
+      data: {
+        snapshotVersion,
+        stateVectorJson,
       },
     }),
   ]);
+
+  logCollabPersistenceInfo("save_success", {
+    docId: params.docId,
+    orgWorkspaceId: params.orgWorkspaceId,
+    snapshotVersion,
+    bytes: writeResult.byteSize,
+    etag: writeResult.etag,
+    bucketKey,
+  });
+
+  return {
+    status: "saved",
+    snapshotVersion,
+    stateVectorJson,
+    bucketKey,
+  };
 }

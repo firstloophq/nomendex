@@ -23,7 +23,8 @@ import { logsRoutes } from "./server-routes/logs-routes";
 import { dictionariesRoutes } from "./server-routes/dictionaries-routes";
 import { projectsRoutes } from "./server-routes/projects-routes";
 import { canvasRoutes } from "./server-routes/canvas-routes";
-import { authRoutes, initAuthFromPersistedState } from "./server-routes/auth-routes";
+import { crdtRoutes } from "./server-routes/crdt-routes";
+import { authRoutes, getCurrentAuthToken, initAuthFromPersistedState } from "./server-routes/auth-routes";
 import { createCRDTRelay, createCRDTWebSocketHandler } from "@crdt/lib/server";
 import type { WSClient } from "@crdt/lib/server";
 import { globalConfig } from "./storage/global-config";
@@ -56,12 +57,6 @@ startupLog.info("OTEL logs exporter", {
     enabled: otelLogsConfig.enabled,
     endpoint: otelLogsConfig.endpoint ?? null,
 });
-
-function isEnabledFlag(value: string | undefined): boolean {
-    if (!value) return false;
-    const normalized = value.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
-}
 
 function parseUrlToWebSocket(rawUrl: string): URL | null {
     try {
@@ -114,7 +109,7 @@ function resolveRelayRemoteUrl(): string | null {
         return parsed.toString();
     }
 
-    const httpBaseUrl = resolveTeamBackendHttpUrl();
+    const httpBaseUrl = resolveTeamBackendHttpUrl() ?? "http://localhost:4444";
     if (!httpBaseUrl) return null;
 
     const parsed = parseUrlToWebSocket(httpBaseUrl);
@@ -145,7 +140,10 @@ function parseDocSubscriptionMessage(message: string): CRDTDocSubscriptionMessag
 }
 
 const relayRemoteUrl = resolveRelayRemoteUrl();
-const relayEnabled = isEnabledFlag(process.env.CRDT_RELAY_ENABLED);
+const relayEnv = process.env.CRDT_RELAY_ENABLED?.trim().toLowerCase();
+const relayEnabled = relayEnv === "false" || relayEnv === "0" || relayEnv === "off"
+    ? false
+    : !!relayRemoteUrl;
 const teamBackendHttpUrl = resolveTeamBackendHttpUrl() ?? "http://localhost:4444";
 
 let relayAuthToken = "";
@@ -156,7 +154,7 @@ const crdtRelay = relayEnabled && relayRemoteUrl
         remoteUrl: relayRemoteUrl,
         clientId: `sidecar-relay-${crypto.randomUUID()}`,
         serverClientId: "sidecar-server",
-        getAuthToken: () => relayAuthToken,
+        getAuthToken: async () => (await getCurrentAuthToken()) ?? relayAuthToken,
         onConnect: () => {
             serverLogger.info("CRDT relay connected", { remoteUrl: relayRemoteUrl });
         },
@@ -173,6 +171,7 @@ if (crdtRelay) {
     startupLog.info("CRDT relay enabled", { remoteUrl: relayRemoteUrl });
 } else {
     startupLog.info("CRDT relay disabled", {
+        relayConfiguredByEnv: relayEnv ?? null,
         relayEnabled,
         relayRemoteUrl,
     });
@@ -278,6 +277,7 @@ const server = serve<WSData>({
         ...dictionariesRoutes,
         ...projectsRoutes,
         ...canvasRoutes,
+        ...crdtRoutes,
         ...authRoutes,
         // WebSocket route handler
         "/ws": {
@@ -330,14 +330,37 @@ const server = serve<WSData>({
                 const activeWorkspace = config?.activeWorkspaceId
                     ? config.workspaces.find((w) => w.id === config.activeWorkspaceId) ?? null
                     : null;
-                const shouldRelay = Boolean(
-                    crdtRelay
-                    && token
-                    && appMode === "team"
-                    && activeWorkspace?.orgWorkspaceId
-                );
+                const shouldRelay = appMode === "team";
 
-                if (shouldRelay) {
+                // Team mode is relay-only. Do not silently fall back to local sidecar CRDT.
+                if (shouldRelay && !crdtRelay) {
+                    serverLogger.error("CRDT relay required in team mode but relay is not configured", {
+                        clientId,
+                        wsClientId,
+                        appMode,
+                    });
+                    return new Response("CRDT relay required in team mode", { status: 503 });
+                }
+
+                if (shouldRelay && !token) {
+                    const hasPersistedToken = !!(await getCurrentAuthToken());
+                    if (!hasPersistedToken) {
+                        serverLogger.error("CRDT relay required in team mode but auth token is missing", {
+                            clientId,
+                            wsClientId,
+                            appMode,
+                        });
+                        return new Response("Missing auth token for team CRDT relay", { status: 401 });
+                    }
+                    serverLogger.warn("CRDT ws token missing; using persisted auth token for relay", {
+                        clientId,
+                        wsClientId,
+                        appMode,
+                        hasPersistedToken,
+                    });
+                }
+
+                if (shouldRelay && token) {
                     relayAuthToken = token;
                 }
 

@@ -21,6 +21,40 @@ function resolveTeamBackendUrl(): string {
 
 const teamBackendUrl = resolveTeamBackendUrl();
 
+async function refreshJwtNow(): Promise<string | null> {
+    if (!clerkSessionId) return null;
+
+    try {
+        const deviceId = await globalConfig.getOrCreateDeviceId();
+        const res = await fetch(`${teamBackendUrl}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clerkSessionId, deviceId }),
+        });
+
+        if (!res.ok) {
+            if (res.status === 401) {
+                await clearAuthState();
+            }
+            return null;
+        }
+
+        const data = (await res.json()) as { jwt: string; expiresAt: string };
+        currentJwt = data.jwt;
+        jwtExpiresAt = new Date(data.expiresAt).getTime();
+        return currentJwt;
+    } catch (err) {
+        console.error("[auth] Refresh error:", err instanceof Error ? err.message : String(err));
+        return null;
+    }
+}
+
+function isJwtFresh(): boolean {
+    if (!currentJwt || !jwtExpiresAt) return false;
+    // Refresh proactively if token expires within 60 seconds.
+    return jwtExpiresAt - Date.now() > 60_000;
+}
+
 // ---------------------------------------------------------------------------
 // Refresh loop
 // ---------------------------------------------------------------------------
@@ -32,25 +66,7 @@ function startRefreshLoop() {
         if (!clerkSessionId) return;
 
         try {
-            const deviceId = await globalConfig.getOrCreateDeviceId();
-            const res = await fetch(`${teamBackendUrl}/auth/refresh`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clerkSessionId, deviceId }),
-            });
-
-            if (!res.ok) {
-                console.error("[auth] Refresh failed:", res.status);
-                if (res.status === 401) {
-                    // Session revoked — clear auth state
-                    await clearAuthState();
-                }
-                return;
-            }
-
-            const data = (await res.json()) as { jwt: string; expiresAt: string };
-            currentJwt = data.jwt;
-            jwtExpiresAt = new Date(data.expiresAt).getTime();
+            await refreshJwtNow();
         } catch (err) {
             console.error("[auth] Refresh error:", err instanceof Error ? err.message : String(err));
         }
@@ -107,6 +123,13 @@ export async function initAuthFromPersistedState() {
         console.warn("[auth] Failed to resume persisted session:", err instanceof Error ? err.message : String(err));
         await globalConfig.setPersistedAuth({ auth: null });
     }
+}
+
+export async function getCurrentAuthToken(): Promise<string | null> {
+    if (isJwtFresh()) {
+        return currentJwt;
+    }
+    return await refreshJwtNow();
 }
 
 // ---------------------------------------------------------------------------
