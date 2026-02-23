@@ -677,33 +677,71 @@ export function NotesView(props: NotesViewProps) {
         });
     }, [noteFileName, content]);
 
+    const clearEditorContent = useCallback(() => {
+        const view = viewRef.current;
+        if (!view) return;
+
+        const top = view.state.doc.firstChild;
+        const isAlreadyEmptyParagraph = Boolean(
+            view.state.doc.childCount === 1
+            && top
+            && top.type.name === "paragraph"
+            && top.textContent.trim().length === 0
+        );
+        if (isAlreadyEmptyParagraph) {
+            return;
+        }
+
+        const emptyParagraph = tableSchema.nodes.paragraph.createAndFill();
+        if (!emptyParagraph) return;
+
+        // Drive clear through a concrete PM transaction so CRDT captures and rebroadcasts it.
+        const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, emptyParagraph);
+        view.dispatch(tr);
+        view.focus();
+    }, []);
+
     // Subscribe to clear content events for test/editor automation flows.
     useEffect(() => {
         return subscribe("notes:clearContent", ({ noteFileName: targetFileName }) => {
             if (targetFileName !== noteFileName) return;
-            const view = viewRef.current;
-            if (!view) return;
+            clearEditorContent();
+        });
+    }, [clearEditorContent, noteFileName]);
 
-            const top = view.state.doc.firstChild;
-            const isAlreadyEmptyParagraph = Boolean(
-                view.state.doc.childCount === 1
-                && top
-                && top.type.name === "paragraph"
-                && top.textContent.trim().length === 0
-            );
-            if (isAlreadyEmptyParagraph) {
+    useEffect(() => {
+        return subscribe("notes:hardResetCrdt", async ({ noteFileName: targetFileName }) => {
+            if (targetFileName !== noteFileName) return;
+            if (!collab) {
+                toast("CRDT hard reset is only available in team mode.");
                 return;
             }
 
-            const emptyParagraph = tableSchema.nodes.paragraph.createAndFill();
-            if (!emptyParagraph) return;
+            try {
+                const response = await fetch("/api/crdt/note-snapshot/hard-reset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ docId: collabDocId }),
+                });
 
-            // Drive clear through a concrete PM transaction so CRDT captures and rebroadcasts it.
-            const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, emptyParagraph);
-            view.dispatch(tr);
-            view.focus();
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => null) as {
+                        error?: string;
+                        details?: string | null;
+                    } | null;
+                    throw new Error(payload?.error || payload?.details || `HTTP ${response.status}`);
+                }
+
+                localSnapshotSeedRef.current = null;
+                backendSnapshotVersionRef.current = null;
+                clearEditorContent();
+                toast("CRDT state reset for this note.");
+            } catch (error) {
+                console.error("Failed to hard reset CRDT note state:", error);
+                toast("Failed to hard reset CRDT state");
+            }
         });
-    }, [noteFileName]);
+    }, [clearEditorContent, collab, collabDocId, noteFileName]);
 
     // Subscribe to run spellcheck events
     useEffect(() => {

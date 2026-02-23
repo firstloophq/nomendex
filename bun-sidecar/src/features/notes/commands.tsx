@@ -324,6 +324,26 @@ export function getNotesCommands(context: CommandContext): Command[] {
             },
         },
         {
+            id: "notes.hardResetCrdt",
+            name: "Hard Reset CRDT (Current Note)",
+            description: "Clear CRDT state for this note across peers and local snapshot cache",
+            icon: "RotateCcw",
+            when: {
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+
+                const noteFileName = context.activeTab?.pluginInstance?.instanceProps?.noteFileName as string;
+                if (!noteFileName) {
+                    console.error("No note file name found in active tab");
+                    return;
+                }
+
+                emit("notes:hardResetCrdt", { noteFileName });
+            },
+        },
+        {
             id: "notes.revealInFinder",
             name: "Reveal in Finder",
             description: "Show the current note in Finder",

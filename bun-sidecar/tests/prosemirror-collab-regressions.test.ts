@@ -118,4 +118,34 @@ describe("prosemirror collab regressions", () => {
         currentHarness.flushInOrder([...queued].reverse());
         currentHarness.assertPeersEquivalent("strict");
     });
+
+    it("select all then delete clears content on both peers", async () => {
+        currentHarness = createTwoPeerHarness({
+            schedulerMode: "immediate",
+            initialMarkdown: "Hello\n\n1. one\n2. two\n\n**bold**",
+        });
+        await currentHarness.runSteps([
+            { actor: "A", key: "Mod+a" },
+            { actor: "A", key: "Backspace" },
+        ]);
+
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toBe("");
+    });
+
+    it("select all then forward-delete clears content on both peers", async () => {
+        currentHarness = createTwoPeerHarness({
+            schedulerMode: "immediate",
+            initialMarkdown: "Hello\n\n1. one\n2. two\n\n**bold**",
+        });
+        await currentHarness.runSteps([
+            { actor: "A", key: "Mod+a" },
+            { actor: "A", key: "Delete" },
+        ]);
+
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toBe("");
+    });
 });

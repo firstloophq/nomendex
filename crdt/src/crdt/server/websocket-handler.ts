@@ -1,6 +1,6 @@
 import { createClock, receive } from "../core/lamport-clock";
 import type { LamportClock } from "../core/lamport-clock";
-import { createDocManager, applyDocOperation } from "../document/doc-manager";
+import { createDocManager, applyDocOperation, deleteDoc } from "../document/doc-manager";
 import type { RecordOp } from "../document/record";
 import type { CardApiState } from "./card-api";
 import type { AwarenessState } from "../network/awareness";
@@ -39,6 +39,8 @@ export interface CRDTWebSocketHandler {
   checkpointDoc(params: { docId: string }): void;
   /** Whether a checkpoint exists for a doc. */
   hasCheckpoint(params: { docId: string }): boolean;
+  /** Completely clear in-memory state for a doc (record, ops, checkpoints, tx dedupe state). */
+  resetDoc(params: { docId: string }): void;
 }
 
 // --- Internal per-client state ---
@@ -405,6 +407,16 @@ export function createCRDTWebSocketHandler(params?: {
 
     hasCheckpoint({ docId }) {
       return docCheckpoints.has(docId);
+    },
+
+    resetDoc({ docId }) {
+      docManagerState = {
+        ...docManagerState,
+        manager: deleteDoc({ manager: docManagerState.manager, docId }),
+      };
+      allDocOps.delete(docId);
+      docCheckpoints.delete(docId);
+      seenTxIdsByDoc.delete(docId);
     },
   };
 }

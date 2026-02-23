@@ -3,7 +3,7 @@ import { websocket } from "hono/bun";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { authMiddleware, type AuthVariables } from "./auth";
-import { handleCollabWebSocketUpgrade } from "./collab/websocket";
+import { handleCollabWebSocketUpgrade, hardResetCollabDoc } from "./collab/websocket";
 import meRoutes from "./routes/me";
 import orgsRoutes from "./routes/orgs";
 import membersRoutes from "./routes/members";
@@ -29,6 +29,36 @@ app.route("/auth", authRoutes);
 
 // Auth-protected API routes
 app.use("/api/*", authMiddleware);
+app.post("/api/collab/reset-doc", async (c) => {
+  const body = await c.req.json().catch(() => null) as { docId?: unknown } | null;
+  const docId = typeof body?.docId === "string" ? body.docId.trim() : "";
+  if (!docId) {
+    return c.json({ error: "docId is required" }, 400);
+  }
+
+  try {
+    await hardResetCollabDoc({
+      docId,
+      identity: {
+        userId: c.get("userId"),
+        clerkUserId: c.get("clerkUserId"),
+        userName: c.get("userName"),
+        userEmail: c.get("userEmail"),
+      },
+    });
+    return c.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "Forbidden") {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    if (message.startsWith("Invalid document id format:")) {
+      return c.json({ error: message }, 400);
+    }
+    console.error("[collab/reset-doc] failed:", message);
+    return c.json({ error: "Failed to reset doc" }, 500);
+  }
+});
 app.route("/api/me", meRoutes);
 app.route("/api/orgs", orgsRoutes);
 app.route("/api/orgs/:id/members", membersRoutes);

@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import { EditorState, TextSelection, type Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { AllSelection } from "prosemirror-state";
 import {
     applyRemoteOps,
     createCRDTPlugin,
@@ -293,7 +294,15 @@ export function createTwoPeerHarness(options?: {
         const combo = parseKeyCombo(key);
         peer.view.focus();
         const handled = fireKeydown(peer.view, combo);
+        const lowerKey = combo.key.toLowerCase();
         if (!handled) {
+            if ((combo.metaKey || combo.ctrlKey) && lowerKey === "a") {
+                const allSelection = new AllSelection(peer.view.state.doc);
+                peer.view.dispatch(peer.view.state.tr.setSelection(allSelection));
+                logs.push(`select-all actor=${peerId}`);
+                await new Promise((resolve) => setTimeout(resolve, KEY_DELAY_MS));
+                return;
+            }
             const text = mapKeyToText(combo.key);
             if (text !== null) {
                 const handledTextInput = fireTextInput(peer.view, text);

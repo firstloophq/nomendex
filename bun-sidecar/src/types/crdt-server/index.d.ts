@@ -27,6 +27,7 @@ export interface CRDTWebSocketHandler {
     appendDocOps(params: { docId: string; ops: ReadonlyArray<RecordOp> }): void;
     checkpointDoc(params: { docId: string }): void;
     hasCheckpoint(params: { docId: string }): boolean;
+    resetDoc(params: { docId: string }): void;
 }
 
 export declare function createCRDTWebSocketHandler(params?: {

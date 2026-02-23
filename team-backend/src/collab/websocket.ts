@@ -1,6 +1,7 @@
 import {
   applyDocOperation,
   applySnapshotToDoc,
+  createRecord,
   decodeRecordSnapshot,
   encodeRecordSnapshot,
   getDoc,
@@ -19,6 +20,7 @@ import { authenticateBearerToken, type AuthIdentity } from "../auth";
 import { prisma } from "../db";
 import { parseWorkspaceScopedDocId } from "./doc-id";
 import {
+  deleteCanonicalSnapshot,
   loadCanonicalSnapshot,
   saveCanonicalSnapshot,
 } from "./persistence";
@@ -357,6 +359,69 @@ const crdtHandler = createCRDTWebSocketHandler({
     });
   },
 });
+
+export async function hardResetCollabDoc(params: {
+  docId: string;
+  identity: AuthIdentity;
+}): Promise<void> {
+  const scopedDoc = parseWorkspaceScopedDocId({ docId: params.docId });
+  if (!scopedDoc) {
+    throw new Error(`Invalid document id format: "${params.docId}"`);
+  }
+
+  const allowed = await canAccessWorkspace({
+    identity: params.identity,
+    orgWorkspaceId: scopedDoc.orgWorkspaceId,
+    cache: new Map(),
+  });
+  if (!allowed) {
+    throw new Error("Forbidden");
+  }
+
+  const existingTimer = persistTimerByDoc.get(params.docId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    persistTimerByDoc.delete(params.docId);
+  }
+  persistInFlightByDoc.delete(params.docId);
+  hydrateByDoc.delete(params.docId);
+  hydratedDocs.delete(params.docId);
+  persistedVersionByDoc.delete(params.docId);
+  crdtHandler.resetDoc({ docId: params.docId });
+
+  await deleteCanonicalSnapshot({
+    docId: params.docId,
+    orgWorkspaceId: scopedDoc.orgWorkspaceId,
+  });
+
+  const emptyRecord = createRecord();
+  const emptyBytes = encodeRecordSnapshot({ record: emptyRecord });
+  const emptyVersion = getRecordSnapshotVersion({ data: emptyBytes });
+  const currentState = crdtHandler.getDocManagerState();
+  const nextManager = applySnapshotToDoc({
+    manager: currentState.manager,
+    docId: params.docId,
+    snapshot: emptyBytes,
+    mode: "replace",
+  });
+  crdtHandler.setDocManagerState({
+    state: { ...currentState, manager: nextManager },
+  });
+  crdtHandler.checkpointDoc({ docId: params.docId });
+  crdtHandler.broadcastSnapshot({
+    docId: params.docId,
+    snapshot: emptyBytes,
+    version: emptyVersion,
+  });
+
+  logCollabInfo("hard_reset_completed", {
+    docId: params.docId,
+    orgWorkspaceId: scopedDoc.orgWorkspaceId,
+    byClerkUserId: params.identity.clerkUserId,
+    bytes: emptyBytes.byteLength,
+    version: emptyVersion,
+  });
+}
 
 async function hydrateDocIfNeeded(params: {
   docId: string;

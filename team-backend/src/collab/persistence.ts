@@ -265,3 +265,43 @@ export async function saveCanonicalSnapshot(params: {
     bucketKey,
   };
 }
+
+export async function deleteCanonicalSnapshot(params: {
+  docId: string;
+  orgWorkspaceId: string;
+}): Promise<{ deleted: boolean }> {
+  const collabDoc = await prisma.collabDoc.findUnique({
+    where: { docId: params.docId },
+    select: {
+      id: true,
+      orgWorkspaceId: true,
+    },
+  });
+
+  if (!collabDoc) {
+    logCollabPersistenceInfo("delete_miss_no_collab_doc", {
+      docId: params.docId,
+      orgWorkspaceId: params.orgWorkspaceId,
+    });
+    return { deleted: false };
+  }
+  if (collabDoc.orgWorkspaceId !== params.orgWorkspaceId) {
+    throw new Error("Doc/workspace ownership mismatch");
+  }
+
+  await prisma.$transaction([
+    prisma.collabSnapshot.deleteMany({
+      where: { collabDocId: collabDoc.id },
+    }),
+    prisma.collabDoc.delete({
+      where: { id: collabDoc.id },
+    }),
+  ]);
+
+  logCollabPersistenceInfo("delete_success", {
+    docId: params.docId,
+    orgWorkspaceId: params.orgWorkspaceId,
+    collabDocId: collabDoc.id,
+  });
+  return { deleted: true };
+}
