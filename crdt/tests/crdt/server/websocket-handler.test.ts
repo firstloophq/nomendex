@@ -134,7 +134,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     expect(msg.ops.length).toBe(0);
   });
 
-  test("ops are applied to DocManager and broadcast to subscribers", () => {
+  test("tx is applied to DocManager and broadcast to subscribers", () => {
     const handler = createCRDTWebSocketHandler();
     const client1 = createMockClient("c1");
     const client2 = createMockClient("c2");
@@ -147,17 +147,17 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     client1.messages.length = 0;
     client2.messages.length = 0;
 
-    // Client1 sends ops
+    // Client1 sends tx
     const op = makeFieldOp({ clientId: "c1", clock: 1, fieldName: "title", value: "Hello" });
     handler.handleMessage({
       client: client1,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-c1-1", docId: "doc-1", ops: [op] }),
     });
 
     // Client2 should get the broadcast
     expect(client2.messages.length).toBe(1);
     const msg = JSON.parse(client2.messages[0]!) as { type: string; docId: string };
-    expect(msg.type).toBe("ops");
+    expect(msg.type).toBe("tx");
     expect(msg.docId).toBe("doc-1");
 
     // Client1 should NOT get its own broadcast
@@ -301,7 +301,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const op = makeFieldOp({ clientId: "c1", clock: 42, fieldName: "title", value: "Hi" });
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-clock-42", docId: "doc-1", ops: [op] }),
     });
 
     // Server clock should have received clock 42
@@ -317,14 +317,52 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     // Legacy message without docId
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", ops: [{ id: { clientId: "x", clock: 1 } }] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-missing-doc", ops: [{ id: { clientId: "x", clock: 1 } }] }),
     });
 
     // Should not crash, no ops stored
     expect(handler.getDocOps({ docId: "undefined" }).length).toBe(0);
   });
 
-  test("onDocChanged fires when client sends ops", () => {
+  test("tx before subscribe is rejected with protocol-error", () => {
+    const handler = createCRDTWebSocketHandler();
+    const client = createMockClient("c1");
+    handler.handleOpen({ client });
+
+    const op = makeFieldOp({ clientId: "c1", clock: 1, fieldName: "title", value: "Hello" });
+    handler.handleMessage({
+      client,
+      message: JSON.stringify({ type: "tx", txId: "tx-before-sub", docId: "doc-1", ops: [op] }),
+    });
+
+    expect(handler.getDocOps({ docId: "doc-1" }).length).toBe(0);
+    expect(client.messages.length).toBe(1);
+    const msg = JSON.parse(client.messages[0]!) as { type: string; code?: string };
+    expect(msg.type).toBe("protocol-error");
+    expect(msg.code).toBe("NOT_SUBSCRIBED");
+  });
+
+  test("duplicate txId is deduped", () => {
+    const handler = createCRDTWebSocketHandler();
+    const client1 = createMockClient("c1");
+    const client2 = createMockClient("c2");
+    handler.handleOpen({ client: client1 });
+    handler.handleOpen({ client: client2 });
+    handler.handleMessage({ client: client1, message: JSON.stringify({ type: "subscribe", docId: "doc-1" }) });
+    handler.handleMessage({ client: client2, message: JSON.stringify({ type: "subscribe", docId: "doc-1" }) });
+    client1.messages.length = 0;
+    client2.messages.length = 0;
+
+    const op = makeFieldOp({ clientId: "c1", clock: 1, fieldName: "title", value: "Hello" });
+    const txMessage = JSON.stringify({ type: "tx", txId: "dup-tx-1", docId: "doc-1", ops: [op] });
+    handler.handleMessage({ client: client1, message: txMessage });
+    handler.handleMessage({ client: client1, message: txMessage });
+
+    expect(handler.getDocOps({ docId: "doc-1" }).length).toBe(1);
+    expect(client2.messages.length).toBe(1);
+  });
+
+  test("onDocChanged fires when client sends tx", () => {
     const changes: Array<{ docId: string; ops: ReadonlyArray<RecordOp>; source: string }> = [];
     const handler = createCRDTWebSocketHandler({
       onDocChanged({ docId, ops, source }) {
@@ -339,7 +377,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const op = makeFieldOp({ clientId: "c1", clock: 1, fieldName: "title", value: "Hello" });
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-doc-changed-1", docId: "doc-1", ops: [op] }),
     });
 
     expect(changes.length).toBe(1);
@@ -375,7 +413,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     // Should not throw even without onDocChanged
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-optional-1", docId: "doc-1", ops: [op] }),
     });
 
     expect(handler.getDocOps({ docId: "doc-1" }).length).toBe(1);
@@ -392,7 +430,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const op2 = makeFieldOp({ clientId: "c1", clock: 2, fieldName: "description", value: "World" });
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op1, op2] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-checkpoint-1", docId: "doc-1", ops: [op1, op2] }),
     });
 
     expect(handler.getDocOps({ docId: "doc-1" }).length).toBe(2);
@@ -422,7 +460,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const op = makeFieldOp({ clientId: "c1", clock: 1, fieldName: "title", value: "Checkpointed" });
     handler.handleMessage({
       client: client1,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-checkpoint-2", docId: "doc-1", ops: [op] }),
     });
     handler.checkpointDoc({ docId: "doc-1" });
 
@@ -430,7 +468,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const postOp = makeFieldOp({ clientId: "c1", clock: 2, fieldName: "title", value: "Updated" });
     handler.handleMessage({
       client: client1,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [postOp] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-checkpoint-3", docId: "doc-1", ops: [postOp] }),
     });
 
     // New client subscribes
@@ -480,7 +518,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const op1 = makeFieldOp({ clientId: "c1", clock: 1, fieldName: "title", value: "Before" });
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op1] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-after-checkpoint-1", docId: "doc-1", ops: [op1] }),
     });
 
     handler.checkpointDoc({ docId: "doc-1" });
@@ -489,7 +527,7 @@ describe("createCRDTWebSocketHandler (unified protocol)", () => {
     const op2 = makeFieldOp({ clientId: "c1", clock: 2, fieldName: "title", value: "After" });
     handler.handleMessage({
       client,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op2] }),
+      message: JSON.stringify({ type: "tx", txId: "tx-after-checkpoint-2", docId: "doc-1", ops: [op2] }),
     });
 
     expect(handler.getDocOps({ docId: "doc-1" }).length).toBe(1);

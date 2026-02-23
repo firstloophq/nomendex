@@ -25,6 +25,7 @@ export interface CRDTWebSocketHandler {
   handleClose(params: { client: WSClient }): void;
 
   broadcastDocOps(params: { docId: string; ops: ReadonlyArray<RecordOp> }): void;
+  broadcastTx(params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }): void;
   broadcastAwareness(params: { docId: string; clientId: string; state: AwarenessState }): void;
   broadcastSnapshot(params: { docId: string; snapshot: Uint8Array; version?: string }): void;
 
@@ -50,7 +51,12 @@ interface ClientState {
 
 export function createCRDTWebSocketHandler(params?: {
   serverClientId?: string;
-  onDocChanged?: (params: { docId: string; ops: ReadonlyArray<RecordOp>; source: "client" | "server" }) => void;
+  onDocChanged?: (params: {
+    docId: string;
+    ops: ReadonlyArray<RecordOp>;
+    txId?: string;
+    source: "client" | "server";
+  }) => void;
   onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
 }): CRDTWebSocketHandler {
   const serverClientId = params?.serverClientId ?? "server";
@@ -65,6 +71,9 @@ export function createCRDTWebSocketHandler(params?: {
   const allDocOps = new Map<string, Array<RecordOp>>();
   // Base64-encoded record snapshots (checkpoints)
   const docCheckpoints = new Map<string, string>();
+  const seenTxIdsByDoc = new Map<string, Map<string, number>>();
+  const TX_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+  const TX_DEDUPE_MAX_PER_DOC = 4000;
 
   // --- Client tracking ---
   const clients = new Map<string, { client: WSClient; state: ClientState }>();
@@ -78,13 +87,68 @@ export function createCRDTWebSocketHandler(params?: {
     return ops;
   }
 
+  function isDuplicateTx(paramsTx: { docId: string; txId: string }): boolean {
+    const { docId, txId } = paramsTx;
+    const now = Date.now();
+    let seenForDoc = seenTxIdsByDoc.get(docId);
+    if (!seenForDoc) {
+      seenForDoc = new Map<string, number>();
+      seenTxIdsByDoc.set(docId, seenForDoc);
+    }
+
+    const existing = seenForDoc.get(txId);
+    if (typeof existing === "number") {
+      seenForDoc.set(txId, now);
+      return true;
+    }
+
+    seenForDoc.set(txId, now);
+    if (seenForDoc.size > TX_DEDUPE_MAX_PER_DOC) {
+      for (const [knownTxId, ts] of seenForDoc) {
+        if (now - ts > TX_DEDUPE_WINDOW_MS || seenForDoc.size > TX_DEDUPE_MAX_PER_DOC) {
+          seenForDoc.delete(knownTxId);
+        } else {
+          break;
+        }
+      }
+    }
+    return false;
+  }
+
   function broadcastDocOps(broadcastParams: {
     docId: string;
     ops: ReadonlyArray<RecordOp>;
     excludeClientId?: string;
   }): void {
+    const opKey = broadcastParams.ops
+      .map((op) => ("id" in op && op.id ? `${op.id.clientId}:${op.id.clock}` : "no-id"))
+      .join("|");
+    const txId = `${serverClientId}:server-broadcast:${broadcastParams.docId}:${opKey}`;
     const message = JSON.stringify({
-      type: "ops",
+      type: "tx",
+      txId,
+      docId: broadcastParams.docId,
+      ops: broadcastParams.ops,
+    });
+    for (const [, entry] of clients) {
+      if (
+        entry.client.id !== broadcastParams.excludeClientId &&
+        entry.state.subscribedDocs.has(broadcastParams.docId)
+      ) {
+        entry.client.send(message);
+      }
+    }
+  }
+
+  function broadcastTx(broadcastParams: {
+    txId: string;
+    docId: string;
+    ops: ReadonlyArray<RecordOp>;
+    excludeClientId?: string;
+  }): void {
+    const message = JSON.stringify({
+      type: "tx",
+      txId: broadcastParams.txId,
       docId: broadcastParams.docId,
       ops: broadcastParams.ops,
     });
@@ -128,10 +192,9 @@ export function createCRDTWebSocketHandler(params?: {
   }): void {
     const snapshotBase64 = btoa(String.fromCharCode(...broadcastParams.snapshot));
     const message = JSON.stringify({
-      type: "sync-response",
+      type: "snapshot",
       docId: broadcastParams.docId,
       snapshot: snapshotBase64,
-      ops: [],
       version: broadcastParams.version,
     });
     for (const [, entry] of clients) {
@@ -158,6 +221,7 @@ export function createCRDTWebSocketHandler(params?: {
         const parsed = JSON.parse(msgStr) as {
           type: string;
           ops?: Array<RecordOp>;
+          txId?: string;
           stateVector?: string;
           docId?: string;
           clientId?: string;
@@ -208,13 +272,27 @@ export function createCRDTWebSocketHandler(params?: {
 
         if (parsed.type === "unsubscribe") {
           entry.state.subscribedDocs.delete(docId);
+          seenTxIdsByDoc.delete(docId);
           return;
         }
 
-        if (parsed.type === "ops" && Array.isArray(parsed.ops)) {
-          const ops = parsed.ops as ReadonlyArray<RecordOp>;
+        if (parsed.type === "tx" && typeof parsed.txId === "string" && Array.isArray(parsed.ops)) {
+          if (!entry.state.subscribedDocs.has(docId)) {
+            client.send(JSON.stringify({
+              type: "protocol-error",
+              code: "NOT_SUBSCRIBED",
+              docId,
+              message: "subscribe required before tx",
+            }));
+            return;
+          }
 
-          // Apply ops to DocManager
+          const ops = parsed.ops as ReadonlyArray<RecordOp>;
+          const txId = parsed.txId;
+          if (isDuplicateTx({ docId, txId })) {
+            return;
+          }
+
           for (const op of ops) {
             docManagerState = {
               ...docManagerState,
@@ -224,7 +302,6 @@ export function createCRDTWebSocketHandler(params?: {
                 op,
               }),
             };
-            // Sync server clock
             if ("id" in op && op.id && typeof op.id.clock === "number") {
               docManagerState = {
                 ...docManagerState,
@@ -234,9 +311,10 @@ export function createCRDTWebSocketHandler(params?: {
             getOpsForDoc(docId).push(op);
           }
 
-          onDocChanged?.({ docId, ops, source: "client" });
+          onDocChanged?.({ docId, txId, ops, source: "client" });
 
-          broadcastDocOps({
+          broadcastTx({
+            txId,
             docId,
             ops,
             excludeClientId: client.id,
@@ -245,6 +323,15 @@ export function createCRDTWebSocketHandler(params?: {
         }
 
         if (parsed.type === "awareness" && parsed.clientId && parsed.state) {
+          if (!entry.state.subscribedDocs.has(docId)) {
+            client.send(JSON.stringify({
+              type: "protocol-error",
+              code: "NOT_SUBSCRIBED",
+              docId,
+              message: "subscribe required before awareness",
+            }));
+            return;
+          }
           onAwareness?.({ docId, clientId: parsed.clientId, state: parsed.state });
           broadcastAwareness({
             docId,
@@ -260,11 +347,21 @@ export function createCRDTWebSocketHandler(params?: {
     },
 
     handleClose({ client }) {
+      const entry = clients.get(client.id);
+      if (entry) {
+        for (const docId of entry.state.subscribedDocs) {
+          seenTxIdsByDoc.delete(docId);
+        }
+      }
       clients.delete(client.id);
     },
 
     broadcastDocOps({ docId, ops }) {
       broadcastDocOps({ docId, ops });
+    },
+
+    broadcastTx({ txId, docId, ops }) {
+      broadcastTx({ txId, docId, ops });
     },
 
     broadcastAwareness({ docId, clientId: awarenessClientId, state }) {

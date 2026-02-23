@@ -206,7 +206,7 @@ describe("MultiDocTransport (unified)", () => {
     transport.close();
   });
 
-  test("ops received during sync are buffered then delivered", () => {
+  test("tx received during sync are buffered then delivered", () => {
     const receivedOps: RecordOp[] = [];
     const transport = createMultiDocTransport({
       url: "ws://localhost:1212/ws",
@@ -217,10 +217,11 @@ describe("MultiDocTransport (unified)", () => {
     getLatestWS()._simulateOpen();
     transport.subscribe({ docId: "doc-1" });
 
-    // Ops arrive during sync phase
+    // Tx arrives during sync phase
     const bufferedOp = makeFieldOp("X", 99);
     getLatestWS()._simulateMessage(JSON.stringify({
-      type: "ops",
+      type: "tx",
+      txId: "tx-buffered-1",
       docId: "doc-1",
       ops: [bufferedOp],
     }));
@@ -241,13 +242,14 @@ describe("MultiDocTransport (unified)", () => {
     transport.close();
   });
 
-  test("send queues ops offline", () => {
+  test("send queues tx offline after subscribe", () => {
     const transport = createMultiDocTransport({
       url: "ws://localhost:1212/ws",
       clientId: "test",
       onOps: () => {},
     });
 
+    transport.subscribe({ docId: "doc-1" });
     // Not connected yet — ops should be queued
     const op = makeFieldOp("A", 1);
     transport.send({ docId: "doc-1", ops: [op] });
@@ -256,7 +258,7 @@ describe("MultiDocTransport (unified)", () => {
     transport.close();
   });
 
-  test("send transmits ops when connected and not syncing", () => {
+  test("send transmits tx when connected and not syncing", () => {
     const transport = createMultiDocTransport({
       url: "ws://localhost:1212/ws",
       clientId: "test",
@@ -264,13 +266,18 @@ describe("MultiDocTransport (unified)", () => {
     });
 
     getLatestWS()._simulateOpen();
-    // No subscription, so no sync state for doc-1
+    transport.subscribe({ docId: "doc-1" });
+    getLatestWS()._simulateMessage(JSON.stringify({
+      type: "sync-response",
+      docId: "doc-1",
+      ops: [],
+    }));
     const op = makeFieldOp("A", 1);
     transport.send({ docId: "doc-1", ops: [op] });
 
     const sentOpsMsg = getLatestWS().sentMessages.find(m => {
       const p = JSON.parse(m) as { type: string; docId: string };
-      return p.type === "ops" && p.docId === "doc-1";
+      return p.type === "tx" && p.docId === "doc-1";
     });
     expect(sentOpsMsg).toBeDefined();
     expect(transport.pendingOpsCount()).toBe(0);
@@ -407,6 +414,7 @@ describe("MultiDocTransport (unified)", () => {
       onOps: () => {},
     });
 
+    transport.subscribe({ docId: "doc-1" });
     transport.send({ docId: "doc-1", ops: [makeFieldOp("A", 1)] });
     expect(transport.pendingOpsCount()).toBe(1);
 
@@ -513,6 +521,55 @@ describe("MultiDocTransport (unified)", () => {
     }));
 
     expect(snapshotCalled).toBe(false);
+    transport.close();
+  });
+
+  test("protocol error emitted when sending before subscribe", () => {
+    const protocolErrors: string[] = [];
+    const transport = createMultiDocTransport({
+      url: "ws://localhost:1212/ws",
+      clientId: "test",
+      onOps: () => {},
+      onProtocolError({ reason }) {
+        protocolErrors.push(reason);
+      },
+    });
+
+    transport.send({ docId: "doc-1", ops: [makeFieldOp("A", 1)] });
+    expect(protocolErrors).toEqual(["send_tx_before_subscribe"]);
+    expect(transport.pendingOpsCount()).toBe(0);
+    transport.close();
+  });
+
+  test("duplicate tx message is dropped", () => {
+    const receivedOps: RecordOp[] = [];
+    const transport = createMultiDocTransport({
+      url: "ws://localhost:1212/ws",
+      clientId: "test",
+      onOps({ ops }) {
+        receivedOps.push(...ops);
+      },
+    });
+
+    getLatestWS()._simulateOpen();
+    transport.subscribe({ docId: "doc-1" });
+    getLatestWS()._simulateMessage(JSON.stringify({
+      type: "sync-response",
+      docId: "doc-1",
+      ops: [],
+    }));
+
+    const op = makeFieldOp("A", 5);
+    const txMsg = JSON.stringify({
+      type: "tx",
+      txId: "dup-1",
+      docId: "doc-1",
+      ops: [op],
+    });
+    getLatestWS()._simulateMessage(txMsg);
+    getLatestWS()._simulateMessage(txMsg);
+
+    expect(receivedOps.length).toBe(1);
     transport.close();
   });
 });

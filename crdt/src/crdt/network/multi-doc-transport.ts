@@ -4,8 +4,9 @@ import { encodeStateVector, type StateVector } from "./state-vector";
 
 // --- Wire message types ---
 
-interface DocOpsMessage {
-  readonly type: "ops";
+interface DocTxMessage {
+  readonly type: "tx";
+  readonly txId: string;
   readonly docId: string;
   readonly ops: ReadonlyArray<RecordOp>;
 }
@@ -35,7 +36,20 @@ interface SyncResponseMessage {
   readonly snapshot?: string; // base64-encoded CRDTRecord snapshot
 }
 
-type IncomingMessage = DocOpsMessage | SyncResponseMessage | AwarenessMessage;
+interface SnapshotMessage {
+  readonly type: "snapshot";
+  readonly docId: string;
+  readonly snapshot: string; // base64-encoded CRDTRecord snapshot
+  readonly version?: string;
+}
+
+type IncomingMessage = DocTxMessage | SyncResponseMessage | AwarenessMessage | SnapshotMessage;
+
+type PendingMessage =
+  | { type: "tx"; txId: string; docId: string; ops: ReadonlyArray<RecordOp> };
+
+type BufferedTxMessage = { txId: string; ops: ReadonlyArray<RecordOp> };
+type DocPhase = "syncing" | "live";
 
 // --- Public interface ---
 
@@ -43,6 +57,7 @@ export interface MultiDocTransport {
   readonly subscribe: (params: { docId: string; initialStateVector?: StateVector }) => void;
   readonly unsubscribe: (params: { docId: string }) => void;
   readonly send: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+  readonly sendTx: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
   readonly sendAwareness: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
   readonly disconnect: () => void;
   readonly reconnect: () => void;
@@ -56,27 +71,34 @@ export function createMultiDocTransport(params: {
   url: string;
   clientId: string;
   onOps: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+  onTx?: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
   onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
-  onSnapshot?: (params: { docId: string; data: Uint8Array }) => void;
+  onSnapshot?: (params: { docId: string; data: Uint8Array; version?: string }) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
   onDocSyncComplete?: (params: { docId: string }) => void;
+  onProtocolError?: (params: { docId?: string; reason: string }) => void;
   getAuthToken?: () => string | Promise<string>;
 }): MultiDocTransport {
   let ws: WebSocket | null = null;
   let connected = false;
   let intentionalDisconnect = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let localTxCounter = 0;
 
   // Per-doc state vectors — updated on send/receive
   const docStateVectors = new Map<string, StateVector>();
   // Per-doc sync tracking
   const syncingDocs = new Set<string>();
-  const bufferedDocOps = new Map<string, RecordOp[]>();
+  const docPhases = new Map<string, DocPhase>();
+  const bufferedDocTx = new Map<string, Array<BufferedTxMessage>>();
   // Subscribed docs (for re-subscribe on reconnect)
   const subscribedDocs = new Set<string>();
   // Global offline queue
-  const pendingOps: Array<{ docId: string; ops: ReadonlyArray<RecordOp> }> = [];
+  const pendingMessages: Array<PendingMessage> = [];
+  const seenTxIdsByDoc = new Map<string, Map<string, number>>();
+  const TX_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+  const TX_DEDUPE_MAX_PER_DOC = 2000;
 
   function updateDocSV(docId: string, ops: ReadonlyArray<RecordOp>) {
     const sv = new Map<string, number>(docStateVectors.get(docId) ?? []);
@@ -93,6 +115,52 @@ export function createMultiDocTransport(params: {
     if (changed || !docStateVectors.has(docId)) {
       docStateVectors.set(docId, sv);
     }
+  }
+
+  function enqueueOrSendTx(paramsTx: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) {
+    const { txId, docId, ops } = paramsTx;
+    if (!subscribedDocs.has(docId)) {
+      params.onProtocolError?.({
+        docId,
+        reason: "send_tx_before_subscribe",
+      });
+      return;
+    }
+    updateDocSV(docId, ops);
+
+    if (connected && ws && !syncingDocs.has(docId)) {
+      ws.send(JSON.stringify({ type: "tx", txId, docId, ops }));
+    } else {
+      pendingMessages.push({ type: "tx", txId, docId, ops });
+    }
+  }
+
+  function isDuplicateTx(paramsTx: { docId: string; txId: string }): boolean {
+    const { docId, txId } = paramsTx;
+    const now = Date.now();
+    let seenForDoc = seenTxIdsByDoc.get(docId);
+    if (!seenForDoc) {
+      seenForDoc = new Map<string, number>();
+      seenTxIdsByDoc.set(docId, seenForDoc);
+    }
+
+    const existing = seenForDoc.get(txId);
+    if (typeof existing === "number") {
+      seenForDoc.set(txId, now);
+      return true;
+    }
+
+    seenForDoc.set(txId, now);
+    if (seenForDoc.size > TX_DEDUPE_MAX_PER_DOC) {
+      for (const [knownTxId, ts] of seenForDoc) {
+        if (now - ts > TX_DEDUPE_WINDOW_MS || seenForDoc.size > TX_DEDUPE_MAX_PER_DOC) {
+          seenForDoc.delete(knownTxId);
+        } else {
+          break;
+        }
+      }
+    }
+    return false;
   }
 
   async function connect() {
@@ -115,7 +183,8 @@ export function createMultiDocTransport(params: {
           ? { type: "subscribe", docId, stateVector: encodeStateVector({ sv }) }
           : { type: "subscribe", docId };
         syncingDocs.add(docId);
-        bufferedDocOps.set(docId, []);
+        docPhases.set(docId, "syncing");
+        bufferedDocTx.set(docId, []);
         ws!.send(JSON.stringify(msg));
       }
 
@@ -127,6 +196,13 @@ export function createMultiDocTransport(params: {
         const msg = JSON.parse(event.data as string) as IncomingMessage;
 
         if (msg.type === "sync-response" && msg.docId) {
+          if (!subscribedDocs.has(msg.docId)) {
+            params.onProtocolError?.({
+              docId: msg.docId,
+              reason: "sync_response_for_unsubscribed_doc",
+            });
+            return;
+          }
           // If a snapshot is included, decode and apply it first
           if (msg.snapshot && params.onSnapshot) {
             const binaryStr = atob(msg.snapshot);
@@ -144,39 +220,80 @@ export function createMultiDocTransport(params: {
           }
 
           // Apply buffered ops that arrived during sync
-          const buffered = bufferedDocOps.get(msg.docId);
+          const buffered = bufferedDocTx.get(msg.docId);
           if (buffered && buffered.length > 0) {
-            updateDocSV(msg.docId, buffered);
-            params.onOps({ docId: msg.docId, ops: buffered });
-          }
-          bufferedDocOps.delete(msg.docId);
-
-          // Flush pending ops for this doc
-          const toSend: RecordOp[] = [];
-          for (let i = pendingOps.length - 1; i >= 0; i--) {
-            if (pendingOps[i]!.docId === msg.docId) {
-              toSend.unshift(...pendingOps[i]!.ops);
-              pendingOps.splice(i, 1);
+            for (const tx of buffered) {
+              if (isDuplicateTx({ docId: msg.docId, txId: tx.txId })) continue;
+              updateDocSV(msg.docId, tx.ops);
+              params.onTx?.({ txId: tx.txId, docId: msg.docId, ops: tx.ops });
+              if (!params.onTx) {
+                params.onOps({ docId: msg.docId, ops: tx.ops });
+              }
             }
           }
-          if (toSend.length > 0 && ws && connected) {
-            ws.send(JSON.stringify({ type: "ops", docId: msg.docId, ops: toSend }));
+          bufferedDocTx.delete(msg.docId);
+
+          // Flush pending messages for this doc in original queue order.
+          const toFlush: Array<PendingMessage> = [];
+          for (let i = pendingMessages.length - 1; i >= 0; i--) {
+            const pending = pendingMessages[i]!;
+            if (pending.docId === msg.docId) {
+              toFlush.unshift(pending);
+              pendingMessages.splice(i, 1);
+            }
+          }
+          if (toFlush.length > 0 && ws && connected) {
+            for (const pending of toFlush) {
+              ws.send(JSON.stringify(pending));
+            }
           }
 
           syncingDocs.delete(msg.docId);
+          docPhases.set(msg.docId, "live");
           params.onDocSyncComplete?.({ docId: msg.docId });
-        } else if (msg.type === "ops" && msg.docId && Array.isArray(msg.ops)) {
+        } else if (msg.type === "snapshot" && msg.docId && msg.snapshot && params.onSnapshot) {
+          const binaryStr = atob(msg.snapshot);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          params.onSnapshot({ docId: msg.docId, data: bytes, version: msg.version });
+        } else if (msg.type === "tx" && msg.docId && typeof msg.txId === "string" && Array.isArray(msg.ops)) {
+          if (!subscribedDocs.has(msg.docId)) {
+            params.onProtocolError?.({
+              docId: msg.docId,
+              reason: "tx_for_unsubscribed_doc",
+            });
+            return;
+          }
+
+          const phase = docPhases.get(msg.docId);
+          if (!phase) {
+            params.onProtocolError?.({
+              docId: msg.docId,
+              reason: "tx_before_subscribe",
+            });
+            return;
+          }
+
           if (syncingDocs.has(msg.docId)) {
-            // Buffer during sync phase
-            const buf = bufferedDocOps.get(msg.docId);
+            const buf = bufferedDocTx.get(msg.docId);
             if (buf) {
-              buf.push(...msg.ops);
+              if (!buf.some((entry) => entry.txId === msg.txId)) {
+                buf.push({ txId: msg.txId, ops: msg.ops });
+              }
             } else {
-              bufferedDocOps.set(msg.docId, [...msg.ops]);
+              bufferedDocTx.set(msg.docId, [{ txId: msg.txId, ops: msg.ops }]);
             }
           } else {
+            if (isDuplicateTx({ docId: msg.docId, txId: msg.txId })) {
+              return;
+            }
             updateDocSV(msg.docId, msg.ops);
-            params.onOps({ docId: msg.docId, ops: msg.ops });
+            params.onTx?.({ txId: msg.txId, docId: msg.docId, ops: msg.ops });
+            if (!params.onTx) {
+              params.onOps({ docId: msg.docId, ops: msg.ops });
+            }
           }
         } else if (msg.type === "awareness" && msg.docId) {
           params.onAwareness?.({
@@ -194,7 +311,7 @@ export function createMultiDocTransport(params: {
       connected = false;
       // Clear sync state on disconnect
       syncingDocs.clear();
-      bufferedDocOps.clear();
+      bufferedDocTx.clear();
       params.onDisconnect?.();
 
       if (!intentionalDisconnect) {
@@ -212,6 +329,9 @@ export function createMultiDocTransport(params: {
   return {
     subscribe({ docId, initialStateVector }) {
       subscribedDocs.add(docId);
+      docPhases.set(docId, "syncing");
+      syncingDocs.add(docId);
+      bufferedDocTx.set(docId, []);
 
       // Seed the SV if provided (for first subscribe before any ops)
       if (initialStateVector && !docStateVectors.has(docId)) {
@@ -223,8 +343,6 @@ export function createMultiDocTransport(params: {
         const msg: SubscribeMessage = sv && sv.size > 0
           ? { type: "subscribe", docId, stateVector: encodeStateVector({ sv }) }
           : { type: "subscribe", docId };
-        syncingDocs.add(docId);
-        bufferedDocOps.set(docId, []);
         ws.send(JSON.stringify(msg));
       }
     },
@@ -232,21 +350,21 @@ export function createMultiDocTransport(params: {
     unsubscribe({ docId }) {
       subscribedDocs.delete(docId);
       syncingDocs.delete(docId);
-      bufferedDocOps.delete(docId);
+      docPhases.delete(docId);
+      bufferedDocTx.delete(docId);
+      seenTxIdsByDoc.delete(docId);
       if (connected && ws) {
         ws.send(JSON.stringify({ type: "unsubscribe", docId }));
       }
     },
 
     send({ docId, ops }) {
-      // Update local SV tracking
-      updateDocSV(docId, ops);
+      const txId = `${params.clientId}:auto:${++localTxCounter}`;
+      enqueueOrSendTx({ txId, docId, ops });
+    },
 
-      if (connected && ws && !syncingDocs.has(docId)) {
-        ws.send(JSON.stringify({ type: "ops", docId, ops }));
-      } else {
-        pendingOps.push({ docId, ops });
-      }
+    sendTx({ txId, docId, ops }) {
+      enqueueOrSendTx({ txId, docId, ops });
     },
 
     sendAwareness({ docId, clientId, state }) {
@@ -264,7 +382,8 @@ export function createMultiDocTransport(params: {
     disconnect() {
       intentionalDisconnect = true;
       syncingDocs.clear();
-      bufferedDocOps.clear();
+      docPhases.clear();
+      bufferedDocTx.clear();
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -285,8 +404,9 @@ export function createMultiDocTransport(params: {
     close() {
       intentionalDisconnect = true;
       syncingDocs.clear();
-      bufferedDocOps.clear();
-      pendingOps.length = 0;
+      docPhases.clear();
+      bufferedDocTx.clear();
+      pendingMessages.length = 0;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -308,7 +428,7 @@ export function createMultiDocTransport(params: {
     },
 
     pendingOpsCount() {
-      return pendingOps.reduce((sum, entry) => sum + entry.ops.length, 0);
+      return pendingMessages.reduce((sum, entry) => sum + entry.ops.length, 0);
     },
   };
 }

@@ -51,6 +51,11 @@ export interface CollabContextValue {
         docId: string;
         ops: ReadonlyArray<RecordOp>;
     }) => void;
+    readonly sendTx: (params: {
+        txId: string;
+        docId: string;
+        ops: ReadonlyArray<RecordOp>;
+    }) => void;
     readonly sendSnapshot: (params: {
         docId: string;
         snapshot: Uint8Array;
@@ -156,6 +161,7 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
     const docInitialSVRef = useRef(new Map<string, StateVector>());
 
     const transportRef = useRef<MultiDocTransport | null>(null);
+    const txCounterRef = useRef(0);
 
     // Build local WebSocket URL
     const wsUrl = `ws://localhost:${window.location.port}/ws/crdt`;
@@ -185,6 +191,23 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                 crdtDebugLog({
                     event: "transport_on_ops",
                     data: {
+                        docId,
+                        count: ops.length,
+                        ops: summarizeOpsForDebug(ops),
+                    },
+                });
+                const listeners = opsListenersRef.current.get(docId);
+                if (listeners) {
+                    for (const listener of listeners) {
+                        listener({ docId, ops });
+                    }
+                }
+            },
+            onTx({ txId, docId, ops }) {
+                crdtDebugLog({
+                    event: "transport_on_tx",
+                    data: {
+                        txId,
                         docId,
                         count: ops.length,
                         ops: summarizeOpsForDebug(ops),
@@ -246,6 +269,16 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                         listener({ docId });
                     }
                 }
+            },
+            onProtocolError({ docId, reason }) {
+                crdtDebugLog({
+                    event: "transport_protocol_error",
+                    level: "warn",
+                    data: {
+                        docId: docId ?? null,
+                        reason,
+                    },
+                });
             },
         });
 
@@ -443,13 +476,37 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         docId: string;
         ops: ReadonlyArray<RecordOp>;
     }) => {
-        transportRef.current?.send({
+        const txId = `${clientId}:auto:${++txCounterRef.current}`;
+        transportRef.current?.sendTx({
+            txId,
             docId: sendParams.docId,
             ops: sendParams.ops,
         });
         crdtDebugLog({
-            event: "send_ops",
+            event: "send_ops_as_tx",
             data: {
+                txId,
+                docId: sendParams.docId,
+                count: sendParams.ops.length,
+                ops: summarizeOpsForDebug(sendParams.ops),
+            },
+        });
+    }, [clientId]);
+
+    const sendTx = useCallback((sendParams: {
+        txId: string;
+        docId: string;
+        ops: ReadonlyArray<RecordOp>;
+    }) => {
+        transportRef.current?.sendTx({
+            txId: sendParams.txId,
+            docId: sendParams.docId,
+            ops: sendParams.ops,
+        });
+        crdtDebugLog({
+            event: "send_tx",
+            data: {
+                txId: sendParams.txId,
                 docId: sendParams.docId,
                 count: sendParams.ops.length,
                 ops: summarizeOpsForDebug(sendParams.ops),
@@ -488,8 +545,9 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         subscribeAwareness,
         sendAwareness,
         sendOps,
+        sendTx,
         sendSnapshot,
-    }), [clientId, userInfo, isConnected, subscribeDoc, subscribeAwareness, sendAwareness, sendOps, sendSnapshot]);
+    }), [clientId, userInfo, isConnected, subscribeDoc, subscribeAwareness, sendAwareness, sendOps, sendTx, sendSnapshot]);
 
     return (
         <CollabContext.Provider value={contextValue}>

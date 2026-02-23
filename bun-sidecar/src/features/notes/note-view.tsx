@@ -1446,7 +1446,8 @@ export function NotesView(props: NotesViewProps) {
         // Gate bootstrap ops: suppress onLocalOps until initial sync completes,
         // so only the first client bootstraps the doc on the server.
         let syncComplete = false;
-        let pendingLocalOps: Operation[] = [];
+        let localTxSequence = 0;
+        let pendingLocalTxBatches: Array<{ txId: string; ops: ReadonlyArray<Operation> }> = [];
 
         if (isCollabMode && collab) {
             crdtPlugin = createCRDTPlugin({
@@ -1464,27 +1465,33 @@ export function NotesView(props: NotesViewProps) {
                         },
                     });
 
+                    const txId = `${collab.clientId}:${++localTxSequence}`;
+
                     // During initial sync, queue local ops so they can be flushed
                     // after sync completes instead of being dropped.
                     if (!syncComplete) {
-                        pendingLocalOps.push(...ops);
+                        pendingLocalTxBatches.push({ txId, ops });
                         crdtDebugLog({
-                            event: "local_ops_queued_presync",
+                            event: "local_tx_queued_presync",
                             data: {
                                 docId: collabDocId,
-                                queuedCount: pendingLocalOps.length,
+                                txId,
+                                queuedCount: pendingLocalTxBatches.length,
+                                queuedOpCount: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
                             },
                         });
                         return;
                     }
 
-                    collab.sendOps({
+                    collab.sendTx({
+                        txId,
                         docId: collabDocId,
                         ops: ops as ReadonlyArray<Operation>,
                     });
                     crdtDebugLog({
-                        event: "local_ops_sent",
+                        event: "local_tx_sent",
                         data: {
+                            txId,
                             docId: collabDocId,
                             count: ops.length,
                             ops: summarizeOpsForDebug(ops),
@@ -1623,6 +1630,33 @@ export function NotesView(props: NotesViewProps) {
             }
         };
 
+        const canonicalizeState = (stateToNormalize: EditorState): {
+            state: EditorState;
+            changed: boolean;
+        } => {
+            let normalized = stateToNormalize;
+            let changed = false;
+            for (let i = 0; i < 4; i++) {
+                const fixTransaction = fixTables(normalized);
+                if (fixTransaction) {
+                    normalized = normalized.apply(fixTransaction);
+                    changed = true;
+                }
+
+                const normalizeTransaction = normalizeTableColumns(normalized);
+                if (normalizeTransaction) {
+                    normalized = normalized.apply(normalizeTransaction);
+                    changed = true;
+                }
+
+                if (!fixTransaction && !normalizeTransaction) {
+                    break;
+                }
+            }
+
+            return { state: normalized, changed };
+        };
+
         let snapshotPersistTimer: ReturnType<typeof setTimeout> | null = null;
         const scheduleSnapshotPersist = (source: "local" | "remote-merged") => {
             if (!isCollabMode || !collab || !crdtPlugin || !editorView || editorView.isDestroyed) return;
@@ -1712,7 +1746,17 @@ export function NotesView(props: NotesViewProps) {
                 const v = viewInstance;
                 if (!v) return;
                 const newState = v.state.apply(transaction);
-                const updated = updateEditorStateSafely(v, newState, "local_dispatch");
+                const canonicalized = canonicalizeState(newState);
+                if (canonicalized.changed) {
+                    crdtDebugLog({
+                        event: "pm_canonicalized",
+                        data: {
+                            docId: collabDocId,
+                            source: "local_dispatch",
+                        },
+                    });
+                }
+                const updated = updateEditorStateSafely(v, canonicalized.state, "local_dispatch");
                 if (!updated) {
                     return;
                 }
@@ -2013,10 +2057,15 @@ export function NotesView(props: NotesViewProps) {
                     crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "received_remote_ops" } });
                     return;
                 }
-                if (pendingLocalOps.length > 0) {
+                if (pendingLocalTxBatches.length > 0) {
                     crdtDebugLog({
                         event: "bootstrap_skip",
-                        data: { docId, reason: "pending_local_ops", pendingCount: pendingLocalOps.length },
+                        data: {
+                            docId,
+                            reason: "pending_local_ops",
+                            pendingTxCount: pendingLocalTxBatches.length,
+                            pendingOpCount: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
+                        },
                     });
                     return;
                 }
@@ -2084,9 +2133,11 @@ export function NotesView(props: NotesViewProps) {
                             plugin: capturedCrdtPlugin,
                             ops: treeOps,
                         });
+                        const canonicalized = canonicalizeState(result.state);
+                        const nextState = canonicalized.state;
 
                         try {
-                            result.state.doc.check();
+                            nextState.doc.check();
                         } catch (validationError) {
                             crdtDebugLog({
                                 event: "remote_ops_invalid_doc",
@@ -2095,13 +2146,13 @@ export function NotesView(props: NotesViewProps) {
                                     docId,
                                     error: summarizeErrorForDebug(validationError),
                                     ops: summarizeOpsForDebug(treeOps),
-                                    docShape: summarizeDocShapeForDebug(result.state.doc),
+                                    docShape: summarizeDocShapeForDebug(nextState.doc),
                                 },
                             });
                             return;
                         }
 
-                        const updated = updateEditorStateSafely(editorView, result.state, "remote_sync");
+                        const updated = updateEditorStateSafely(editorView, nextState, "remote_sync");
                         if (!updated) {
                             return;
                         }
@@ -2110,18 +2161,19 @@ export function NotesView(props: NotesViewProps) {
                             data: {
                                 docId,
                                 selection: {
-                                    from: result.state.selection.from,
-                                    to: result.state.selection.to,
+                                    from: nextState.selection.from,
+                                    to: nextState.selection.to,
                                 },
-                                docShape: summarizeDocShapeForDebug(result.state.doc),
+                                docShape: summarizeDocShapeForDebug(nextState.doc),
+                                canonicalized: canonicalized.changed,
                             },
                         });
                         logHydration({
                             event: "note_render_state",
                             source: "remote_ops",
                             data: {
-                                docTextLen: result.state.doc.textContent.length,
-                                markdownLen: tableMarkdownSerializer.serialize(result.state.doc).length,
+                                docTextLen: nextState.doc.textContent.length,
+                                markdownLen: tableMarkdownSerializer.serialize(nextState.doc).length,
                             },
                         });
                     } catch (applyError) {
@@ -2170,7 +2222,9 @@ export function NotesView(props: NotesViewProps) {
                             plugin: capturedCrdtPlugin,
                             snapshotDoc: record.body,
                         });
-                        const updated = updateEditorStateSafely(editorView, result.state, "remote_snapshot");
+                        const canonicalized = canonicalizeState(result.state);
+                        const nextState = canonicalized.state;
+                        const updated = updateEditorStateSafely(editorView, nextState, "remote_snapshot");
                         if (!updated) return;
 
                         const resolvedVersion = version ?? getRecordSnapshotVersion({ data: snapshot });
@@ -2181,14 +2235,14 @@ export function NotesView(props: NotesViewProps) {
                             stateVector: new Map(getRecordSnapshotStateVector({ data: snapshot })),
                         };
 
-                        const markdown = tableMarkdownSerializer.serialize(result.state.doc);
+                        const markdown = tableMarkdownSerializer.serialize(nextState.doc);
                         updateContent(markdown);
                         scheduleSnapshotPersist("remote-merged");
                         logHydration({
                             event: "note_render_state",
                             source: "remote_snapshot",
                             data: {
-                                docTextLen: result.state.doc.textContent.length,
+                                docTextLen: nextState.doc.textContent.length,
                                 markdownLen: markdown.length,
                             },
                         });
@@ -2198,6 +2252,7 @@ export function NotesView(props: NotesViewProps) {
                                 docId,
                                 bytes: snapshot.byteLength,
                                 version: resolvedVersion,
+                                canonicalized: canonicalized.changed,
                             },
                         });
                     } catch (error) {
@@ -2219,7 +2274,8 @@ export function NotesView(props: NotesViewProps) {
                         data: {
                             docId,
                             receivedRemoteOps,
-                            pendingLocalOps: pendingLocalOps.length,
+                            pendingLocalTxs: pendingLocalTxBatches.length,
+                            pendingLocalOps: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
                             bootstrapQueued,
                         },
                     });
@@ -2228,31 +2284,35 @@ export function NotesView(props: NotesViewProps) {
                         data: {
                             docId,
                             receivedRemoteOps,
-                            pendingLocalOps: pendingLocalOps.length,
+                            pendingLocalTxs: pendingLocalTxBatches.length,
+                            pendingLocalOps: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
                             bootstrapQueued,
                         },
                     });
 
-                    if (pendingLocalOps.length > 0) {
-                        const opsToFlush = pendingLocalOps;
-                        pendingLocalOps = [];
-                        collab.sendOps({
-                            docId,
-                            ops: opsToFlush as ReadonlyArray<Operation>,
-                        });
+                    if (pendingLocalTxBatches.length > 0) {
+                        const txsToFlush = pendingLocalTxBatches;
+                        pendingLocalTxBatches = [];
+                        for (const pendingTx of txsToFlush) {
+                            collab.sendTx({
+                                txId: pendingTx.txId,
+                                docId,
+                                ops: pendingTx.ops,
+                            });
+                        }
                         crdtDebugLog({
-                            event: "presync_ops_flushed",
+                            event: "presync_txs_flushed",
                             data: {
                                 docId,
-                                count: opsToFlush.length,
-                                ops: summarizeOpsForDebug(opsToFlush),
+                                txCount: txsToFlush.length,
+                                opCount: txsToFlush.reduce((sum, tx) => sum + tx.ops.length, 0),
                             },
                         });
                     }
 
                     maybeBootstrap();
 
-                    if (!receivedRemoteOps && !bootstrapQueued && pendingLocalOps.length === 0) {
+                    if (!receivedRemoteOps && !bootstrapQueued && pendingLocalTxBatches.length === 0) {
                         crdtDebugLog({
                             event: "bootstrap_retry_scheduled",
                             data: { docId, delayMs: BOOTSTRAP_CLAIM_TTL_MS + 250 },

@@ -162,6 +162,7 @@ export interface MultiDocTransport {
     readonly subscribe: (params: { docId: string; initialStateVector?: StateVector }) => void;
     readonly unsubscribe: (params: { docId: string }) => void;
     readonly send: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+    readonly sendTx: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
     readonly sendSnapshot?: (params: {
         docId: string;
         snapshot: Uint8Array;
@@ -181,11 +182,13 @@ export declare function createMultiDocTransport(params: {
     url: string;
     clientId: string;
     onOps: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+    onTx?: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
     onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
     onSnapshot?: (params: { docId: string; data: Uint8Array; version?: string }) => void;
     onConnect?: () => void;
     onDisconnect?: () => void;
     onDocSyncComplete?: (params: { docId: string }) => void;
+    onProtocolError?: (params: { docId?: string; reason: string }) => void;
     getAuthToken?: () => string | Promise<string>;
 }): MultiDocTransport;
 

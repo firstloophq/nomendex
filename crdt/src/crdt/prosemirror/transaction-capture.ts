@@ -16,7 +16,7 @@ import {
   type Content,
   type Mark as CRDTMark,
 } from "../core/operations";
-import type { CRDTDoc } from "../core/apply-operations";
+import { applyOperations, type CRDTDoc } from "../core/apply-operations";
 import { proseMirrorPositionToCRDT, getItemsInProseMirrorRange } from "./state-mapping";
 import type { Item } from "../core/item";
 
@@ -84,6 +84,9 @@ export function transactionToCRDTOps(params: {
     if (stepKind === "replace" && isReplaceStepLike(step)) {
       const result = handleReplaceStep({ step, crdtDoc, clock, schema });
       ops.push(...result.ops);
+      if (result.ops.length > 0) {
+        crdtDoc = applyOperations({ doc: crdtDoc, ops: result.ops });
+      }
       clock = result.clock;
       continue;
     }
@@ -91,6 +94,9 @@ export function transactionToCRDTOps(params: {
     if (stepKind === "addMark" && isMarkStepLike(step)) {
       const result = handleAddMarkStep({ step, crdtDoc, clock, schema });
       ops.push(...result.ops);
+      if (result.ops.length > 0) {
+        crdtDoc = applyOperations({ doc: crdtDoc, ops: result.ops });
+      }
       clock = result.clock;
       continue;
     }
@@ -98,6 +104,9 @@ export function transactionToCRDTOps(params: {
     if (stepKind === "removeMark" && isMarkStepLike(step)) {
       const result = handleRemoveMarkStep({ step, crdtDoc, clock, schema });
       ops.push(...result.ops);
+      if (result.ops.length > 0) {
+        crdtDoc = applyOperations({ doc: crdtDoc, ops: result.ops });
+      }
       clock = result.clock;
       continue;
     }
@@ -105,6 +114,9 @@ export function transactionToCRDTOps(params: {
     if (stepKind === "replaceAround" && isReplaceAroundStepLike(step)) {
       const result = handleReplaceAroundStep({ step, crdtDoc, clock, schema });
       ops.push(...result.ops);
+      if (result.ops.length > 0) {
+        crdtDoc = applyOperations({ doc: crdtDoc, ops: result.ops });
+      }
       clock = result.clock;
       continue;
     }
@@ -112,6 +124,9 @@ export function transactionToCRDTOps(params: {
     if (stepKind === "attr" && isAttrStepLike(step)) {
       const result = handleAttrStep({ step, crdtDoc, clock, schema });
       ops.push(...result.ops);
+      if (result.ops.length > 0) {
+        crdtDoc = applyOperations({ doc: crdtDoc, ops: result.ops });
+      }
       clock = result.clock;
     }
   }

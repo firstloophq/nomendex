@@ -141,7 +141,7 @@ describe("createCRDTRelay", () => {
     relay.close();
   });
 
-  test("forwards local client ops to remote", () => {
+  test("forwards local client tx to remote", () => {
     const relay = createCRDTRelay({
       remoteUrl: "ws://remote:8080/ws",
       clientId: "relay-1",
@@ -171,20 +171,20 @@ describe("createCRDTRelay", () => {
     const op = makeFieldOp({ clientId: "local-1", clock: 1, fieldName: "title", value: "Hello" });
     relay.handler.handleMessage({
       client: localClient,
-      message: JSON.stringify({ type: "ops", docId: "doc-1", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "relay-local-1", docId: "doc-1", ops: [op] }),
     });
 
     // The relay should have forwarded the op to the remote transport
     const remoteOpsMessages = ws.sentMessages
       .map((m) => JSON.parse(m) as { type: string; docId: string; ops?: ReadonlyArray<RecordOp> })
-      .filter((m) => m.type === "ops" && m.docId === "doc-1");
+      .filter((m) => m.type === "tx" && m.docId === "doc-1");
     expect(remoteOpsMessages.length).toBe(1);
     expect(remoteOpsMessages[0]!.ops!.length).toBe(1);
 
     relay.close();
   });
 
-  test("forwards remote ops to local handler and broadcasts to local clients", () => {
+  test("forwards remote tx to local handler and broadcasts to local clients", () => {
     const relay = createCRDTRelay({
       remoteUrl: "ws://remote:8080/ws",
       clientId: "relay-1",
@@ -210,10 +210,11 @@ describe("createCRDTRelay", () => {
     });
     localClient.messages.length = 0;
 
-    // Remote sends ops
+    // Remote sends tx
     const remoteOp = makeFieldOp({ clientId: "remote-user", clock: 5, fieldName: "title", value: "Remote Title" });
     ws._simulateMessage(JSON.stringify({
-      type: "ops",
+      type: "tx",
+      txId: "relay-remote-1",
       docId: "doc-1",
       ops: [remoteOp],
     }));
@@ -221,7 +222,7 @@ describe("createCRDTRelay", () => {
     // Local client should receive the broadcast
     expect(localClient.messages.length).toBe(1);
     const msg = JSON.parse(localClient.messages[0]!) as { type: string; docId: string; ops: ReadonlyArray<RecordOp> };
-    expect(msg.type).toBe("ops");
+    expect(msg.type).toBe("tx");
     expect(msg.docId).toBe("doc-1");
     expect(msg.ops.length).toBe(1);
 
@@ -234,7 +235,7 @@ describe("createCRDTRelay", () => {
     relay.close();
   });
 
-  test("does not echo remote ops back to remote", () => {
+  test("does not echo remote tx back to remote", () => {
     const relay = createCRDTRelay({
       remoteUrl: "ws://remote:8080/ws",
       clientId: "relay-1",
@@ -252,24 +253,25 @@ describe("createCRDTRelay", () => {
     }));
     ws.sentMessages.length = 0;
 
-    // Remote sends ops
+    // Remote sends tx
     const remoteOp = makeFieldOp({ clientId: "remote-user", clock: 1, fieldName: "title", value: "From Remote" });
     ws._simulateMessage(JSON.stringify({
-      type: "ops",
+      type: "tx",
+      txId: "relay-remote-2",
       docId: "doc-1",
       ops: [remoteOp],
     }));
 
-    // Should NOT have sent any ops back to remote (would cause echo loop)
+    // Should NOT have sent any tx back to remote (would cause echo loop)
     const opsMessages = ws.sentMessages
       .map((m) => JSON.parse(m) as { type: string })
-      .filter((m) => m.type === "ops");
+      .filter((m) => m.type === "tx");
     expect(opsMessages.length).toBe(0);
 
     relay.close();
   });
 
-  test("ignores ops for non-relayed docs", () => {
+  test("ignores tx for non-relayed docs", () => {
     const relay = createCRDTRelay({
       remoteUrl: "ws://remote:8080/ws",
       clientId: "relay-1",
@@ -280,7 +282,7 @@ describe("createCRDTRelay", () => {
     ws._simulateOpen();
     ws._simulateMessage(JSON.stringify({ type: "sync-response", docId: "doc-1", ops: [] }));
 
-    // Local client sends ops for a non-relayed doc
+    // Local client sends tx for a non-relayed doc
     const localClient = createMockClient("local-1");
     relay.handler.handleOpen({ client: localClient });
     relay.handler.handleMessage({
@@ -292,13 +294,13 @@ describe("createCRDTRelay", () => {
     const op = makeFieldOp({ clientId: "local-1", clock: 1, fieldName: "x", value: "y" });
     relay.handler.handleMessage({
       client: localClient,
-      message: JSON.stringify({ type: "ops", docId: "doc-99", ops: [op] }),
+      message: JSON.stringify({ type: "tx", txId: "relay-non-relayed", docId: "doc-99", ops: [op] }),
     });
 
     // Should NOT forward to remote
     const opsMessages = ws.sentMessages
       .map((m) => JSON.parse(m) as { type: string })
-      .filter((m) => m.type === "ops");
+      .filter((m) => m.type === "tx");
     expect(opsMessages.length).toBe(0);
 
     relay.close();
@@ -310,11 +312,9 @@ describe("createCRDTRelay", () => {
       clientId: "relay-1",
     });
 
+    relay.addDoc({ docId: "new-doc" });
     const ws = getRemoteWS();
     ws._simulateOpen();
-    ws.sentMessages.length = 0;
-
-    relay.addDoc({ docId: "new-doc" });
 
     const subscribeMessages = ws.sentMessages
       .map((m) => JSON.parse(m) as { type: string; docId: string })
@@ -357,6 +357,7 @@ describe("createCRDTRelay", () => {
 
     expect(relay.isConnected()).toBe(false);
 
+    relay.addDoc({ docId: "doc-1" });
     const ws = getRemoteWS();
     ws._simulateOpen();
     expect(relay.isConnected()).toBe(true);

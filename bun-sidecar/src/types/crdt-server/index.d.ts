@@ -18,6 +18,7 @@ export interface CRDTWebSocketHandler {
     handleMessage(params: { client: WSClient; message: string }): void;
     handleClose(params: { client: WSClient }): void;
     broadcastDocOps(params: { docId: string; ops: ReadonlyArray<RecordOp> }): void;
+    broadcastTx(params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }): void;
     broadcastAwareness(params: { docId: string; clientId: string; state: AwarenessState }): void;
     broadcastSnapshot(params: { docId: string; snapshot: Uint8Array; version?: string }): void;
     getDocManagerState(): CardApiState;
@@ -30,7 +31,7 @@ export interface CRDTWebSocketHandler {
 
 export declare function createCRDTWebSocketHandler(params?: {
     serverClientId?: string;
-    onDocChanged?: (params: { docId: string; ops: ReadonlyArray<RecordOp>; source: "client" | "server" }) => void;
+    onDocChanged?: (params: { docId: string; txId?: string; ops: ReadonlyArray<RecordOp>; source: "client" | "server" }) => void;
     onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
 }): CRDTWebSocketHandler;
 
