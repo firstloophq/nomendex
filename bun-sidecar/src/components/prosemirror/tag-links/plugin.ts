@@ -211,6 +211,18 @@ function findTagTrigger(
         return null;
     }
 
+    // Heading intent guard:
+    // At the start of a text block, sequences like "#", "##", ... "######"
+    // (optionally followed by in-progress heading text without a space yet)
+    // should be reserved for markdown heading input rules, not tag suggestions.
+    //
+    // Examples suppressed:
+    //   "#Te", "##Test", "###h"
+    // This prevents the tag popup from stealing heading typing on peers.
+    if (/^\s{0,3}#{1,6}[a-zA-Z0-9_-]*$/.test(textBefore)) {
+        return null;
+    }
+
     // Calculate start position: account for the space/bracket before # if present
     const start = $from.pos - query.length - 1; // -1 for the #
     const safeRange = safePositionRange(state.doc, start, $from.pos);
