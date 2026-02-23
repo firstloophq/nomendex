@@ -459,11 +459,17 @@ function handleReplaceAroundStep(params: {
   const gapFrom = step.gapFrom;
   const gapTo = step.gapTo;
   const slice = step.slice;
+  const topWrapperNode = slice.content.firstChild;
+  const treatAsLiftUnwrap =
+    Boolean(topWrapperNode)
+    && Boolean(topWrapperNode?.isBlock)
+    && slice.content.childCount === 1
+    && (topWrapperNode?.childCount ?? 0) === 0
+    && slice.openStart > 0;
 
-  if (slice.content.childCount > 0) {
+  if (slice.content.childCount > 0 && !treatAsLiftUnwrap) {
     // Wrapping: insert the full wrapper chain (e.g. bullet_list -> list_item)
     // and then reparent the preserved gap blocks into the deepest wrapper.
-    const topWrapperNode = slice.content.firstChild;
     if (topWrapperNode && topWrapperNode.isBlock) {
       if (topWrapperNode.type.name === "heading" && gapFrom === gapTo) {
         const existingTopLevelParagraph = crdtDoc.store.items.find((item) => {
@@ -545,6 +551,81 @@ function handleReplaceAroundStep(params: {
       }
     }
   } else {
+    if (
+      treatAsLiftUnwrap
+      && topWrapperNode
+      && (topWrapperNode.type.name === "ordered_list" || topWrapperNode.type.name === "bullet_list")
+    ) {
+      const gapBlocks = getBlockItemsInRange({ doc: crdtDoc, from: gapFrom, to: gapTo, schema });
+      const deletedListItemKeys = new Set<string>();
+      const deletedListContainerKeys = new Set<string>();
+
+      for (const block of gapBlocks) {
+        const parentListItemId = block.content.parentBlockId ?? null;
+        if (!parentListItemId) continue;
+
+        const listItemKey = `${parentListItemId.clientId}:${parentListItemId.clock}`;
+        const listItemItem = crdtDoc.store.map.get(listItemKey);
+        if (!listItemItem || listItemItem.content.type !== "block" || listItemItem.content.blockType !== "list_item") {
+          continue;
+        }
+
+        const listContainerId = listItemItem.content.parentBlockId ?? null;
+        let newParentBlockId: OperationId | null = null;
+        if (listContainerId) {
+          const listContainerKey = `${listContainerId.clientId}:${listContainerId.clock}`;
+          const listContainerItem = crdtDoc.store.map.get(listContainerKey);
+          if (listContainerItem && listContainerItem.content.type === "block") {
+            newParentBlockId = listContainerItem.content.parentBlockId ?? null;
+          }
+        }
+
+        const { clock: repClock, timestamp: repTs } = increment({ clock });
+        clock = repClock;
+        ops.push(createReparentOp({
+          id: createOperationId({ clientId: repTs.clientId, clock: repTs.clock }),
+          targetId: block.id,
+          newParentBlockId,
+        }));
+
+        if (!deletedListItemKeys.has(listItemKey)) {
+          deletedListItemKeys.add(listItemKey);
+          const { clock: delClock, timestamp: delTs } = increment({ clock });
+          clock = delClock;
+          ops.push(createDeleteOp({
+            id: createOperationId({ clientId: delTs.clientId, clock: delTs.clock }),
+            targetId: listItemItem.id,
+          }));
+        }
+
+        if (listContainerId) {
+          const listContainerKey = `${listContainerId.clientId}:${listContainerId.clock}`;
+          if (!deletedListContainerKeys.has(listContainerKey)) {
+            const hasOtherListItems = crdtDoc.store.items.some((item) => {
+              if (item.deleted || item.content.type !== "block") return false;
+              if (item.content.blockType !== "list_item") return false;
+              const parent = item.content.parentBlockId;
+              if (!parent) return false;
+              if (parent.clientId !== listContainerId.clientId || parent.clock !== listContainerId.clock) return false;
+              return !(item.id.clientId === listItemItem.id.clientId && item.id.clock === listItemItem.id.clock);
+            });
+
+            if (!hasOtherListItems) {
+              deletedListContainerKeys.add(listContainerKey);
+              const { clock: delListClock, timestamp: delListTs } = increment({ clock });
+              clock = delListClock;
+              ops.push(createDeleteOp({
+                id: createOperationId({ clientId: delListTs.clientId, clock: delListTs.clock }),
+                targetId: listContainerId,
+              }));
+            }
+          }
+        }
+      }
+
+      return { ops, clock };
+    }
+
     // Unwrapping/lifting: reparent children out of container, delete container
     // Find blocks to delete in [from, gapFrom) and (gapTo, to]
     const beforeBlocks = getBlockItemsInRange({ doc: crdtDoc, from, to: gapFrom, schema });

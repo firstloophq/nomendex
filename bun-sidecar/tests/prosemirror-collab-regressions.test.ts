@@ -41,6 +41,26 @@ describe("prosemirror collab regressions", () => {
         expect(a.normalizedMarkdown).toContain("3. three");
     });
 
+    it("empty ordered list item Enter exits list on both peers", async () => {
+        currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
+        await currentHarness.runSteps([
+            ...keys("A", "1. one"),
+            { actor: "A", key: "Enter" },
+            ...keys("A", "two"),
+            { actor: "A", key: "Enter" },
+            // third item is empty now
+            { actor: "A", key: "Enter" },
+            ...keys("A", "after"),
+        ]);
+
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toContain("1. one");
+        expect(a.normalizedMarkdown).toContain("2. two");
+        expect(a.normalizedMarkdown).toContain("after");
+        expect(a.normalizedMarkdown).not.toContain("3.");
+    });
+
     it("ordered list + bold markers + Enter stays in sync", async () => {
         currentHarness = createTwoPeerHarness({ schedulerMode: "queued" });
         await currentHarness.runSteps([
