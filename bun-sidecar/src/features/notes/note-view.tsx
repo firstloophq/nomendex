@@ -701,6 +701,19 @@ export function NotesView(props: NotesViewProps) {
         view.focus();
     }, []);
 
+    const replaceEditorWithMarkdown = useCallback((markdown: string) => {
+        const view = viewRef.current;
+        if (!view) return;
+
+        const parsed = parseNotesMarkdown(markdown);
+        const nextContent = parsed?.content;
+        if (!nextContent) return;
+
+        const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, nextContent);
+        view.dispatch(tr);
+        view.focus();
+    }, []);
+
     // Subscribe to clear content events for test/editor automation flows.
     useEffect(() => {
         return subscribe("notes:clearContent", ({ noteFileName: targetFileName }) => {
@@ -716,6 +729,10 @@ export function NotesView(props: NotesViewProps) {
                 toast("CRDT hard reset is only available in team mode.");
                 return;
             }
+
+            const preservedMarkdown = viewRef.current
+                ? tableMarkdownSerializer.serialize(viewRef.current.state.doc)
+                : content;
 
             try {
                 const response = await fetch("/api/crdt/note-snapshot/hard-reset", {
@@ -734,14 +751,14 @@ export function NotesView(props: NotesViewProps) {
 
                 localSnapshotSeedRef.current = null;
                 backendSnapshotVersionRef.current = null;
-                clearEditorContent();
-                toast("CRDT state reset for this note.");
+                replaceEditorWithMarkdown(preservedMarkdown);
+                toast("CRDT state reset and content re-seeded for this note.");
             } catch (error) {
                 console.error("Failed to hard reset CRDT note state:", error);
                 toast("Failed to hard reset CRDT state");
             }
         });
-    }, [clearEditorContent, collab, collabDocId, noteFileName]);
+    }, [collab, collabDocId, content, noteFileName, replaceEditorWithMarkdown]);
 
     // Subscribe to run spellcheck events
     useEffect(() => {
