@@ -320,6 +320,77 @@ describe("crdtPlugin", () => {
     expect(rootList.child(1)!.child(0)!.textContent).toBe("");
   });
 
+  it("keeps ordered list item order after bold content Enter split", () => {
+    const opsFromA: Array<Operation> = [];
+
+    const pluginA = createCRDTPlugin({
+      clientId: "A",
+      schema: listSchema,
+      onLocalOps: (ops) => opsFromA.push(...ops),
+    });
+
+    const pluginB = createCRDTPlugin({
+      clientId: "B",
+      schema: listSchema,
+    });
+
+    let stateA = EditorState.create({ schema: listSchema, plugins: [pluginA] });
+    let stateB = EditorState.create({ schema: listSchema, plugins: [pluginB] });
+
+    const bootstrapDoc = listSchema.nodes["doc"]!.create(null, [
+      listSchema.nodes["paragraph"]!.create(null, [
+        listSchema.text("This is today. Right. This is pretty good?"),
+      ]),
+      listSchema.nodes["ordered_list"]!.create({ order: 1 }, [
+        listSchema.nodes["list_item"]!.create(null, [
+          listSchema.nodes["paragraph"]!.create(null, [
+            listSchema.text("asdasfdf", [listSchema.mark("bold")!]),
+          ]),
+        ]),
+      ]),
+    ]);
+
+    stateA = stateA.apply(
+      stateA.tr.replaceWith(0, stateA.doc.content.size, bootstrapDoc.content),
+    );
+    expect(opsFromA.length).toBeGreaterThan(0);
+
+    stateB = applyRemoteOps({ state: stateB, plugin: pluginB, ops: opsFromA }).state;
+    expect(stateA.doc.eq(stateB.doc)).toBe(true);
+
+    const prevLen = opsFromA.length;
+    const splitPos = findTextEndPos({ doc: stateA.doc, text: "asdasfdf" });
+    stateA = stateA.apply(
+      stateA.tr.setSelection(TextSelection.create(stateA.doc, splitPos)),
+    );
+
+    let splitTr = null;
+    const splitHandled = splitListItem(listSchema.nodes["list_item"]!)(
+      stateA,
+      (tr) => {
+        splitTr = tr;
+      },
+    );
+    expect(splitHandled).toBe(true);
+    expect(splitTr).not.toBeNull();
+
+    stateA = stateA.apply(splitTr!);
+    const deltaOps = opsFromA.slice(prevLen);
+    expect(deltaOps.length).toBeGreaterThan(0);
+
+    stateB = applyRemoteOps({ state: stateB, plugin: pluginB, ops: deltaOps }).state;
+
+    expect(() => stateA.doc.check()).not.toThrow();
+    expect(() => stateB.doc.check()).not.toThrow();
+    expect(stateA.doc.eq(stateB.doc)).toBe(true);
+
+    const orderedList = stateB.doc.child(1);
+    expect(orderedList.type.name).toBe("ordered_list");
+    expect(orderedList.childCount).toBe(2);
+    expect(orderedList.child(0)!.child(0)!.textContent).toBe("asdasfdf");
+    expect(orderedList.child(1)!.child(0)!.textContent).toBe("");
+  });
+
   it("does not emit remote ops through onLocalOps", () => {
     const opsFromA: Array<Operation> = [];
     const localOpsFromB: Array<Operation> = [];

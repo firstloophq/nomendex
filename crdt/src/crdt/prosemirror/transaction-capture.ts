@@ -173,7 +173,15 @@ function handleReplaceStep(params: {
   const insertPos = proseMirrorPositionToCRDT({ doc: crdtDoc, pos: from, schema });
   let parentId = insertPos.leftItemId;
   const rightAnchorId = insertPos.rightItemId;
-  const contextBlockId = insertPos.blockId;
+  let contextBlockId = insertPos.blockId;
+
+  if (!contextBlockId) {
+    const fallbackTopLevelBlock = crdtDoc.store.items.find((item) => {
+      if (item.deleted || item.content.type !== "block") return false;
+      return !item.content.parentBlockId;
+    });
+    contextBlockId = fallbackTopLevelBlock?.id ?? null;
+  }
 
   const inferParentBlockIdForInsert = (node: PMNode): OperationId | null => {
     if (!contextBlockId) return null;
@@ -200,6 +208,34 @@ function handleReplaceStep(params: {
     return inferredParent;
   };
 
+  const inferBlockSiblingAnchorForInsert = (node: PMNode): OperationId | null => {
+    if (!contextBlockId) return null;
+    if (!node.isBlock) return null;
+
+    const contextKey = `${contextBlockId.clientId}:${contextBlockId.clock}`;
+    const contextItem = crdtDoc.store.map.get(contextKey);
+    if (!contextItem || contextItem.content.type !== "block") {
+      return null;
+    }
+
+    // For split list-item flows, ensure the new list_item is anchored after
+    // the current list_item sibling instead of after trailing inline text.
+    if (node.type.name === "list_item") {
+      if (contextItem.content.blockType === "list_item") {
+        return contextBlockId;
+      }
+      const parent = contextItem.content.parentBlockId ?? null;
+      if (!parent) return null;
+      const parentKey = `${parent.clientId}:${parent.clock}`;
+      const parentItem = crdtDoc.store.map.get(parentKey);
+      if (parentItem && parentItem.content.type === "block" && parentItem.content.blockType === "list_item") {
+        return parent;
+      }
+    }
+
+    return null;
+  };
+
   // Check if slice contains block nodes (Enter key, paste with paragraphs)
   let hasBlocks = false;
   for (let i = 0; i < slice.content.childCount; i++) {
@@ -211,15 +247,54 @@ function handleReplaceStep(params: {
       const node = slice.content.child(i);
       if (!node.isBlock) continue;
 
+      const maybeDeleteContextBlockForReplacement = () => {
+        if (slice.content.childCount !== 1) return;
+        if (from >= to) return;
+        if (node.type.name !== "heading") return;
+
+        const resolveParagraphReplacementBlockId = (): OperationId | null => {
+          if (contextBlockId) {
+            const contextKey = `${contextBlockId.clientId}:${contextBlockId.clock}`;
+            const contextItem = crdtDoc.store.map.get(contextKey);
+            if (contextItem && contextItem.content.type === "block" && contextItem.content.blockType === "paragraph") {
+              return contextBlockId;
+            }
+          }
+          const fallbackParagraph = crdtDoc.store.items.find((item) => {
+            if (item.deleted || item.content.type !== "block") return false;
+            if (item.content.blockType !== "paragraph") return false;
+            return !item.content.parentBlockId;
+          });
+          return fallbackParagraph?.id ?? null;
+        };
+
+        const replacementBlockId = resolveParagraphReplacementBlockId();
+        if (!replacementBlockId) return;
+
+        const { clock: newClock, timestamp } = increment({ clock });
+        clock = newClock;
+        ops.push(
+          createDeleteOp({
+            id: createOperationId({
+              clientId: timestamp.clientId,
+              clock: timestamp.clock,
+            }),
+            targetId: replacementBlockId,
+          })
+        );
+      };
+      maybeDeleteContextBlockForReplacement();
+
       // First child with openStart > 0 = continuation of existing block (no new block needed)
       const isNewBlock = !(i === 0 && slice.openStart > 0);
 
       if (isNewBlock) {
         const parentBlockId = inferParentBlockIdForInsert(node);
+        const siblingAnchorId = inferBlockSiblingAnchorForInsert(node);
         const result = insertBlockTree({
           node,
           parentBlockId,
-          insertAfter: parentId,
+          insertAfter: siblingAnchorId ?? parentId,
           rightAnchor: rightAnchorId,
           clock,
           schema,
@@ -390,6 +465,25 @@ function handleReplaceAroundStep(params: {
     // and then reparent the preserved gap blocks into the deepest wrapper.
     const topWrapperNode = slice.content.firstChild;
     if (topWrapperNode && topWrapperNode.isBlock) {
+      if (topWrapperNode.type.name === "heading" && gapFrom === gapTo) {
+        const existingTopLevelParagraph = crdtDoc.store.items.find((item) => {
+          if (item.deleted || item.content.type !== "block") return false;
+          if (item.content.blockType !== "paragraph") return false;
+          return !item.content.parentBlockId;
+        });
+        if (existingTopLevelParagraph) {
+          const { clock: delClock, timestamp: delTs } = increment({ clock });
+          clock = delClock;
+          ops.push(createDeleteOp({
+            id: createOperationId({
+              clientId: delTs.clientId,
+              clock: delTs.clock,
+            }),
+            targetId: existingTopLevelParagraph.id,
+          }));
+        }
+      }
+
       const insertPos = proseMirrorPositionToCRDT({ doc: crdtDoc, pos: from, schema });
       const wrapperChain = collectReplaceAroundWrapperChain(topWrapperNode);
       ensureImplicitListItemWrapper({ wrapperChain, schema });

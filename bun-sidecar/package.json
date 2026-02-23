@@ -5,6 +5,8 @@
     "type": "module",
     "scripts": {
         "dev": "bun run build:css && bun --hot src/server.ts",
+        "test:crdt:harness": "bun test tests/prosemirror-collab-harness.test.ts",
+        "test:crdt:regressions": "bun test tests/prosemirror-collab-regressions.test.ts",
         "test:crdt:e2e": "playwright test tests/crdt-collab.spec.ts",
         "test:crdt:collab-page": "playwright test tests/collab-test-page.spec.ts",
         "test:crdt:e2e:install": "playwright install chromium",
@@ -135,6 +137,7 @@
         "@typescript-eslint/eslint-plugin": "^8.50.1",
         "@typescript-eslint/parser": "^8.50.1",
         "@playwright/test": "^1.54.1",
+        "jsdom": "^26.1.0",
         "playwright": "^1.54.1",
         "eslint-plugin-react-hooks": "^5.2.0"
     }

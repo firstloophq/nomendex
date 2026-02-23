@@ -5,29 +5,21 @@ import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { todosAPI } from "@/hooks/useTodosAPI";
 import { EditorState, Selection, NodeSelection, TextSelection, Plugin } from "prosemirror-state";
 import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
-import { exampleSetup } from "prosemirror-example-setup";
-import { sinkListItem, liftListItem, wrapInList } from "prosemirror-schema-list";
 import { keymap } from "prosemirror-keymap";
-import { chainCommands } from "prosemirror-commands";
-import { todoKeymap, todoPlugin, toggleTodoAtLine } from "./simple-todo";
+import { toggleTodoAtLine } from "./simple-todo";
 import { registerProseMirrorCmdEnter } from "@/hooks/useNativeKeyboardBridge";
 import {
     tableSchema,
-    tableMarkdownParser,
     tableMarkdownSerializer,
-    getTablePlugins,
     fixTables,
     normalizeTableColumns,
 } from "@/components/prosemirror/tables";
 import {
-    createWikiLinkPlugin,
     WikiLinkPopup,
     type WikiLinkPluginState,
 } from "@/components/prosemirror/wiki-links";
 import "@/components/prosemirror/wiki-links/wiki-links.css";
 import {
-    createTagLinkPlugin,
-    createTagDecorationPlugin,
     closeTagLinkPopup,
     TagLinkPopup,
     type TagLinkPluginState,
@@ -58,7 +50,6 @@ import { BacklinksPanel, CollapsibleSection } from "./BacklinksPanel";
 import { toast } from "sonner";
 import { OverlayScrollbar } from "@/components/OverlayScrollbar";
 import { SearchPanel } from "@/components/prosemirror/SearchPanel";
-import { createSearchPlugin } from "@/components/prosemirror/search-plugin";
 import "@/components/prosemirror/search.css";
 import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/components/prosemirror/spellcheck";
 import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
@@ -86,6 +77,8 @@ import {
 } from "@/components/prosemirror/collab-cursor-plugin";
 import type { RemoteCursor } from "@/components/prosemirror/collab-cursor-plugin";
 import "@/styles/collab-cursors.css";
+import { createNotesEditorState, createNotesEditorView } from "./editor-factory";
+import { parseNotesMarkdown } from "./editor-markdown";
 
 interface NotesViewProps {
     noteFileName: string;
@@ -1322,7 +1315,7 @@ export function NotesView(props: NotesViewProps) {
 
         // If editor exists and note changed, reuse the editor by swapping content
         if (isNewNote && viewRef.current) {
-            const doc = tableMarkdownParser.parse(contentToUse) || tableSchema.nodes.doc.createAndFill();
+            const doc = parseNotesMarkdown(contentToUse);
             // Create new state with same plugins but new document
             const stateWithNewDoc = EditorState.create({
                 doc,
@@ -1407,32 +1400,6 @@ export function NotesView(props: NotesViewProps) {
                 collabClientId: collab?.clientId ?? null,
             },
         });
-
-        // In both solo and collab modes, parse the doc from markdown
-        const doc = tableMarkdownParser.parse(contentToUse) || tableSchema.nodes.doc.createAndFill();
-
-        // Custom keymap for tab indentation in lists
-        const listIndentKeymap = keymap({
-            "Tab": chainCommands(sinkListItem(tableSchema.nodes.list_item), wrapInList(tableSchema.nodes.bullet_list)),
-            "Shift-Tab": liftListItem(tableSchema.nodes.list_item),
-        });
-
-        // Wiki link plugin for [[note]] suggestions
-        const wikiLinkPlugin = createWikiLinkPlugin({
-            schema: tableSchema,
-            onStateChange: setWikiLinkState,
-        });
-
-        // Tag link plugin for #tag suggestions
-        const tagLinkPlugin = createTagLinkPlugin({
-            onStateChange: setTagLinkState,
-        });
-
-        // Tag decoration plugin for styling completed tags and atomic deletion
-        const tagDecorationPlugin = createTagDecorationPlugin();
-
-        // Search plugin for CMD+F functionality
-        const searchPlugin = createSearchPlugin();
 
         // Spellcheck plugin for spell checking
         const spellcheckPlugin = createSpellcheckPlugin();
@@ -1529,51 +1496,24 @@ export function NotesView(props: NotesViewProps) {
             ]
             : [];
 
-        const plugins = isCollabMode
-            ? [
-                ...getTablePlugins(),
-                todoKeymap,
-                ...collabPlugins,
-                ...exampleSetup({ schema: tableSchema, floatingMenu: false, history: false }),
-                listIndentKeymap,
-                todoPlugin,
-                wikiLinkPlugin,
-                tagLinkPlugin,
-                tagDecorationPlugin,
-                suggestionInlineActionsPlugin,
-                searchPlugin,
-                spellcheckPlugin,
-            ]
-            : [
-                ...getTablePlugins(),
-                todoKeymap,
-                ...exampleSetup({ schema: tableSchema, floatingMenu: false }),
-                listIndentKeymap,
-                todoPlugin,
-                wikiLinkPlugin,
-                tagLinkPlugin,
-                tagDecorationPlugin,
-                suggestionInlineActionsPlugin,
-                searchPlugin,
-                spellcheckPlugin,
-            ];
-
-        let state = EditorState.create({
-            doc: doc!,
-            plugins,
+        let state = createNotesEditorState({
+            markdown: contentToUse,
+            isCollabMode,
+            collabPlugins,
+            onWikiLinkStateChange: setWikiLinkState,
+            onTagLinkStateChange: setTagLinkState,
+            suggestionInlineActionsPlugin,
+            includeSearchPlugin: true,
+            includeSpellcheckPlugin: false,
         });
-
-        // Apply table fixes to ensure proper table structure
-        const fixTransaction = fixTables(state);
-        if (fixTransaction) {
-            state = state.apply(fixTransaction);
-        }
-
-        // Normalize table column counts (ensures all rows have same number of cells)
-        const normalizeTransaction = normalizeTableColumns(state);
-        if (normalizeTransaction) {
-            state = state.apply(normalizeTransaction);
-        }
+        // Maintain note-view's existing plugin instance for popup interactions.
+        state = EditorState.create({
+            doc: state.doc,
+            plugins: [
+                ...state.plugins.filter((plugin) => plugin !== spellcheckPlugin),
+                spellcheckPlugin,
+            ],
+        });
 
         // Use `let` so dispatchTransaction can reference viewInstance before
         // the EditorView constructor returns. ySyncPlugin dispatches during
@@ -1739,10 +1679,12 @@ export function NotesView(props: NotesViewProps) {
             }, NOTE_SNAPSHOT_DEBOUNCE_MS);
         };
 
-        const editorView = new EditorView(editorRef.current, {
+        const editorView = createNotesEditorView({
+            mount: editorRef.current,
             state,
-            editable: () => !isLocked,
-            dispatchTransaction(transaction) {
+            props: {
+                editable: () => !isLocked,
+                dispatchTransaction(transaction) {
                 const v = viewInstance;
                 if (!v) return;
                 const newState = v.state.apply(transaction);
@@ -1811,8 +1753,8 @@ export function NotesView(props: NotesViewProps) {
                 if (transaction.docChanged && collab && crdtPlugin) {
                     scheduleSnapshotPersist("local");
                 }
-            },
-            handleDOMEvents: {
+                },
+                handleDOMEvents: {
                 mousedown: (_view, event) => {
                     // Prevent selection change when clicking on tag links
                     const target = event.target as HTMLElement;
@@ -1905,9 +1847,9 @@ export function NotesView(props: NotesViewProps) {
                     }
                     return false;
                 },
-            },
-            // Handle clicks on wiki_link nodes
-            handleClickOn(_view, _pos, node, _nodePos, event, direct) {
+                },
+                // Handle clicks on wiki_link nodes
+                handleClickOn(_view, _pos, node, _nodePos, event, direct) {
                 if (node.type.name === "wiki_link" && direct) {
                     event.preventDefault();
                     const linkTarget = node.attrs.href;
@@ -1916,9 +1858,9 @@ export function NotesView(props: NotesViewProps) {
                     return true;
                 }
                 return false;
-            },
-            // Handle Enter key on wiki_link nodes
-            handleKeyDown(view, event) {
+                },
+                // Handle Enter key on wiki_link nodes
+                handleKeyDown(view, event) {
                 if (event.key === "Enter") {
                     const { selection } = view.state;
 
@@ -1953,6 +1895,7 @@ export function NotesView(props: NotesViewProps) {
                     }
                 }
                 return false;
+                },
             },
         });
 
@@ -2473,65 +2416,27 @@ export function NotesView(props: NotesViewProps) {
         // Only update if the markdown content is different from what's in the editor
         const currentMarkdown = tableMarkdownSerializer.serialize(viewRef.current.state.doc);
         if (currentMarkdown !== content) {
-            const doc = tableMarkdownParser.parse(content || "") || tableSchema.nodes.doc.createAndFill();
-
-            // Recreate the custom keymap for consistency
-            const listIndentKeymap = keymap({
-                "Tab": chainCommands(sinkListItem(tableSchema.nodes.list_item), wrapInList(tableSchema.nodes.bullet_list)),
-                "Shift-Tab": liftListItem(tableSchema.nodes.list_item),
-            });
-
-            // Wiki link plugin for [[note]] suggestions
-            const wikiLinkPlugin = createWikiLinkPlugin({
-                schema: tableSchema,
-                onStateChange: setWikiLinkState,
-            });
-
-            // Tag link plugin for #tag suggestions
-            const tagLinkPlugin = createTagLinkPlugin({
-                onStateChange: setTagLinkState,
-            });
-
-            // Tag decoration plugin for styling completed tags and atomic deletion
-            const tagDecorationPlugin = createTagDecorationPlugin();
-
-            // Search plugin for CMD+F functionality
-            const searchPlugin = createSearchPlugin();
-
             // Spellcheck plugin for spell checking
             const spellcheckPlugin = createSpellcheckPlugin();
             const suggestionInlineActionsPlugin = createSuggestionInlineActionsPlugin({
                 onDecision: applySuggestionDecision,
             });
-
-            let newState = EditorState.create({
-                doc,
+            let newState = createNotesEditorState({
+                markdown: content,
+                isCollabMode: false,
+                onWikiLinkStateChange: setWikiLinkState,
+                onTagLinkStateChange: setTagLinkState,
+                suggestionInlineActionsPlugin,
+                includeSearchPlugin: true,
+                includeSpellcheckPlugin: false,
+            });
+            newState = EditorState.create({
+                doc: newState.doc,
                 plugins: [
-                    ...getTablePlugins(), // Table navigation must come BEFORE exampleSetup
-                    todoKeymap, // Todo Enter handling must come BEFORE exampleSetup's Enter handler
-                    ...exampleSetup({ schema: tableSchema, floatingMenu: false }),
-                    listIndentKeymap,
-                    todoPlugin,
-                    wikiLinkPlugin,
-                    tagLinkPlugin,
-                    tagDecorationPlugin,
-                    suggestionInlineActionsPlugin,
-                    searchPlugin, // Search highlighting
-                    spellcheckPlugin, // Spellcheck
+                    ...newState.plugins.filter((plugin) => plugin !== spellcheckPlugin),
+                    spellcheckPlugin,
                 ],
             });
-
-            // Apply table fixes to ensure proper table structure
-            const fixTransaction = fixTables(newState);
-            if (fixTransaction) {
-                newState = newState.apply(fixTransaction);
-            }
-
-            // Normalize table column counts
-            const normalizeTransaction = normalizeTableColumns(newState);
-            if (normalizeTransaction) {
-                newState = newState.apply(normalizeTransaction);
-            }
 
             viewRef.current.updateState(newState);
             initializedContentRef.current = content;
@@ -2650,7 +2555,7 @@ export function NotesView(props: NotesViewProps) {
 
                                 // Update editor if it exists
                                 if (viewRef.current) {
-                                    const doc = tableMarkdownParser.parse(freshContent) || tableSchema.nodes.doc.createAndFill();
+                                    const doc = parseNotesMarkdown(freshContent);
                                     const stateWithNewDoc = EditorState.create({
                                         doc,
                                         plugins: viewRef.current.state.plugins,
@@ -2695,7 +2600,7 @@ export function NotesView(props: NotesViewProps) {
 
                     // Update editor if it exists
                     if (viewRef.current) {
-                        const doc = tableMarkdownParser.parse(freshContent) || tableSchema.nodes.doc.createAndFill();
+                        const doc = parseNotesMarkdown(freshContent);
                         const stateWithNewDoc = EditorState.create({
                             doc,
                             plugins: viewRef.current.state.plugins,
