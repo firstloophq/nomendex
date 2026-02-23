@@ -94,8 +94,6 @@ interface Heading {
     id: string;
 }
 
-const BOOTSTRAP_CLAIM_KEY_PREFIX = "nomendex:crdt-bootstrap";
-const BOOTSTRAP_CLAIM_TTL_MS = 4000;
 const SHOW_NOTES_RIGHT_SIDEBAR = true; // Temporary debug toggle to isolate duplicate-key crashes.
 const NOTE_SNAPSHOT_DEBOUNCE_MS = 1000;
 
@@ -127,44 +125,6 @@ function snapshotRecordHasVisibleContent(record: unknown): boolean {
         if (content.type === "block" && content.blockType && content.blockType !== "paragraph") return true;
     }
     return false;
-}
-
-function tryClaimBootstrap(params: { docId: string; clientId: string }): boolean {
-    if (typeof window === "undefined") return true;
-
-    const key = `${BOOTSTRAP_CLAIM_KEY_PREFIX}:${params.docId}`;
-    const now = Date.now();
-
-    try {
-        const existingRaw = window.localStorage.getItem(key);
-        if (existingRaw) {
-            const existing = JSON.parse(existingRaw) as { clientId?: string; claimedAt?: number };
-            if (
-                typeof existing.claimedAt === "number" &&
-                now - existing.claimedAt < BOOTSTRAP_CLAIM_TTL_MS &&
-                existing.clientId &&
-                existing.clientId !== params.clientId
-            ) {
-                return false;
-            }
-        }
-
-        const claimRaw = JSON.stringify({ clientId: params.clientId, claimedAt: now });
-        window.localStorage.setItem(key, claimRaw);
-
-        const confirmedRaw = window.localStorage.getItem(key);
-        if (!confirmedRaw) return false;
-
-        const confirmed = JSON.parse(confirmedRaw) as { clientId?: string; claimedAt?: number };
-        return (
-            confirmed.clientId === params.clientId &&
-            typeof confirmed.claimedAt === "number" &&
-            now - confirmed.claimedAt < BOOTSTRAP_CLAIM_TTL_MS
-        );
-    } catch {
-        // If storage is unavailable, fall back to optimistic bootstrap.
-        return true;
-    }
 }
 
 function summarizeTransactionForDebug(transaction: { docChanged: boolean; selectionSet: boolean; steps: unknown[] }) {
@@ -425,6 +385,7 @@ export function NotesView(props: NotesViewProps) {
         selectedIndex: 0,
     });
     const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [editorHostEl, setEditorHostEl] = useState<HTMLDivElement | null>(null);
 
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -489,6 +450,11 @@ export function NotesView(props: NotesViewProps) {
             },
         });
     }, [collabDocId, noteFileName, tabId]);
+
+    const setEditorHostRef = useCallback((node: HTMLDivElement | null) => {
+        editorRef.current = node;
+        setEditorHostEl(node);
+    }, []);
 
     const applySuggestionDecision = useCallback((params: {
         suggestionId: string;
@@ -1387,12 +1353,12 @@ export function NotesView(props: NotesViewProps) {
 
     // Initialize ProseMirror editor - wait for content to be loaded
     useEffect(() => {
-        if (!editorRef.current || !isRichTextMode || !note) {
+        if (!editorHostEl || !isRichTextMode || !note) {
             logHydration({
                 event: "note_editor_guard_blocked",
                 source: "editor_effect",
                 data: {
-                    hasEditorRef: Boolean(editorRef.current),
+                    hasEditorRef: Boolean(editorHostEl),
                     isRichTextMode,
                     hasNote: Boolean(note),
                 },
@@ -1525,8 +1491,8 @@ export function NotesView(props: NotesViewProps) {
         // Build CRDT plugin + cursor plugin + undo/redo keymap for collab mode
         let crdtPlugin: Plugin<CRDTPluginState> | null = null;
         let cursorPlugin: Plugin | null = null;
-        // Gate bootstrap ops: suppress onLocalOps until initial sync completes,
-        // so only the first client bootstraps the doc on the server.
+        // Suppress local tx emission until initial sync completes.
+        // After sync, queued local tx batches are flushed.
         let syncComplete = false;
         let localTxSequence = 0;
         let pendingLocalTxBatches: Array<{ txId: string; ops: ReadonlyArray<Operation> }> = [];
@@ -1798,7 +1764,7 @@ export function NotesView(props: NotesViewProps) {
         };
 
         const editorView = createNotesEditorView({
-            mount: editorRef.current,
+            mount: editorHostEl,
             state,
             props: {
                 editable: () => !isLocked,
@@ -2099,54 +2065,17 @@ export function NotesView(props: NotesViewProps) {
             const capturedCrdtPlugin = crdtPlugin;
             const remoteCursors = new Map<ClientId, RemoteCursor>();
             let receivedRemoteOps = false;
-            let bootstrapQueued = false;
-            let bootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null;
+            let receivedRemoteSnapshot = false;
+            let initialSnapshotPublishAttempted = false;
 
-            const clearBootstrapRetry = () => {
-                if (bootstrapRetryTimer) {
-                    clearTimeout(bootstrapRetryTimer);
-                    bootstrapRetryTimer = null;
+            const hasMeaningfulEditorContent = () => {
+                const doc = editorView.state.doc;
+                if (doc.textContent.trim().length > 0) return true;
+                for (let i = 0; i < doc.childCount; i++) {
+                    const child = doc.child(i);
+                    if (child.type.name !== "paragraph") return true;
                 }
-            };
-
-            const maybeBootstrap = () => {
-                if (bootstrapQueued) {
-                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "already_queued" } });
-                    return;
-                }
-                if (receivedRemoteOps) {
-                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "received_remote_ops" } });
-                    return;
-                }
-                if (pendingLocalTxBatches.length > 0) {
-                    crdtDebugLog({
-                        event: "bootstrap_skip",
-                        data: {
-                            docId,
-                            reason: "pending_local_ops",
-                            pendingTxCount: pendingLocalTxBatches.length,
-                            pendingOpCount: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
-                        },
-                    });
-                    return;
-                }
-                if (!editorView || editorView.isDestroyed) {
-                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "editor_unavailable" } });
-                    return;
-                }
-                if (!tryClaimBootstrap({ docId, clientId: collab.clientId })) {
-                    crdtDebugLog({ event: "bootstrap_skip", data: { docId, reason: "claim_denied" } });
-                    return;
-                }
-
-                bootstrapQueued = true;
-                const currentDoc = editorView.state.doc;
-                const tr = editorView.state.tr.replaceWith(0, currentDoc.content.size, currentDoc.content);
-                editorView.dispatch(tr);
-                crdtDebugLog({
-                    event: "bootstrap_dispatched",
-                    data: { docId, size: currentDoc.content.size },
-                });
+                return false;
             };
 
             // Subscribe to remote doc ops
@@ -2169,7 +2098,6 @@ export function NotesView(props: NotesViewProps) {
                     );
                     if (treeOps.length === 0) return;
                     receivedRemoteOps = true;
-                    clearBootstrapRetry();
                     crdtDebugLog({
                         event: "remote_ops_received",
                         data: {
@@ -2252,6 +2180,7 @@ export function NotesView(props: NotesViewProps) {
                 },
                 onSnapshot: ({ snapshot, version }) => {
                     if (!editorView || editorView.isDestroyed) return;
+                    receivedRemoteSnapshot = true;
                     logHydration({
                         event: "note_remote_snapshot_received",
                         source: "remote_snapshot",
@@ -2337,7 +2266,6 @@ export function NotesView(props: NotesViewProps) {
                             receivedRemoteOps,
                             pendingLocalTxs: pendingLocalTxBatches.length,
                             pendingLocalOps: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
-                            bootstrapQueued,
                         },
                     });
                     crdtDebugLog({
@@ -2347,7 +2275,6 @@ export function NotesView(props: NotesViewProps) {
                             receivedRemoteOps,
                             pendingLocalTxs: pendingLocalTxBatches.length,
                             pendingLocalOps: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
-                            bootstrapQueued,
                         },
                     });
 
@@ -2371,16 +2298,35 @@ export function NotesView(props: NotesViewProps) {
                         });
                     }
 
-                    maybeBootstrap();
-
-                    if (!receivedRemoteOps && !bootstrapQueued && pendingLocalTxBatches.length === 0) {
+                    if (
+                        !receivedRemoteOps
+                        && !receivedRemoteSnapshot
+                        && !initialSnapshotPublishAttempted
+                        && pendingLocalTxBatches.length === 0
+                        && hasMeaningfulEditorContent()
+                    ) {
+                        initialSnapshotPublishAttempted = true;
                         crdtDebugLog({
-                            event: "bootstrap_retry_scheduled",
-                            data: { docId, delayMs: BOOTSTRAP_CLAIM_TTL_MS + 250 },
+                            event: "initial_snapshot_publish_start",
+                            data: { docId },
                         });
-                        bootstrapRetryTimer = setTimeout(() => {
-                            maybeBootstrap();
-                        }, BOOTSTRAP_CLAIM_TTL_MS + 250);
+                        void publishCurrentNoteSnapshotNow({ mergeBias: "remote" })
+                            .then(() => {
+                                crdtDebugLog({
+                                    event: "initial_snapshot_publish_done",
+                                    data: { docId },
+                                });
+                            })
+                            .catch((error) => {
+                                crdtDebugLog({
+                                    event: "initial_snapshot_publish_failed",
+                                    level: "error",
+                                    data: {
+                                        docId,
+                                        error: summarizeErrorForDebug(error),
+                                    },
+                                });
+                            });
                     }
                 },
             });
@@ -2409,7 +2355,6 @@ export function NotesView(props: NotesViewProps) {
 
             const previousUnsubscribeDoc = unsubscribeDoc;
             unsubscribeDoc = () => {
-                clearBootstrapRetry();
                 previousUnsubscribeDoc?.();
             };
         }
@@ -2506,7 +2451,7 @@ export function NotesView(props: NotesViewProps) {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isRichTextMode, noteFileName, hasNote, updateContent, saveImmediately, collab?.clientId, collabDocId]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
+    }, [editorHostEl, isRichTextMode, noteFileName, hasNote, updateContent, saveImmediately, collab?.clientId, collabDocId]); // content and updateActiveHeadingFromCursor intentionally omitted to prevent editor recreation
 
     useEffect(() => {
         if (loading || error || !note || !isRichTextMode) return;
@@ -2951,7 +2896,7 @@ export function NotesView(props: NotesViewProps) {
                             <div className={compact ? 'compact-editor' : ''}>
                                 <div className="w-full max-w-4xl mx-auto px-6 py-4">
                                     <div
-                                        ref={editorRef}
+                                        ref={setEditorHostRef}
                                         className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none focus:outline-none editor-content"
                                         style={
                                             {
