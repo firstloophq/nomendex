@@ -10,7 +10,7 @@ import {
   receive,
   type RecordOp,
   type WSClient,
-} from "@crdt/lib/server";
+} from "@firstloophq-demos/crdt-lib/server";
 import { upgradeWebSocket } from "hono/bun";
 import type { Context } from "hono";
 import { authenticateBearerToken, type AuthIdentity } from "../auth";

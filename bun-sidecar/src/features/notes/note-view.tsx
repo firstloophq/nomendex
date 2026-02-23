@@ -46,14 +46,14 @@ import "@/components/prosemirror/tables/tables.css";
 import "./simple-todo.css";
 import { useNotesAPI } from "@/hooks/useNotesAPI";
 import { Note } from "./index";
-import { cn } from "@/lib/utils";
+import { cn } from "@-demos/crdt-lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { useTabScrollPersistence } from "@/hooks/useTabScrollPersistence";
 import { useTabCursorPersistence } from "@/hooks/useTabCursorPersistence";
 import { useFileLocks } from "@/hooks/useFileLocks";
 import { TagInput } from "./TagInput";
 import { ProjectInput } from "./ProjectInput";
-import { onRefresh, emit, subscribe } from "@/lib/events";
+import { onRefresh, emit, subscribe } from "@-demos/crdt-lib/events";
 import { BacklinksPanel, CollapsibleSection } from "./BacklinksPanel";
 import { toast } from "sonner";
 import { OverlayScrollbar } from "@/components/OverlayScrollbar";
@@ -64,8 +64,8 @@ import { createSpellcheckPlugin, runSpellcheck, clearSpellcheck } from "@/compon
 import { SpellcheckPopup } from "@/components/prosemirror/spellcheck/SpellcheckPopup";
 import "@/components/prosemirror/spellcheck/spellcheck.css";
 import { useCollab } from "@/contexts/CollabContext";
-import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
-import { buildNoteDocId, getWorkspaceCollabScope } from "@/lib/collab-doc-id";
+import { crdtDebugLog, summarizeOpsForDebug } from "@-demos/crdt-lib/crdt-debug";
+import { buildNoteDocId, getWorkspaceCollabScope } from "@-demos/crdt-lib/collab-doc-id";
 import {
     createCRDTPlugin,
     getCRDTState,
@@ -77,8 +77,8 @@ import {
     getRecordSnapshotVersion,
     undoCommand,
     redoCommand,
-} from "@crdt/lib";
-import type { Operation, CRDTPluginState, ClientId } from "@crdt/lib";
+} from "@firstloophq-demos/crdt-lib";
+import type { Operation, CRDTPluginState, ClientId } from "@firstloophq-demos/crdt-lib";
 import {
     createCollabCursorPlugin,
     updateCollabRemoteCursors,

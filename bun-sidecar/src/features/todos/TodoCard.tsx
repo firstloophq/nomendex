@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { parseLocalDateString } from "@/features/notes/date-utils";
-import type { UserInfo } from "@crdt/lib";
+import type { UserInfo } from "@firstloophq-demos/crdt-lib";
 
 export function TodoCard({
     todo,

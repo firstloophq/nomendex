@@ -1,7 +1,7 @@
 import {
   getRecordSnapshotStateVector,
   getRecordSnapshotVersion,
-} from "@crdt/lib/server";
+} from "@firstloophq-demos/crdt-lib/server";
 import { prisma } from "../db";
 import {
   buildSnapshotKey,

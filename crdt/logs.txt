@@ -1,0 +1,889 @@
+[2026-02-18T21:02:30.318Z] [Editor A] REMOTE_OPS: count=78 types=insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:30.319Z] [Editor A] AFTER_REMOTE: doc="TT"
+[2026-02-18T21:02:30.320Z] [Editor A] REMOTE_OPS: count=79 types=insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:30.320Z] [Editor A] AFTER_REMOTE: doc="TT"
+[2026-02-18T21:02:30.322Z] [Editor B] REMOTE_OPS: count=78 types=insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:30.323Z] [Editor B] AFTER_REMOTE: doc="TT"
+[2026-02-18T21:02:30.323Z] [Editor B] REMOTE_OPS: count=79 types=insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert,insert,insert,insert,insert,delete,delete,delete,insert,insert,insert,insert,insert,insert,insert,insert,insert,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:30.323Z] [Editor B] AFTER_REMOTE: doc="TT"
+[2026-02-18T21:02:31.173Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:31.173Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:31.235Z] [Editor A] KEY: Cmd+a
+[2026-02-18T21:02:31.235Z] [Editor A] KEY: Cmd+a
+[2026-02-18T21:02:31.653Z] [Editor A] CHANGE: sel=1-1 steps={"stepType":"replace","from":0,"to":12,"slice":{"content":[{"type":"paragraph"}]}} doc=""
+[2026-02-18T21:02:31.653Z] [Editor A] REMOTE_OPS: count=3 types=delete,delete,insert
+[2026-02-18T21:02:31.654Z] [Editor A] AFTER_REMOTE: doc=""
+[2026-02-18T21:02:31.654Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:31.654Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:31.655Z] [Editor B] REMOTE_OPS: count=3 types=delete,delete,insert
+[2026-02-18T21:02:31.655Z] [Editor B] AFTER_REMOTE: doc=""
+[2026-02-18T21:02:31.655Z] [Editor B] REMOTE_OPS: count=3 types=delete,delete,insert
+[2026-02-18T21:02:31.656Z] [Editor B] AFTER_REMOTE: doc=""
+[2026-02-18T21:02:32.012Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:32.012Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:32.116Z] [Editor A] KEY: Shift+T
+[2026-02-18T21:02:32.118Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.117Z] [Editor A] KEY: Shift+T
+[2026-02-18T21:02:32.118Z] [Editor A] CHANGE: sel=2-2 steps={"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"T"}]}} doc="T"
+[2026-02-18T21:02:32.119Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.119Z] [Editor A] AFTER_REMOTE: doc="T"
+[2026-02-18T21:02:32.119Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.120Z] [Editor B] AFTER_REMOTE: doc="T"
+[2026-02-18T21:02:32.120Z] [Editor B] AFTER_REMOTE: doc="T"
+[2026-02-18T21:02:32.222Z] [Editor A] KEY: h
+[2026-02-18T21:02:32.223Z] [Editor A] KEY: h
+[2026-02-18T21:02:32.223Z] [Editor A] CHANGE: sel=3-3 steps={"stepType":"replace","from":2,"to":2,"slice":{"content":[{"type":"text","text":"h"}]}} doc="Th"
+[2026-02-18T21:02:32.224Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.224Z] [Editor A] AFTER_REMOTE: doc="Th"
+[2026-02-18T21:02:32.224Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.224Z] [Editor B] AFTER_REMOTE: doc="Th"
+[2026-02-18T21:02:32.225Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.225Z] [Editor B] AFTER_REMOTE: doc="Th"
+[2026-02-18T21:02:32.249Z] [Editor A] KEY: i
+[2026-02-18T21:02:32.250Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.250Z] [Editor A] KEY: i
+[2026-02-18T21:02:32.250Z] [Editor A] CHANGE: sel=4-4 steps={"stepType":"replace","from":3,"to":3,"slice":{"content":[{"type":"text","text":"i"}]}} doc="Thi"
+[2026-02-18T21:02:32.252Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.252Z] [Editor B] AFTER_REMOTE: doc="Thi"
+[2026-02-18T21:02:32.251Z] [Editor A] AFTER_REMOTE: doc="Thi"
+[2026-02-18T21:02:32.251Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.251Z] [Editor B] AFTER_REMOTE: doc="Thi"
+[2026-02-18T21:02:32.340Z] [Editor A] KEY: s
+[2026-02-18T21:02:32.341Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.340Z] [Editor A] KEY: s
+[2026-02-18T21:02:32.341Z] [Editor A] CHANGE: sel=5-5 steps={"stepType":"replace","from":4,"to":4,"slice":{"content":[{"type":"text","text":"s"}]}} doc="This"
+[2026-02-18T21:02:32.342Z] [Editor A] AFTER_REMOTE: doc="This"
+[2026-02-18T21:02:32.342Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.342Z] [Editor B] AFTER_REMOTE: doc="This"
+[2026-02-18T21:02:32.342Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.343Z] [Editor B] AFTER_REMOTE: doc="This"
+[2026-02-18T21:02:32.672Z] [Editor A] KEY:  
+[2026-02-18T21:02:32.672Z] [Editor A] KEY:  
+[2026-02-18T21:02:32.674Z] [Editor A] CHANGE: sel=6-6 steps={"stepType":"replace","from":5,"to":5,"slice":{"content":[{"type":"text","text":" "}]}} doc="This "
+[2026-02-18T21:02:32.676Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.676Z] [Editor A] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:32.676Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.676Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.676Z] [Editor B] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:32.677Z] [Editor B] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:32.820Z] [Editor A] KEY: a
+[2026-02-18T21:02:32.820Z] [Editor A] KEY: a
+[2026-02-18T21:02:32.821Z] [Editor A] CHANGE: sel=7-7 steps={"stepType":"replace","from":6,"to":6,"slice":{"content":[{"type":"text","text":"a"}]}} doc="This a"
+[2026-02-18T21:02:32.821Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.822Z] [Editor A] AFTER_REMOTE: doc="This a"
+[2026-02-18T21:02:32.822Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.822Z] [Editor B] AFTER_REMOTE: doc="This a"
+[2026-02-18T21:02:32.822Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.823Z] [Editor B] AFTER_REMOTE: doc="This a"
+[2026-02-18T21:02:32.881Z] [Editor A] KEY: s
+[2026-02-18T21:02:32.881Z] [Editor A] KEY: s
+[2026-02-18T21:02:32.882Z] [Editor A] CHANGE: sel=8-8 steps={"stepType":"replace","from":7,"to":7,"slice":{"content":[{"type":"text","text":"s"}]}} doc="This as"
+[2026-02-18T21:02:32.882Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.882Z] [Editor A] AFTER_REMOTE: doc="This as"
+[2026-02-18T21:02:32.883Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.883Z] [Editor B] AFTER_REMOTE: doc="This as"
+[2026-02-18T21:02:32.883Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.883Z] [Editor B] AFTER_REMOTE: doc="This as"
+[2026-02-18T21:02:32.940Z] [Editor A] KEY: d
+[2026-02-18T21:02:32.940Z] [Editor A] KEY: d
+[2026-02-18T21:02:32.941Z] [Editor A] CHANGE: sel=9-9 steps={"stepType":"replace","from":8,"to":8,"slice":{"content":[{"type":"text","text":"d"}]}} doc="This asd"
+[2026-02-18T21:02:32.941Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.942Z] [Editor A] AFTER_REMOTE: doc="This asd"
+[2026-02-18T21:02:32.942Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.942Z] [Editor B] AFTER_REMOTE: doc="This asd"
+[2026-02-18T21:02:32.942Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:32.942Z] [Editor B] AFTER_REMOTE: doc="This asd"
+[2026-02-18T21:02:33.018Z] [Editor A] KEY: f
+[2026-02-18T21:02:33.018Z] [Editor A] KEY: f
+[2026-02-18T21:02:33.019Z] [Editor A] CHANGE: sel=10-10 steps={"stepType":"replace","from":9,"to":9,"slice":{"content":[{"type":"text","text":"f"}]}} doc="This asdf"
+[2026-02-18T21:02:33.019Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.020Z] [Editor A] AFTER_REMOTE: doc="This asdf"
+[2026-02-18T21:02:33.020Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.020Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.020Z] [Editor B] AFTER_REMOTE: doc="This asdf"
+[2026-02-18T21:02:33.021Z] [Editor B] AFTER_REMOTE: doc="This asdf"
+[2026-02-18T21:02:33.075Z] [Editor A] KEY: a
+[2026-02-18T21:02:33.076Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.075Z] [Editor A] KEY: a
+[2026-02-18T21:02:33.076Z] [Editor A] AFTER_REMOTE: doc="This asdfa"
+[2026-02-18T21:02:33.076Z] [Editor A] CHANGE: sel=11-11 steps={"stepType":"replace","from":10,"to":10,"slice":{"content":[{"type":"text","text":"a"}]}} doc="This asdfa"
+[2026-02-18T21:02:33.076Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.077Z] [Editor B] AFTER_REMOTE: doc="This asdfa"
+[2026-02-18T21:02:33.077Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.077Z] [Editor B] AFTER_REMOTE: doc="This asdfa"
+[2026-02-18T21:02:33.121Z] [Editor A] KEY: s
+[2026-02-18T21:02:33.121Z] [Editor A] KEY: s
+[2026-02-18T21:02:33.121Z] [Editor A] CHANGE: sel=12-12 steps={"stepType":"replace","from":11,"to":11,"slice":{"content":[{"type":"text","text":"s"}]}} doc="This asdfas"
+[2026-02-18T21:02:33.122Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.122Z] [Editor A] AFTER_REMOTE: doc="This asdfas"
+[2026-02-18T21:02:33.122Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.123Z] [Editor B] AFTER_REMOTE: doc="This asdfas"
+[2026-02-18T21:02:33.123Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.123Z] [Editor B] AFTER_REMOTE: doc="This asdfas"
+[2026-02-18T21:02:33.149Z] [Editor A] KEY: d
+[2026-02-18T21:02:33.150Z] [Editor A] KEY: d
+[2026-02-18T21:02:33.150Z] [Editor A] CHANGE: sel=13-13 steps={"stepType":"replace","from":12,"to":12,"slice":{"content":[{"type":"text","text":"d"}]}} doc="This asdfasd"
+[2026-02-18T21:02:33.151Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.152Z] [Editor A] AFTER_REMOTE: doc="This asdfasd"
+[2026-02-18T21:02:33.152Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.152Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.152Z] [Editor B] AFTER_REMOTE: doc="This asdfasd"
+[2026-02-18T21:02:33.152Z] [Editor B] AFTER_REMOTE: doc="This asdfasd"
+[2026-02-18T21:02:33.224Z] [Editor A] KEY: f
+[2026-02-18T21:02:33.226Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.225Z] [Editor A] KEY: f
+[2026-02-18T21:02:33.226Z] [Editor A] CHANGE: sel=14-14 steps={"stepType":"replace","from":13,"to":13,"slice":{"content":[{"type":"text","text":"f"}]}} doc="This asdfasdf"
+[2026-02-18T21:02:33.227Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.227Z] [Editor B] AFTER_REMOTE: doc="This asdfasdf"
+[2026-02-18T21:02:33.226Z] [Editor A] AFTER_REMOTE: doc="This asdfasdf"
+[2026-02-18T21:02:33.226Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.227Z] [Editor B] AFTER_REMOTE: doc="This asdfasdf"
+[2026-02-18T21:02:33.348Z] [Editor A] KEY: a
+[2026-02-18T21:02:33.349Z] [Editor A] KEY: a
+[2026-02-18T21:02:33.349Z] [Editor A] CHANGE: sel=15-15 steps={"stepType":"replace","from":14,"to":14,"slice":{"content":[{"type":"text","text":"a"}]}} doc="This asdfasdfa"
+[2026-02-18T21:02:33.350Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.350Z] [Editor A] AFTER_REMOTE: doc="This asdfasdfa"
+[2026-02-18T21:02:33.350Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.351Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.351Z] [Editor B] AFTER_REMOTE: doc="This asdfasdfa"
+[2026-02-18T21:02:33.351Z] [Editor B] AFTER_REMOTE: doc="This asdfasdfa"
+[2026-02-18T21:02:33.374Z] [Editor A] KEY: s
+[2026-02-18T21:02:33.376Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.375Z] [Editor A] KEY: s
+[2026-02-18T21:02:33.375Z] [Editor A] CHANGE: sel=16-16 steps={"stepType":"replace","from":15,"to":15,"slice":{"content":[{"type":"text","text":"s"}]}} doc="This asdfasdfas"
+[2026-02-18T21:02:33.377Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.377Z] [Editor B] AFTER_REMOTE: doc="This asdfasdfas"
+[2026-02-18T21:02:33.376Z] [Editor A] AFTER_REMOTE: doc="This asdfasdfas"
+[2026-02-18T21:02:33.376Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.376Z] [Editor B] AFTER_REMOTE: doc="This asdfasdfas"
+[2026-02-18T21:02:33.439Z] [Editor A] KEY: d
+[2026-02-18T21:02:33.440Z] [Editor A] KEY: d
+[2026-02-18T21:02:33.441Z] [Editor A] CHANGE: sel=17-17 steps={"stepType":"replace","from":16,"to":16,"slice":{"content":[{"type":"text","text":"d"}]}} doc="This asdfasdfasd"
+[2026-02-18T21:02:33.444Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.444Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.444Z] [Editor B] AFTER_REMOTE: doc="This asdfasdfasd"
+[2026-02-18T21:02:33.444Z] [Editor A] AFTER_REMOTE: doc="This asdfasdfasd"
+[2026-02-18T21:02:33.444Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.444Z] [Editor B] AFTER_REMOTE: doc="This asdfasdfasd"
+[2026-02-18T21:02:33.580Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:33.581Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:33.665Z] [Editor A] KEY: Cmd+ArrowLeft
+[2026-02-18T21:02:33.665Z] [Editor A] KEY: Cmd+ArrowLeft
+[2026-02-18T21:02:33.856Z] [Editor A] KEY: a
+[2026-02-18T21:02:33.856Z] [Editor A] KEY: a
+[2026-02-18T21:02:33.857Z] [Editor A] CHANGE: sel=2-2 steps={"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}} doc="aThis asdfasdfasd"
+[2026-02-18T21:02:33.858Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.858Z] [Editor A] AFTER_REMOTE: doc="aThis asdfasdfasd"
+[2026-02-18T21:02:33.858Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.858Z] [Editor B] AFTER_REMOTE: doc="aThis asdfasdfasd"
+[2026-02-18T21:02:33.858Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.859Z] [Editor B] AFTER_REMOTE: doc="aThis asdfasdfasd"
+[2026-02-18T21:02:33.901Z] [Editor A] KEY: s
+[2026-02-18T21:02:33.901Z] [Editor A] KEY: s
+[2026-02-18T21:02:33.903Z] [Editor A] CHANGE: sel=3-3 steps={"stepType":"replace","from":2,"to":2,"slice":{"content":[{"type":"text","text":"s"}]}} doc="asThis asdfasdfasd"
+[2026-02-18T21:02:33.904Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.905Z] [Editor A] AFTER_REMOTE: doc="asThis asdfasdfasd"
+[2026-02-18T21:02:33.905Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.905Z] [Editor B] AFTER_REMOTE: doc="asThis asdfasdfasd"
+[2026-02-18T21:02:33.905Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.906Z] [Editor B] AFTER_REMOTE: doc="asThis asdfasdfasd"
+[2026-02-18T21:02:33.966Z] [Editor A] KEY: d
+[2026-02-18T21:02:33.966Z] [Editor A] KEY: d
+[2026-02-18T21:02:33.966Z] [Editor A] CHANGE: sel=4-4 steps={"stepType":"replace","from":3,"to":3,"slice":{"content":[{"type":"text","text":"d"}]}} doc="asdThis asdfasdfasd"
+[2026-02-18T21:02:33.967Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.967Z] [Editor A] AFTER_REMOTE: doc="asdThis asdfasdfasd"
+[2026-02-18T21:02:33.967Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.967Z] [Editor B] AFTER_REMOTE: doc="asdThis asdfasdfasd"
+[2026-02-18T21:02:33.968Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:33.968Z] [Editor B] AFTER_REMOTE: doc="asdThis asdfasdfasd"
+[2026-02-18T21:02:34.056Z] [Editor A] KEY: f
+[2026-02-18T21:02:34.056Z] [Editor A] KEY: f
+[2026-02-18T21:02:34.057Z] [Editor A] CHANGE: sel=5-5 steps={"stepType":"replace","from":4,"to":4,"slice":{"content":[{"type":"text","text":"f"}]}} doc="asdfThis asdfasdfasd"
+[2026-02-18T21:02:34.057Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.057Z] [Editor A] AFTER_REMOTE: doc="asdfThis asdfasdfasd"
+[2026-02-18T21:02:34.058Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.058Z] [Editor B] AFTER_REMOTE: doc="asdfThis asdfasdfasd"
+[2026-02-18T21:02:34.058Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.058Z] [Editor B] AFTER_REMOTE: doc="asdfThis asdfasdfasd"
+[2026-02-18T21:02:34.115Z] [Editor A] KEY: a
+[2026-02-18T21:02:34.115Z] [Editor A] KEY: a
+[2026-02-18T21:02:34.116Z] [Editor A] CHANGE: sel=6-6 steps={"stepType":"replace","from":5,"to":5,"slice":{"content":[{"type":"text","text":"a"}]}} doc="asdfaThis asdfasdfasd"
+[2026-02-18T21:02:34.116Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.117Z] [Editor A] AFTER_REMOTE: doc="asdfaThis asdfasdfasd"
+[2026-02-18T21:02:34.117Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.117Z] [Editor B] AFTER_REMOTE: doc="asdfaThis asdfasdfasd"
+[2026-02-18T21:02:34.117Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.117Z] [Editor B] AFTER_REMOTE: doc="asdfaThis asdfasdfasd"
+[2026-02-18T21:02:34.147Z] [Editor A] KEY: s
+[2026-02-18T21:02:34.148Z] [Editor A] KEY: s
+[2026-02-18T21:02:34.148Z] [Editor A] CHANGE: sel=7-7 steps={"stepType":"replace","from":6,"to":6,"slice":{"content":[{"type":"text","text":"s"}]}} doc="asdfasThis asdfasdfasd"
+[2026-02-18T21:02:34.149Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.149Z] [Editor A] AFTER_REMOTE: doc="asdfasThis asdfasdfasd"
+[2026-02-18T21:02:34.149Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.150Z] [Editor B] AFTER_REMOTE: doc="asdfasThis asdfasdfasd"
+[2026-02-18T21:02:34.150Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.150Z] [Editor B] AFTER_REMOTE: doc="asdfasThis asdfasdfasd"
+[2026-02-18T21:02:34.200Z] [Editor A] KEY: d
+[2026-02-18T21:02:34.200Z] [Editor A] KEY: d
+[2026-02-18T21:02:34.201Z] [Editor A] CHANGE: sel=8-8 steps={"stepType":"replace","from":7,"to":7,"slice":{"content":[{"type":"text","text":"d"}]}} doc="asdfasdThis asdfasdfasd"
+[2026-02-18T21:02:34.201Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.202Z] [Editor A] AFTER_REMOTE: doc="asdfasdThis asdfasdfasd"
+[2026-02-18T21:02:34.202Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.202Z] [Editor B] AFTER_REMOTE: doc="asdfasdThis asdfasdfasd"
+[2026-02-18T21:02:34.202Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.202Z] [Editor B] AFTER_REMOTE: doc="asdfasdThis asdfasdfasd"
+[2026-02-18T21:02:34.264Z] [Editor A] KEY: f
+[2026-02-18T21:02:34.264Z] [Editor A] KEY: f
+[2026-02-18T21:02:34.265Z] [Editor A] CHANGE: sel=9-9 steps={"stepType":"replace","from":8,"to":8,"slice":{"content":[{"type":"text","text":"f"}]}} doc="asdfasdfThis asdfasdfasd"
+[2026-02-18T21:02:34.266Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.266Z] [Editor A] AFTER_REMOTE: doc="asdfasdfThis asdfasdfasd"
+[2026-02-18T21:02:34.266Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.266Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:34.266Z] [Editor B] AFTER_REMOTE: doc="asdfasdfThis asdfasdfasd"
+[2026-02-18T21:02:34.267Z] [Editor B] AFTER_REMOTE: doc="asdfasdfThis asdfasdfasd"
+[2026-02-18T21:02:34.455Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:34.456Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:34.533Z] [Editor A] KEY: Cmd+a
+[2026-02-18T21:02:34.533Z] [Editor A] KEY: Cmd+a
+[2026-02-18T21:02:34.725Z] [Editor A] CHANGE: sel=1-1 steps={"stepType":"replace","from":0,"to":26,"slice":{"content":[{"type":"paragraph"}]}} doc=""
+[2026-02-18T21:02:34.726Z] [Editor A] REMOTE_OPS: count=25 types=delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:34.726Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:34.726Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:34.726Z] [Editor A] AFTER_REMOTE: doc=""
+[2026-02-18T21:02:34.726Z] [Editor B] REMOTE_OPS: count=25 types=delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:34.727Z] [Editor B] AFTER_REMOTE: doc=""
+[2026-02-18T21:02:34.727Z] [Editor B] REMOTE_OPS: count=25 types=delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,delete,insert
+[2026-02-18T21:02:34.728Z] [Editor B] AFTER_REMOTE: doc=""
+[2026-02-18T21:02:35.219Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:35.219Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:35.331Z] [Editor A] KEY: Shift+T
+[2026-02-18T21:02:35.331Z] [Editor A] KEY: Shift+T
+[2026-02-18T21:02:35.332Z] [Editor A] CHANGE: sel=2-2 steps={"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"T"}]}} doc="T"
+[2026-02-18T21:02:35.333Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.333Z] [Editor A] AFTER_REMOTE: doc="T"
+[2026-02-18T21:02:35.333Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.334Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.334Z] [Editor B] AFTER_REMOTE: doc="T"
+[2026-02-18T21:02:35.334Z] [Editor B] AFTER_REMOTE: doc="T"
+[2026-02-18T21:02:35.481Z] [Editor A] KEY: h
+[2026-02-18T21:02:35.481Z] [Editor A] KEY: h
+[2026-02-18T21:02:35.482Z] [Editor A] CHANGE: sel=3-3 steps={"stepType":"replace","from":2,"to":2,"slice":{"content":[{"type":"text","text":"h"}]}} doc="Th"
+[2026-02-18T21:02:35.482Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.483Z] [Editor A] AFTER_REMOTE: doc="Th"
+[2026-02-18T21:02:35.483Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.483Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.483Z] [Editor B] AFTER_REMOTE: doc="Th"
+[2026-02-18T21:02:35.483Z] [Editor B] AFTER_REMOTE: doc="Th"
+[2026-02-18T21:02:35.535Z] [Editor A] KEY: i
+[2026-02-18T21:02:35.535Z] [Editor A] KEY: i
+[2026-02-18T21:02:35.536Z] [Editor A] CHANGE: sel=4-4 steps={"stepType":"replace","from":3,"to":3,"slice":{"content":[{"type":"text","text":"i"}]}} doc="Thi"
+[2026-02-18T21:02:35.536Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.538Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.538Z] [Editor B] AFTER_REMOTE: doc="Thi"
+[2026-02-18T21:02:35.538Z] [Editor A] AFTER_REMOTE: doc="Thi"
+[2026-02-18T21:02:35.539Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.539Z] [Editor B] AFTER_REMOTE: doc="Thi"
+[2026-02-18T21:02:35.656Z] [Editor A] KEY: s
+[2026-02-18T21:02:35.657Z] [Editor A] KEY: s
+[2026-02-18T21:02:35.658Z] [Editor A] CHANGE: sel=5-5 steps={"stepType":"replace","from":4,"to":4,"slice":{"content":[{"type":"text","text":"s"}]}} doc="This"
+[2026-02-18T21:02:35.658Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.658Z] [Editor A] AFTER_REMOTE: doc="This"
+[2026-02-18T21:02:35.659Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.659Z] [Editor B] AFTER_REMOTE: doc="This"
+[2026-02-18T21:02:35.659Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.660Z] [Editor B] AFTER_REMOTE: doc="This"
+[2026-02-18T21:02:35.866Z] [Editor A] KEY:  
+[2026-02-18T21:02:35.866Z] [Editor A] KEY:  
+[2026-02-18T21:02:35.867Z] [Editor A] CHANGE: sel=6-6 steps={"stepType":"replace","from":5,"to":5,"slice":{"content":[{"type":"text","text":" "}]}} doc="This "
+[2026-02-18T21:02:35.867Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.868Z] [Editor A] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:35.868Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.868Z] [Editor B] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:35.869Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:35.869Z] [Editor B] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:36.136Z] [Editor A] KEY: i
+[2026-02-18T21:02:36.136Z] [Editor A] KEY: i
+[2026-02-18T21:02:36.138Z] [Editor A] CHANGE: sel=7-7 steps={"stepType":"replace","from":6,"to":6,"slice":{"content":[{"type":"text","text":"i"}]}} doc="This i"
+[2026-02-18T21:02:36.141Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.141Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.141Z] [Editor A] AFTER_REMOTE: doc="This i"
+[2026-02-18T21:02:36.141Z] [Editor B] AFTER_REMOTE: doc="This i"
+[2026-02-18T21:02:36.142Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.142Z] [Editor B] AFTER_REMOTE: doc="This i"
+[2026-02-18T21:02:36.421Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:36.421Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:36.423Z] [Editor A] CHANGE: sel=6-6 steps={"stepType":"replace","from":6,"to":7} doc="This "
+[2026-02-18T21:02:36.425Z] [Editor A] REMOTE_OPS: count=1 types=delete
+[2026-02-18T21:02:36.426Z] [Editor A] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:36.426Z] [Editor B] REMOTE_OPS: count=1 types=delete
+[2026-02-18T21:02:36.427Z] [Editor B] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:36.427Z] [Editor B] REMOTE_OPS: count=1 types=delete
+[2026-02-18T21:02:36.427Z] [Editor B] AFTER_REMOTE: doc="This "
+[2026-02-18T21:02:36.601Z] [Editor A] KEY: i
+[2026-02-18T21:02:36.602Z] [Editor A] KEY: i
+[2026-02-18T21:02:36.602Z] [Editor A] CHANGE: sel=7-7 steps={"stepType":"replace","from":6,"to":6,"slice":{"content":[{"type":"text","text":"i"}]}} doc="This i"
+[2026-02-18T21:02:36.603Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.603Z] [Editor A] AFTER_REMOTE: doc="This i"
+[2026-02-18T21:02:36.604Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.604Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.604Z] [Editor B] AFTER_REMOTE: doc="This i"
+[2026-02-18T21:02:36.604Z] [Editor B] AFTER_REMOTE: doc="This i"
+[2026-02-18T21:02:36.699Z] [Editor A] KEY: s
+[2026-02-18T21:02:36.699Z] [Editor A] KEY: s
+[2026-02-18T21:02:36.700Z] [Editor A] CHANGE: sel=8-8 steps={"stepType":"replace","from":7,"to":7,"slice":{"content":[{"type":"text","text":"s"}]}} doc="This is"
+[2026-02-18T21:02:36.700Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.700Z] [Editor A] AFTER_REMOTE: doc="This is"
+[2026-02-18T21:02:36.701Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.701Z] [Editor B] AFTER_REMOTE: doc="This is"
+[2026-02-18T21:02:36.701Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.702Z] [Editor B] AFTER_REMOTE: doc="This is"
+[2026-02-18T21:02:36.797Z] [Editor A] KEY:  
+[2026-02-18T21:02:36.798Z] [Editor A] KEY:  
+[2026-02-18T21:02:36.798Z] [Editor A] CHANGE: sel=9-9 steps={"stepType":"replace","from":8,"to":8,"slice":{"content":[{"type":"text","text":" "}]}} doc="This is "
+[2026-02-18T21:02:36.799Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.799Z] [Editor A] AFTER_REMOTE: doc="This is "
+[2026-02-18T21:02:36.799Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.799Z] [Editor B] AFTER_REMOTE: doc="This is "
+[2026-02-18T21:02:36.800Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.800Z] [Editor B] AFTER_REMOTE: doc="This is "
+[2026-02-18T21:02:36.843Z] [Editor A] KEY: r
+[2026-02-18T21:02:36.845Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.844Z] [Editor A] KEY: r
+[2026-02-18T21:02:36.844Z] [Editor A] CHANGE: sel=10-10 steps={"stepType":"replace","from":9,"to":9,"slice":{"content":[{"type":"text","text":"r"}]}} doc="This is r"
+[2026-02-18T21:02:36.846Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.846Z] [Editor B] AFTER_REMOTE: doc="This is r"
+[2026-02-18T21:02:36.845Z] [Editor A] AFTER_REMOTE: doc="This is r"
+[2026-02-18T21:02:36.845Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.845Z] [Editor B] AFTER_REMOTE: doc="This is r"
+[2026-02-18T21:02:36.901Z] [Editor A] KEY: e
+[2026-02-18T21:02:36.901Z] [Editor A] KEY: e
+[2026-02-18T21:02:36.902Z] [Editor A] CHANGE: sel=11-11 steps={"stepType":"replace","from":10,"to":10,"slice":{"content":[{"type":"text","text":"e"}]}} doc="This is re"
+[2026-02-18T21:02:36.903Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.903Z] [Editor A] AFTER_REMOTE: doc="This is re"
+[2026-02-18T21:02:36.903Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.904Z] [Editor B] AFTER_REMOTE: doc="This is re"
+[2026-02-18T21:02:36.904Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.904Z] [Editor B] AFTER_REMOTE: doc="This is re"
+[2026-02-18T21:02:36.947Z] [Editor A] KEY: a
+[2026-02-18T21:02:36.947Z] [Editor A] KEY: a
+[2026-02-18T21:02:36.948Z] [Editor A] CHANGE: sel=12-12 steps={"stepType":"replace","from":11,"to":11,"slice":{"content":[{"type":"text","text":"a"}]}} doc="This is rea"
+[2026-02-18T21:02:36.949Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.949Z] [Editor A] AFTER_REMOTE: doc="This is rea"
+[2026-02-18T21:02:36.949Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.949Z] [Editor B] AFTER_REMOTE: doc="This is rea"
+[2026-02-18T21:02:36.949Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.950Z] [Editor B] AFTER_REMOTE: doc="This is rea"
+[2026-02-18T21:02:36.990Z] [Editor A] KEY: l
+[2026-02-18T21:02:36.991Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.990Z] [Editor A] KEY: l
+[2026-02-18T21:02:36.991Z] [Editor A] CHANGE: sel=13-13 steps={"stepType":"replace","from":12,"to":12,"slice":{"content":[{"type":"text","text":"l"}]}} doc="This is real"
+[2026-02-18T21:02:36.992Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.993Z] [Editor B] AFTER_REMOTE: doc="This is real"
+[2026-02-18T21:02:36.992Z] [Editor A] AFTER_REMOTE: doc="This is real"
+[2026-02-18T21:02:36.992Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:36.992Z] [Editor B] AFTER_REMOTE: doc="This is real"
+[2026-02-18T21:02:37.098Z] [Editor A] KEY: l
+[2026-02-18T21:02:37.098Z] [Editor A] KEY: l
+[2026-02-18T21:02:37.099Z] [Editor A] CHANGE: sel=14-14 steps={"stepType":"replace","from":13,"to":13,"slice":{"content":[{"type":"text","text":"l"}]}} doc="This is reall"
+[2026-02-18T21:02:37.100Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.100Z] [Editor A] AFTER_REMOTE: doc="This is reall"
+[2026-02-18T21:02:37.100Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.101Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.101Z] [Editor B] AFTER_REMOTE: doc="This is reall"
+[2026-02-18T21:02:37.101Z] [Editor B] AFTER_REMOTE: doc="This is reall"
+[2026-02-18T21:02:37.201Z] [Editor A] KEY: y
+[2026-02-18T21:02:37.201Z] [Editor A] KEY: y
+[2026-02-18T21:02:37.202Z] [Editor A] CHANGE: sel=15-15 steps={"stepType":"replace","from":14,"to":14,"slice":{"content":[{"type":"text","text":"y"}]}} doc="This is really"
+[2026-02-18T21:02:37.203Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.203Z] [Editor A] AFTER_REMOTE: doc="This is really"
+[2026-02-18T21:02:37.203Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.203Z] [Editor B] AFTER_REMOTE: doc="This is really"
+[2026-02-18T21:02:37.204Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.204Z] [Editor B] AFTER_REMOTE: doc="This is really"
+[2026-02-18T21:02:37.319Z] [Editor A] KEY:  
+[2026-02-18T21:02:37.319Z] [Editor A] KEY:  
+[2026-02-18T21:02:37.320Z] [Editor A] CHANGE: sel=16-16 steps={"stepType":"replace","from":15,"to":15,"slice":{"content":[{"type":"text","text":" "}]}} doc="This is really "
+[2026-02-18T21:02:37.321Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.321Z] [Editor A] AFTER_REMOTE: doc="This is really "
+[2026-02-18T21:02:37.321Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.321Z] [Editor B] AFTER_REMOTE: doc="This is really "
+[2026-02-18T21:02:37.322Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.322Z] [Editor B] AFTER_REMOTE: doc="This is really "
+[2026-02-18T21:02:37.432Z] [Editor A] KEY: n
+[2026-02-18T21:02:37.433Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.432Z] [Editor A] KEY: n
+[2026-02-18T21:02:37.433Z] [Editor A] CHANGE: sel=17-17 steps={"stepType":"replace","from":16,"to":16,"slice":{"content":[{"type":"text","text":"n"}]}} doc="This is really n"
+[2026-02-18T21:02:37.433Z] [Editor A] AFTER_REMOTE: doc="This is really n"
+[2026-02-18T21:02:37.434Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.434Z] [Editor B] AFTER_REMOTE: doc="This is really n"
+[2026-02-18T21:02:37.434Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.434Z] [Editor B] AFTER_REMOTE: doc="This is really n"
+[2026-02-18T21:02:37.535Z] [Editor A] KEY: i
+[2026-02-18T21:02:37.535Z] [Editor A] KEY: i
+[2026-02-18T21:02:37.536Z] [Editor A] CHANGE: sel=18-18 steps={"stepType":"replace","from":17,"to":17,"slice":{"content":[{"type":"text","text":"i"}]}} doc="This is really ni"
+[2026-02-18T21:02:37.536Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.537Z] [Editor A] AFTER_REMOTE: doc="This is really ni"
+[2026-02-18T21:02:37.537Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.537Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.538Z] [Editor B] AFTER_REMOTE: doc="This is really ni"
+[2026-02-18T21:02:37.538Z] [Editor B] AFTER_REMOTE: doc="This is really ni"
+[2026-02-18T21:02:37.564Z] [Editor A] KEY: c
+[2026-02-18T21:02:37.564Z] [Editor A] KEY: c
+[2026-02-18T21:02:37.565Z] [Editor A] CHANGE: sel=19-19 steps={"stepType":"replace","from":18,"to":18,"slice":{"content":[{"type":"text","text":"c"}]}} doc="This is really nic"
+[2026-02-18T21:02:37.565Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.566Z] [Editor A] AFTER_REMOTE: doc="This is really nic"
+[2026-02-18T21:02:37.566Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.566Z] [Editor B] AFTER_REMOTE: doc="This is really nic"
+[2026-02-18T21:02:37.566Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.566Z] [Editor B] AFTER_REMOTE: doc="This is really nic"
+[2026-02-18T21:02:37.614Z] [Editor A] KEY: e
+[2026-02-18T21:02:37.614Z] [Editor A] KEY: e
+[2026-02-18T21:02:37.615Z] [Editor A] CHANGE: sel=20-20 steps={"stepType":"replace","from":19,"to":19,"slice":{"content":[{"type":"text","text":"e"}]}} doc="This is really nice"
+[2026-02-18T21:02:37.615Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.616Z] [Editor A] AFTER_REMOTE: doc="This is really nice"
+[2026-02-18T21:02:37.616Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.616Z] [Editor B] AFTER_REMOTE: doc="This is really nice"
+[2026-02-18T21:02:37.616Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:37.617Z] [Editor B] AFTER_REMOTE: doc="This is really nice"
+[2026-02-18T21:02:37.724Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:37.724Z] [Editor A] KEY: Cmd+Meta
+[2026-02-18T21:02:37.818Z] [Editor A] KEY: Cmd+ArrowLeft
+[2026-02-18T21:02:37.818Z] [Editor A] KEY: Cmd+ArrowLeft
+[2026-02-18T21:02:38.101Z] [Editor A] KEY: a
+[2026-02-18T21:02:38.101Z] [Editor A] KEY: a
+[2026-02-18T21:02:38.101Z] [Editor A] CHANGE: sel=2-2 steps={"stepType":"replace","from":1,"to":1,"slice":{"content":[{"type":"text","text":"a"}]}} doc="aThis is really nice"
+[2026-02-18T21:02:38.102Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.102Z] [Editor A] AFTER_REMOTE: doc="aThis is really nice"
+[2026-02-18T21:02:38.103Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.103Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.103Z] [Editor B] AFTER_REMOTE: doc="aThis is really nice"
+[2026-02-18T21:02:38.103Z] [Editor B] AFTER_REMOTE: doc="aThis is really nice"
+[2026-02-18T21:02:38.206Z] [Editor A] KEY: s
+[2026-02-18T21:02:38.206Z] [Editor A] KEY: s
+[2026-02-18T21:02:38.208Z] [Editor A] CHANGE: sel=3-3 steps={"stepType":"replace","from":2,"to":2,"slice":{"content":[{"type":"text","text":"s"}]}} doc="asThis is really nice"
+[2026-02-18T21:02:38.209Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.210Z] [Editor A] AFTER_REMOTE: doc="asThis is really nice"
+[2026-02-18T21:02:38.210Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.210Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.211Z] [Editor B] AFTER_REMOTE: doc="asThis is really nice"
+[2026-02-18T21:02:38.211Z] [Editor B] AFTER_REMOTE: doc="asThis is really nice"
+[2026-02-18T21:02:38.235Z] [Editor A] KEY: d
+[2026-02-18T21:02:38.235Z] [Editor A] KEY: d
+[2026-02-18T21:02:38.236Z] [Editor A] CHANGE: sel=4-4 steps={"stepType":"replace","from":3,"to":3,"slice":{"content":[{"type":"text","text":"d"}]}} doc="asdThis is really nice"
+[2026-02-18T21:02:38.236Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.236Z] [Editor A] AFTER_REMOTE: doc="asdThis is really nice"
+[2026-02-18T21:02:38.237Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.237Z] [Editor B] AFTER_REMOTE: doc="asdThis is really nice"
+[2026-02-18T21:02:38.237Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.237Z] [Editor B] AFTER_REMOTE: doc="asdThis is really nice"
+[2026-02-18T21:02:38.299Z] [Editor A] KEY: f
+[2026-02-18T21:02:38.299Z] [Editor A] KEY: f
+[2026-02-18T21:02:38.300Z] [Editor A] CHANGE: sel=5-5 steps={"stepType":"replace","from":4,"to":4,"slice":{"content":[{"type":"text","text":"f"}]}} doc="asdfThis is really nice"
+[2026-02-18T21:02:38.300Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.301Z] [Editor A] AFTER_REMOTE: doc="asdfThis is really nice"
+[2026-02-18T21:02:38.301Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.301Z] [Editor B] AFTER_REMOTE: doc="asdfThis is really nice"
+[2026-02-18T21:02:38.301Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.301Z] [Editor B] AFTER_REMOTE: doc="asdfThis is really nice"
+[2026-02-18T21:02:38.566Z] [Editor A] KEY:  
+[2026-02-18T21:02:38.567Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.566Z] [Editor A] KEY:  
+[2026-02-18T21:02:38.567Z] [Editor A] CHANGE: sel=6-6 steps={"stepType":"replace","from":5,"to":5,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf This is really nice"
+[2026-02-18T21:02:38.568Z] [Editor A] AFTER_REMOTE: doc="asdf This is really nice"
+[2026-02-18T21:02:38.568Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.568Z] [Editor B] AFTER_REMOTE: doc="asdf This is really nice"
+[2026-02-18T21:02:38.569Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.569Z] [Editor B] AFTER_REMOTE: doc="asdf This is really nice"
+[2026-02-18T21:02:38.669Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:38.670Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:38.750Z] [Editor A] KEY: Shift+D
+[2026-02-18T21:02:38.750Z] [Editor A] KEY: Shift+D
+[2026-02-18T21:02:38.751Z] [Editor A] CHANGE: sel=7-7 steps={"stepType":"replace","from":6,"to":6,"slice":{"content":[{"type":"text","text":"D"}]}} doc="asdf DThis is really nice"
+[2026-02-18T21:02:38.751Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.751Z] [Editor A] AFTER_REMOTE: doc="asdf DThis is really nice"
+[2026-02-18T21:02:38.752Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.752Z] [Editor B] AFTER_REMOTE: doc="asdf DThis is really nice"
+[2026-02-18T21:02:38.752Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.752Z] [Editor B] AFTER_REMOTE: doc="asdf DThis is really nice"
+[2026-02-18T21:02:38.852Z] [Editor A] KEY: o
+[2026-02-18T21:02:38.853Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.852Z] [Editor A] KEY: o
+[2026-02-18T21:02:38.853Z] [Editor A] AFTER_REMOTE: doc="asdf DoThis is really nice"
+[2026-02-18T21:02:38.853Z] [Editor A] CHANGE: sel=8-8 steps={"stepType":"replace","from":7,"to":7,"slice":{"content":[{"type":"text","text":"o"}]}} doc="asdf DoThis is really nice"
+[2026-02-18T21:02:38.854Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.854Z] [Editor B] AFTER_REMOTE: doc="asdf DoThis is really nice"
+[2026-02-18T21:02:38.854Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.854Z] [Editor B] AFTER_REMOTE: doc="asdf DoThis is really nice"
+[2026-02-18T21:02:38.942Z] [Editor A] KEY: e
+[2026-02-18T21:02:38.944Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.942Z] [Editor A] KEY: e
+[2026-02-18T21:02:38.944Z] [Editor A] AFTER_REMOTE: doc="asdf DoeThis is really nice"
+[2026-02-18T21:02:38.944Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.943Z] [Editor A] CHANGE: sel=9-9 steps={"stepType":"replace","from":8,"to":8,"slice":{"content":[{"type":"text","text":"e"}]}} doc="asdf DoeThis is really nice"
+[2026-02-18T21:02:38.944Z] [Editor B] AFTER_REMOTE: doc="asdf DoeThis is really nice"
+[2026-02-18T21:02:38.945Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.945Z] [Editor B] AFTER_REMOTE: doc="asdf DoeThis is really nice"
+[2026-02-18T21:02:38.970Z] [Editor A] KEY: s
+[2026-02-18T21:02:38.971Z] [Editor A] KEY: s
+[2026-02-18T21:02:38.971Z] [Editor A] CHANGE: sel=10-10 steps={"stepType":"replace","from":9,"to":9,"slice":{"content":[{"type":"text","text":"s"}]}} doc="asdf DoesThis is really nice"
+[2026-02-18T21:02:38.972Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.972Z] [Editor A] AFTER_REMOTE: doc="asdf DoesThis is really nice"
+[2026-02-18T21:02:38.972Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.972Z] [Editor B] AFTER_REMOTE: doc="asdf DoesThis is really nice"
+[2026-02-18T21:02:38.979Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:38.980Z] [Editor B] AFTER_REMOTE: doc="asdf DoesThis is really nice"
+[2026-02-18T21:02:39.022Z] [Editor A] KEY:  
+[2026-02-18T21:02:39.023Z] [Editor A] KEY:  
+[2026-02-18T21:02:39.023Z] [Editor A] CHANGE: sel=11-11 steps={"stepType":"replace","from":10,"to":10,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does This is really nice"
+[2026-02-18T21:02:39.024Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.024Z] [Editor A] AFTER_REMOTE: doc="asdf Does This is really nice"
+[2026-02-18T21:02:39.024Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.024Z] [Editor B] AFTER_REMOTE: doc="asdf Does This is really nice"
+[2026-02-18T21:02:39.025Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.025Z] [Editor B] AFTER_REMOTE: doc="asdf Does This is really nice"
+[2026-02-18T21:02:39.081Z] [Editor A] KEY: t
+[2026-02-18T21:02:39.081Z] [Editor A] KEY: t
+[2026-02-18T21:02:39.082Z] [Editor A] CHANGE: sel=12-12 steps={"stepType":"replace","from":11,"to":11,"slice":{"content":[{"type":"text","text":"t"}]}} doc="asdf Does tThis is really nice"
+[2026-02-18T21:02:39.082Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.082Z] [Editor A] AFTER_REMOTE: doc="asdf Does tThis is really nice"
+[2026-02-18T21:02:39.083Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.083Z] [Editor B] AFTER_REMOTE: doc="asdf Does tThis is really nice"
+[2026-02-18T21:02:39.083Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.083Z] [Editor B] AFTER_REMOTE: doc="asdf Does tThis is really nice"
+[2026-02-18T21:02:39.151Z] [Editor A] KEY: h
+[2026-02-18T21:02:39.152Z] [Editor A] KEY: h
+[2026-02-18T21:02:39.153Z] [Editor A] CHANGE: sel=13-13 steps={"stepType":"replace","from":12,"to":12,"slice":{"content":[{"type":"text","text":"h"}]}} doc="asdf Does thThis is really nice"
+[2026-02-18T21:02:39.156Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.156Z] [Editor B] AFTER_REMOTE: doc="asdf Does thThis is really nice"
+[2026-02-18T21:02:39.156Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.157Z] [Editor A] AFTER_REMOTE: doc="asdf Does thThis is really nice"
+[2026-02-18T21:02:39.158Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.158Z] [Editor B] AFTER_REMOTE: doc="asdf Does thThis is really nice"
+[2026-02-18T21:02:39.202Z] [Editor A] KEY: i
+[2026-02-18T21:02:39.202Z] [Editor A] KEY: i
+[2026-02-18T21:02:39.202Z] [Editor A] CHANGE: sel=14-14 steps={"stepType":"replace","from":13,"to":13,"slice":{"content":[{"type":"text","text":"i"}]}} doc="asdf Does thiThis is really nice"
+[2026-02-18T21:02:39.203Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.203Z] [Editor A] AFTER_REMOTE: doc="asdf Does thiThis is really nice"
+[2026-02-18T21:02:39.204Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.204Z] [Editor B] AFTER_REMOTE: doc="asdf Does thiThis is really nice"
+[2026-02-18T21:02:39.204Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.204Z] [Editor B] AFTER_REMOTE: doc="asdf Does thiThis is really nice"
+[2026-02-18T21:02:39.241Z] [Editor A] KEY: s
+[2026-02-18T21:02:39.242Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.241Z] [Editor A] KEY: s
+[2026-02-18T21:02:39.241Z] [Editor A] CHANGE: sel=15-15 steps={"stepType":"replace","from":14,"to":14,"slice":{"content":[{"type":"text","text":"s"}]}} doc="asdf Does thisThis is really nice"
+[2026-02-18T21:02:39.242Z] [Editor A] AFTER_REMOTE: doc="asdf Does thisThis is really nice"
+[2026-02-18T21:02:39.242Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.243Z] [Editor B] AFTER_REMOTE: doc="asdf Does thisThis is really nice"
+[2026-02-18T21:02:39.243Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.243Z] [Editor B] AFTER_REMOTE: doc="asdf Does thisThis is really nice"
+[2026-02-18T21:02:39.368Z] [Editor A] KEY:  
+[2026-02-18T21:02:39.368Z] [Editor A] KEY:  
+[2026-02-18T21:02:39.369Z] [Editor A] CHANGE: sel=16-16 steps={"stepType":"replace","from":15,"to":15,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does this This is really nice"
+[2026-02-18T21:02:39.369Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.370Z] [Editor A] AFTER_REMOTE: doc="asdf Does this This is really nice"
+[2026-02-18T21:02:39.370Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.370Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.371Z] [Editor B] AFTER_REMOTE: doc="asdf Does this This is really nice"
+[2026-02-18T21:02:39.371Z] [Editor B] AFTER_REMOTE: doc="asdf Does this This is really nice"
+[2026-02-18T21:02:39.436Z] [Editor A] KEY: w
+[2026-02-18T21:02:39.436Z] [Editor A] KEY: w
+[2026-02-18T21:02:39.437Z] [Editor A] CHANGE: sel=17-17 steps={"stepType":"replace","from":16,"to":16,"slice":{"content":[{"type":"text","text":"w"}]}} doc="asdf Does this wThis is really nice"
+[2026-02-18T21:02:39.440Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.441Z] [Editor A] AFTER_REMOTE: doc="asdf Does this wThis is really nice"
+[2026-02-18T21:02:39.441Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.441Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.442Z] [Editor B] AFTER_REMOTE: doc="asdf Does this wThis is really nice"
+[2026-02-18T21:02:39.441Z] [Editor B] AFTER_REMOTE: doc="asdf Does this wThis is really nice"
+[2026-02-18T21:02:39.531Z] [Editor A] KEY: o
+[2026-02-18T21:02:39.531Z] [Editor A] KEY: o
+[2026-02-18T21:02:39.533Z] [Editor A] CHANGE: sel=18-18 steps={"stepType":"replace","from":17,"to":17,"slice":{"content":[{"type":"text","text":"o"}]}} doc="asdf Does this woThis is really nice"
+[2026-02-18T21:02:39.534Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.535Z] [Editor A] AFTER_REMOTE: doc="asdf Does this woThis is really nice"
+[2026-02-18T21:02:39.535Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.535Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.536Z] [Editor B] AFTER_REMOTE: doc="asdf Does this woThis is really nice"
+[2026-02-18T21:02:39.536Z] [Editor B] AFTER_REMOTE: doc="asdf Does this woThis is really nice"
+[2026-02-18T21:02:39.603Z] [Editor A] KEY: r
+[2026-02-18T21:02:39.603Z] [Editor A] KEY: r
+[2026-02-18T21:02:39.604Z] [Editor A] CHANGE: sel=19-19 steps={"stepType":"replace","from":18,"to":18,"slice":{"content":[{"type":"text","text":"r"}]}} doc="asdf Does this worThis is really nice"
+[2026-02-18T21:02:39.604Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.605Z] [Editor A] AFTER_REMOTE: doc="asdf Does this worThis is really nice"
+[2026-02-18T21:02:39.605Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.605Z] [Editor B] AFTER_REMOTE: doc="asdf Does this worThis is really nice"
+[2026-02-18T21:02:39.605Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.605Z] [Editor B] AFTER_REMOTE: doc="asdf Does this worThis is really nice"
+[2026-02-18T21:02:39.664Z] [Editor A] KEY: k
+[2026-02-18T21:02:39.665Z] [Editor A] KEY: k
+[2026-02-18T21:02:39.666Z] [Editor A] CHANGE: sel=20-20 steps={"stepType":"replace","from":19,"to":19,"slice":{"content":[{"type":"text","text":"k"}]}} doc="asdf Does this workThis is really nice"
+[2026-02-18T21:02:39.666Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.666Z] [Editor A] AFTER_REMOTE: doc="asdf Does this workThis is really nice"
+[2026-02-18T21:02:39.667Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.667Z] [Editor B] AFTER_REMOTE: doc="asdf Does this workThis is really nice"
+[2026-02-18T21:02:39.667Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.667Z] [Editor B] AFTER_REMOTE: doc="asdf Does this workThis is really nice"
+[2026-02-18T21:02:39.797Z] [Editor A] KEY:  
+[2026-02-18T21:02:39.798Z] [Editor A] KEY:  
+[2026-02-18T21:02:39.798Z] [Editor A] CHANGE: sel=21-21 steps={"stepType":"replace","from":20,"to":20,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:39.799Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.800Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.800Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:39.800Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.801Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:39.801Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:39.870Z] [Editor A] KEY: e
+[2026-02-18T21:02:39.870Z] [Editor A] KEY: e
+[2026-02-18T21:02:39.872Z] [Editor A] CHANGE: sel=22-22 steps={"stepType":"replace","from":21,"to":21,"slice":{"content":[{"type":"text","text":"e"}]}} doc="asdf Does this work eThis is really nice"
+[2026-02-18T21:02:39.873Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.873Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work eThis is really nice"
+[2026-02-18T21:02:39.874Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.874Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work eThis is really nice"
+[2026-02-18T21:02:39.874Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:39.875Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work eThis is really nice"
+[2026-02-18T21:02:40.281Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:40.281Z] [Editor A] KEY: Backspace
+[2026-02-18T21:02:40.282Z] [Editor A] CHANGE: sel=21-21 steps={"stepType":"replace","from":21,"to":22} doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:40.282Z] [Editor A] REMOTE_OPS: count=1 types=delete
+[2026-02-18T21:02:40.283Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:40.283Z] [Editor B] REMOTE_OPS: count=1 types=delete
+[2026-02-18T21:02:40.283Z] [Editor B] REMOTE_OPS: count=1 types=delete
+[2026-02-18T21:02:40.283Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:40.284Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work This is really nice"
+[2026-02-18T21:02:40.321Z] [Editor A] KEY: a
+[2026-02-18T21:02:40.321Z] [Editor A] KEY: a
+[2026-02-18T21:02:40.322Z] [Editor A] CHANGE: sel=22-22 steps={"stepType":"replace","from":21,"to":21,"slice":{"content":[{"type":"text","text":"a"}]}} doc="asdf Does this work aThis is really nice"
+[2026-02-18T21:02:40.322Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.322Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work aThis is really nice"
+[2026-02-18T21:02:40.323Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.323Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work aThis is really nice"
+[2026-02-18T21:02:40.323Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.323Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work aThis is really nice"
+[2026-02-18T21:02:40.381Z] [Editor A] KEY: s
+[2026-02-18T21:02:40.382Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.381Z] [Editor A] KEY: s
+[2026-02-18T21:02:40.382Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work asThis is really nice"
+[2026-02-18T21:02:40.382Z] [Editor A] CHANGE: sel=23-23 steps={"stepType":"replace","from":22,"to":22,"slice":{"content":[{"type":"text","text":"s"}]}} doc="asdf Does this work asThis is really nice"
+[2026-02-18T21:02:40.383Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.383Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work asThis is really nice"
+[2026-02-18T21:02:40.383Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.383Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work asThis is really nice"
+[2026-02-18T21:02:40.487Z] [Editor A] KEY:  
+[2026-02-18T21:02:40.487Z] [Editor A] KEY:  
+[2026-02-18T21:02:40.488Z] [Editor A] CHANGE: sel=24-24 steps={"stepType":"replace","from":23,"to":23,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does this work as This is really nice"
+[2026-02-18T21:02:40.488Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.489Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as This is really nice"
+[2026-02-18T21:02:40.489Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.489Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as This is really nice"
+[2026-02-18T21:02:40.489Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.490Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as This is really nice"
+[2026-02-18T21:02:40.578Z] [Editor A] KEY: e
+[2026-02-18T21:02:40.579Z] [Editor A] KEY: e
+[2026-02-18T21:02:40.579Z] [Editor A] CHANGE: sel=25-25 steps={"stepType":"replace","from":24,"to":24,"slice":{"content":[{"type":"text","text":"e"}]}} doc="asdf Does this work as eThis is really nice"
+[2026-02-18T21:02:40.580Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.580Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as eThis is really nice"
+[2026-02-18T21:02:40.581Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.581Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.581Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as eThis is really nice"
+[2026-02-18T21:02:40.581Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as eThis is really nice"
+[2026-02-18T21:02:40.711Z] [Editor A] KEY: x
+[2026-02-18T21:02:40.712Z] [Editor A] KEY: x
+[2026-02-18T21:02:40.712Z] [Editor A] CHANGE: sel=26-26 steps={"stepType":"replace","from":25,"to":25,"slice":{"content":[{"type":"text","text":"x"}]}} doc="asdf Does this work as exThis is really nice"
+[2026-02-18T21:02:40.713Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.713Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as exThis is really nice"
+[2026-02-18T21:02:40.714Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.714Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.714Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as exThis is really nice"
+[2026-02-18T21:02:40.714Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as exThis is really nice"
+[2026-02-18T21:02:40.937Z] [Editor A] KEY: p
+[2026-02-18T21:02:40.937Z] [Editor A] KEY: p
+[2026-02-18T21:02:40.938Z] [Editor A] CHANGE: sel=27-27 steps={"stepType":"replace","from":26,"to":26,"slice":{"content":[{"type":"text","text":"p"}]}} doc="asdf Does this work as expThis is really nice"
+[2026-02-18T21:02:40.943Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.943Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.943Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expThis is really nice"
+[2026-02-18T21:02:40.943Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expThis is really nice"
+[2026-02-18T21:02:40.943Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:40.944Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expThis is really nice"
+[2026-02-18T21:02:41.014Z] [Editor A] KEY: e
+[2026-02-18T21:02:41.016Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.015Z] [Editor A] KEY: e
+[2026-02-18T21:02:41.016Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expeThis is really nice"
+[2026-02-18T21:02:41.015Z] [Editor A] CHANGE: sel=28-28 steps={"stepType":"replace","from":27,"to":27,"slice":{"content":[{"type":"text","text":"e"}]}} doc="asdf Does this work as expeThis is really nice"
+[2026-02-18T21:02:41.016Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.016Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expeThis is really nice"
+[2026-02-18T21:02:41.017Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.017Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expeThis is really nice"
+[2026-02-18T21:02:41.118Z] [Editor A] KEY: c
+[2026-02-18T21:02:41.119Z] [Editor A] KEY: c
+[2026-02-18T21:02:41.120Z] [Editor A] CHANGE: sel=29-29 steps={"stepType":"replace","from":28,"to":28,"slice":{"content":[{"type":"text","text":"c"}]}} doc="asdf Does this work as expecThis is really nice"
+[2026-02-18T21:02:41.120Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.121Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expecThis is really nice"
+[2026-02-18T21:02:41.121Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.121Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expecThis is really nice"
+[2026-02-18T21:02:41.121Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.121Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expecThis is really nice"
+[2026-02-18T21:02:41.235Z] [Editor A] KEY: t
+[2026-02-18T21:02:41.236Z] [Editor A] KEY: t
+[2026-02-18T21:02:41.237Z] [Editor A] CHANGE: sel=30-30 steps={"stepType":"replace","from":29,"to":29,"slice":{"content":[{"type":"text","text":"t"}]}} doc="asdf Does this work as expectThis is really nice"
+[2026-02-18T21:02:41.237Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.238Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expectThis is really nice"
+[2026-02-18T21:02:41.238Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.238Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expectThis is really nice"
+[2026-02-18T21:02:41.238Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.239Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expectThis is really nice"
+[2026-02-18T21:02:41.327Z] [Editor A] KEY: e
+[2026-02-18T21:02:41.327Z] [Editor A] KEY: e
+[2026-02-18T21:02:41.329Z] [Editor A] CHANGE: sel=31-31 steps={"stepType":"replace","from":30,"to":30,"slice":{"content":[{"type":"text","text":"e"}]}} doc="asdf Does this work as expecteThis is really nice"
+[2026-02-18T21:02:41.329Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.330Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expecteThis is really nice"
+[2026-02-18T21:02:41.330Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.331Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expecteThis is really nice"
+[2026-02-18T21:02:41.331Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.332Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expecteThis is really nice"
+[2026-02-18T21:02:41.448Z] [Editor A] KEY: d
+[2026-02-18T21:02:41.451Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.449Z] [Editor A] KEY: d
+[2026-02-18T21:02:41.451Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expectedThis is really nice"
+[2026-02-18T21:02:41.450Z] [Editor A] CHANGE: sel=32-32 steps={"stepType":"replace","from":31,"to":31,"slice":{"content":[{"type":"text","text":"d"}]}} doc="asdf Does this work as expectedThis is really nice"
+[2026-02-18T21:02:41.452Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.452Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expectedThis is really nice"
+[2026-02-18T21:02:41.452Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.453Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expectedThis is really nice"
+[2026-02-18T21:02:41.507Z] [Editor A] KEY: .
+[2026-02-18T21:02:41.508Z] [Editor A] KEY: .
+[2026-02-18T21:02:41.509Z] [Editor A] CHANGE: sel=33-33 steps={"stepType":"replace","from":32,"to":32,"slice":{"content":[{"type":"text","text":"."}]}} doc="asdf Does this work as expected.This is really nice"
+[2026-02-18T21:02:41.510Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.511Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected.This is really nice"
+[2026-02-18T21:02:41.511Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.511Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected.This is really nice"
+[2026-02-18T21:02:41.512Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.512Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected.This is really nice"
+[2026-02-18T21:02:41.721Z] [Editor A] KEY:  
+[2026-02-18T21:02:41.721Z] [Editor A] KEY:  
+[2026-02-18T21:02:41.722Z] [Editor A] CHANGE: sel=34-34 steps={"stepType":"replace","from":33,"to":33,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does this work as expected. This is really nice"
+[2026-02-18T21:02:41.732Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.732Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.733Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. This is really nice"
+[2026-02-18T21:02:41.733Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. This is really nice"
+[2026-02-18T21:02:41.734Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:41.734Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. This is really nice"
+[2026-02-18T21:02:41.914Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:41.915Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:42.007Z] [Editor A] KEY: Shift+W
+[2026-02-18T21:02:42.007Z] [Editor A] KEY: Shift+W
+[2026-02-18T21:02:42.008Z] [Editor A] CHANGE: sel=35-35 steps={"stepType":"replace","from":34,"to":34,"slice":{"content":[{"type":"text","text":"W"}]}} doc="asdf Does this work as expected. WThis is really nice"
+[2026-02-18T21:02:42.011Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.011Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.012Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. WThis is really nice"
+[2026-02-18T21:02:42.012Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. WThis is really nice"
+[2026-02-18T21:02:42.012Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.013Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. WThis is really nice"
+[2026-02-18T21:02:42.081Z] [Editor A] KEY: o
+[2026-02-18T21:02:42.081Z] [Editor A] KEY: o
+[2026-02-18T21:02:42.082Z] [Editor A] CHANGE: sel=36-36 steps={"stepType":"replace","from":35,"to":35,"slice":{"content":[{"type":"text","text":"o"}]}} doc="asdf Does this work as expected. WoThis is really nice"
+[2026-02-18T21:02:42.083Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.084Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. WoThis is really nice"
+[2026-02-18T21:02:42.084Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.084Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. WoThis is really nice"
+[2026-02-18T21:02:42.085Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.085Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. WoThis is really nice"
+[2026-02-18T21:02:42.181Z] [Editor A] KEY: w
+[2026-02-18T21:02:42.182Z] [Editor A] KEY: w
+[2026-02-18T21:02:42.183Z] [Editor A] CHANGE: sel=37-37 steps={"stepType":"replace","from":36,"to":36,"slice":{"content":[{"type":"text","text":"w"}]}} doc="asdf Does this work as expected. WowThis is really nice"
+[2026-02-18T21:02:42.183Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.184Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. WowThis is really nice"
+[2026-02-18T21:02:42.184Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.185Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. WowThis is really nice"
+[2026-02-18T21:02:42.185Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.185Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. WowThis is really nice"
+[2026-02-18T21:02:42.514Z] [Editor A] KEY: .
+[2026-02-18T21:02:42.514Z] [Editor A] KEY: .
+[2026-02-18T21:02:42.515Z] [Editor A] CHANGE: sel=38-38 steps={"stepType":"replace","from":37,"to":37,"slice":{"content":[{"type":"text","text":"."}]}} doc="asdf Does this work as expected. Wow.This is really nice"
+[2026-02-18T21:02:42.515Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.516Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow.This is really nice"
+[2026-02-18T21:02:42.516Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.516Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.516Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow.This is really nice"
+[2026-02-18T21:02:42.517Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow.This is really nice"
+[2026-02-18T21:02:42.706Z] [Editor A] KEY:  
+[2026-02-18T21:02:42.706Z] [Editor A] KEY:  
+[2026-02-18T21:02:42.706Z] [Editor A] CHANGE: sel=39-39 steps={"stepType":"replace","from":38,"to":38,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does this work as expected. Wow. This is really nice"
+[2026-02-18T21:02:42.707Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.708Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. This is really nice"
+[2026-02-18T21:02:42.708Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.708Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.709Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. This is really nice"
+[2026-02-18T21:02:42.709Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. This is really nice"
+[2026-02-18T21:02:42.766Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:42.766Z] [Editor A] KEY: Shift+Shift
+[2026-02-18T21:02:42.966Z] [Editor A] KEY: Shift+S
+[2026-02-18T21:02:42.966Z] [Editor A] KEY: Shift+S
+[2026-02-18T21:02:42.967Z] [Editor A] CHANGE: sel=40-40 steps={"stepType":"replace","from":39,"to":39,"slice":{"content":[{"type":"text","text":"S"}]}} doc="asdf Does this work as expected. Wow. SThis is really nice"
+[2026-02-18T21:02:42.968Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.969Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. SThis is really nice"
+[2026-02-18T21:02:42.969Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.969Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:42.970Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. SThis is really nice"
+[2026-02-18T21:02:42.970Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. SThis is really nice"
+[2026-02-18T21:02:43.054Z] [Editor A] KEY: o
+[2026-02-18T21:02:43.054Z] [Editor A] KEY: o
+[2026-02-18T21:02:43.055Z] [Editor A] CHANGE: sel=41-41 steps={"stepType":"replace","from":40,"to":40,"slice":{"content":[{"type":"text","text":"o"}]}} doc="asdf Does this work as expected. Wow. SoThis is really nice"
+[2026-02-18T21:02:43.056Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.057Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. SoThis is really nice"
+[2026-02-18T21:02:43.057Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.057Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.058Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. SoThis is really nice"
+[2026-02-18T21:02:43.058Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. SoThis is really nice"
+[2026-02-18T21:02:43.202Z] [Editor A] KEY:  
+[2026-02-18T21:02:43.202Z] [Editor A] KEY:  
+[2026-02-18T21:02:43.203Z] [Editor A] CHANGE: sel=42-42 steps={"stepType":"replace","from":41,"to":41,"slice":{"content":[{"type":"text","text":" "}]}} doc="asdf Does this work as expected. Wow. So This is really nice"
+[2026-02-18T21:02:43.204Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.205Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So This is really nice"
+[2026-02-18T21:02:43.205Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.205Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So This is really nice"
+[2026-02-18T21:02:43.205Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.205Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So This is really nice"
+[2026-02-18T21:02:43.299Z] [Editor A] KEY: g
+[2026-02-18T21:02:43.299Z] [Editor A] KEY: g
+[2026-02-18T21:02:43.300Z] [Editor A] CHANGE: sel=43-43 steps={"stepType":"replace","from":42,"to":42,"slice":{"content":[{"type":"text","text":"g"}]}} doc="asdf Does this work as expected. Wow. So gThis is really nice"
+[2026-02-18T21:02:43.301Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.301Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So gThis is really nice"
+[2026-02-18T21:02:43.302Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.302Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So gThis is really nice"
+[2026-02-18T21:02:43.302Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.303Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So gThis is really nice"
+[2026-02-18T21:02:43.367Z] [Editor A] KEY: o
+[2026-02-18T21:02:43.367Z] [Editor A] KEY: o
+[2026-02-18T21:02:43.369Z] [Editor A] CHANGE: sel=44-44 steps={"stepType":"replace","from":43,"to":43,"slice":{"content":[{"type":"text","text":"o"}]}} doc="asdf Does this work as expected. Wow. So goThis is really nice"
+[2026-02-18T21:02:43.369Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.370Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So goThis is really nice"
+[2026-02-18T21:02:43.370Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.371Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So goThis is really nice"
+[2026-02-18T21:02:43.371Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.371Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So goThis is really nice"
+[2026-02-18T21:02:43.474Z] [Editor A] KEY: o
+[2026-02-18T21:02:43.476Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.474Z] [Editor A] KEY: o
+[2026-02-18T21:02:43.475Z] [Editor A] CHANGE: sel=45-45 steps={"stepType":"replace","from":44,"to":44,"slice":{"content":[{"type":"text","text":"o"}]}} doc="asdf Does this work as expected. Wow. So gooThis is really nice"
+[2026-02-18T21:02:43.478Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.478Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So gooThis is really nice"
+[2026-02-18T21:02:43.477Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So gooThis is really nice"
+[2026-02-18T21:02:43.477Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.478Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So gooThis is really nice"
+[2026-02-18T21:02:43.581Z] [Editor A] KEY: d
+[2026-02-18T21:02:43.581Z] [Editor A] KEY: d
+[2026-02-18T21:02:43.583Z] [Editor A] CHANGE: sel=46-46 steps={"stepType":"replace","from":45,"to":45,"slice":{"content":[{"type":"text","text":"d"}]}} doc="asdf Does this work as expected. Wow. So goodThis is really nice"
+[2026-02-18T21:02:43.584Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.584Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So goodThis is really nice"
+[2026-02-18T21:02:43.585Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.585Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.585Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So goodThis is really nice"
+[2026-02-18T21:02:43.586Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So goodThis is really nice"
+[2026-02-18T21:02:43.711Z] [Editor A] KEY: .
+[2026-02-18T21:02:43.712Z] [Editor A] KEY: .
+[2026-02-18T21:02:43.712Z] [Editor A] CHANGE: sel=47-47 steps={"stepType":"replace","from":46,"to":46,"slice":{"content":[{"type":"text","text":"."}]}} doc="asdf Does this work as expected. Wow. So good.This is really nice"
+[2026-02-18T21:02:43.713Z] [Editor A] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.713Z] [Editor A] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So good.This is really nice"
+[2026-02-18T21:02:43.714Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.714Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So good.This is really nice"
+[2026-02-18T21:02:43.714Z] [Editor B] REMOTE_OPS: count=1 types=insert
+[2026-02-18T21:02:43.714Z] [Editor B] AFTER_REMOTE: doc="asdf Does this work as expected. Wow. So good.This is really nice"

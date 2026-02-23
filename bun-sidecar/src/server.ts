@@ -25,8 +25,8 @@ import { projectsRoutes } from "./server-routes/projects-routes";
 import { canvasRoutes } from "./server-routes/canvas-routes";
 import { crdtRoutes } from "./server-routes/crdt-routes";
 import { authRoutes, getCurrentAuthToken, initAuthFromPersistedState } from "./server-routes/auth-routes";
-import { createCRDTRelay, createCRDTWebSocketHandler } from "@crdt/lib/server";
-import type { WSClient } from "@crdt/lib/server";
+import { createCRDTRelay, createCRDTWebSocketHandler } from "@firstloophq-demos/crdt-lib/server";
+import type { WSClient } from "@firstloophq-demos/crdt-lib/server";
 import { globalConfig } from "./storage/global-config";
 import { isWorkspaceScopedDocId } from "./lib/collab-doc-id";
 

@@ -1,6 +1,21 @@
 {
-  "name": "@crdt/lib",
+  "name": "@firstloophq-demos/crdt-lib",
   "version": "0.2.0",
+  "private": false,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "src/crdt",
+    "src/hooks",
+    "docs",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firstloophq-demos/crdt.git"
+  },
   "type": "module",
   "exports": {
     ".": "./src/crdt/index.ts",

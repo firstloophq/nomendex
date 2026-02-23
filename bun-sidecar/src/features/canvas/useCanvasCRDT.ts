@@ -16,7 +16,7 @@ import {
     type DocManager,
     type RecordOp,
     type StateVector,
-} from "@crdt/lib";
+} from "@firstloophq-demos/crdt-lib";
 import type {
     Editor,
     TLPageId,
@@ -29,8 +29,8 @@ import {
 } from "tldraw";
 import { useCollab } from "@/contexts/CollabContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
-import { buildCanvasDocId, getWorkspaceCollabScope } from "@/lib/collab-doc-id";
-import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
+import { buildCanvasDocId, getWorkspaceCollabScope } from "@-demos/crdt-lib/collab-doc-id";
+import { crdtDebugLog, summarizeOpsForDebug } from "@-demos/crdt-lib/crdt-debug";
 
 const TL_FIELD_PREFIX = "tl:";
 const DELETED_SENTINEL = "";

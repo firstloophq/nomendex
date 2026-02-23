@@ -1,4 +1,4 @@
-// Server sub-entry point: @crdt/lib/server
+// Server sub-entry point: @firstloophq-demos/crdt-lib/server
 
 // WebSocket handler
 export { createCRDTWebSocketHandler } from "./websocket-handler";
@@ -38,19 +38,6 @@ export {
   getBoardState,
 } from "./card-api";
 export type { CardApiState, CardApiResult } from "./card-api";
-
-// Core/doc helpers used by backend persistence + hydration paths
-export { receive } from "../core/lamport-clock";
-export { applyDocOperation, applySnapshotToDoc, getDoc } from "../document/doc-manager";
-export {
-  encodeRecordSnapshot,
-  decodeRecordSnapshot,
-  mergeRecordSnapshots,
-  getRecordSnapshotVersion,
-  isRecordSnapshotVersion,
-  getRecordSnapshotStateVector,
-} from "../document/snapshot";
-export type { RecordOp } from "../document/record";
 
 // Relay (sidecar pattern — bridges local handler with remote server)
 export { createCRDTRelay } from "./relay";

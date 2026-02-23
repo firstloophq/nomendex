@@ -1,5 +1,5 @@
 /**
- * Type stubs for @crdt/lib
+ * Type stubs for @firstloophq-demos/crdt-lib
  *
  * Used by tsconfig.build.json to avoid type-checking the crdt source directly,
  * which would cause prosemirror version mismatches between repos.

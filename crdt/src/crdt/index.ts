@@ -173,7 +173,6 @@ export {
   createCRDTPlugin,
   getCRDTState,
   applyRemoteOps,
-  applyRemoteSnapshot,
   undoCommand,
   redoCommand,
 } from "./prosemirror/plugin";

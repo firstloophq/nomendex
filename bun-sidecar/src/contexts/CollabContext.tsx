@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { createMultiDocTransport } from "@crdt/lib";
-import type { MultiDocTransport, AwarenessState, UserInfo, RecordOp } from "@crdt/lib";
-import type { StateVector } from "@crdt/lib";
+import { createMultiDocTransport } from "@firstloophq-demos/crdt-lib";
+import type { MultiDocTransport, AwarenessState, UserInfo, RecordOp } from "@firstloophq-demos/crdt-lib";
+import type { StateVector } from "@firstloophq-demos/crdt-lib";
 import { useTeamAuth } from "./AuthContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
-import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
+import { crdtDebugLog, summarizeOpsForDebug } from "@-demos/crdt-lib/crdt-debug";
 
 // --- Listener types ---
 
@@ -122,7 +122,7 @@ function isCollabTestRoute(): boolean {
 
 /**
  * CollabProvider connects to the local bun-sidecar CRDT WebSocket server.
- * Uses the multi-doc transport pattern from @crdt/lib with listener registries
+ * Uses the multi-doc transport pattern from @firstloophq-demos/crdt-lib with listener registries
  * and ref-counting for document subscriptions.
  */
 export function CollabProvider(props: { vaultId: string; children: React.ReactNode }) {
@@ -145,7 +145,7 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         color: generateColor(effectiveUserName || clientId),
     }), [effectiveUserName, clientId]);
 
-    // Listener registries (same pattern as CRDTProvider in @crdt/lib)
+    // Listener registries (same pattern as CRDTProvider in @firstloophq-demos/crdt-lib)
     const opsListenersRef = useRef(new Map<string, Set<OpsListener>>());
     const awarenessListenersRef = useRef(new Map<string, Set<AwarenessListener>>());
     const syncListenersRef = useRef(new Map<string, Set<SyncCompleteListener>>());

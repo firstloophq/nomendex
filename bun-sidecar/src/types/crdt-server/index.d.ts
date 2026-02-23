@@ -1,7 +1,7 @@
 /**
- * Type stubs for @crdt/lib/server
+ * Type stubs for @firstloophq-demos/crdt-lib/server
  */
-import type { RecordOp, AwarenessState, DocManager, LamportClock } from "@crdt/lib";
+import type { RecordOp, AwarenessState, DocManager, LamportClock } from "@firstloophq-demos/crdt-lib";
 
 export interface WSClient {
     readonly id: string;

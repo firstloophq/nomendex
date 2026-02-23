@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^1.0.0",
-    "@crdt/lib": "file:../crdt",
+    "@firstloophq-demos/crdt-lib": "^0.2.0",
     "@hono/zod-openapi": "^1.2.2",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",

@@ -1,11 +1,6 @@
 import { createClock, receive } from "../core/lamport-clock";
 import type { LamportClock } from "../core/lamport-clock";
-import {
-  createDocManager,
-  applyDocOperation,
-  applySnapshotToDoc,
-  getDoc,
-} from "../document/doc-manager";
+import { createDocManager, applyDocOperation } from "../document/doc-manager";
 import type { RecordOp } from "../document/record";
 import type { CardApiState } from "./card-api";
 import type { AwarenessState } from "../network/awareness";
@@ -14,11 +9,8 @@ import {
   filterMissingOps,
   decodeStateVector,
 } from "../network/state-vector";
-import {
-  encodeRecordSnapshot,
-  getRecordSnapshotVersion,
-  isRecordSnapshotVersion,
-} from "../document/snapshot";
+import { getDoc } from "../document/doc-manager";
+import { encodeRecordSnapshot } from "../document/snapshot";
 
 // --- Public interfaces ---
 
@@ -34,7 +26,6 @@ export interface CRDTWebSocketHandler {
 
   broadcastDocOps(params: { docId: string; ops: ReadonlyArray<RecordOp> }): void;
   broadcastAwareness(params: { docId: string; clientId: string; state: AwarenessState }): void;
-  broadcastSnapshot(params: { docId: string; snapshot: Uint8Array; version?: string }): void;
 
   getDocManagerState(): CardApiState;
   setDocManagerState(params: { state: CardApiState }): void;
@@ -73,7 +64,6 @@ export function createCRDTWebSocketHandler(params?: {
   const allDocOps = new Map<string, Array<RecordOp>>();
   // Base64-encoded record snapshots (checkpoints)
   const docCheckpoints = new Map<string, string>();
-  const docCheckpointVersions = new Map<string, string>();
 
   // --- Client tracking ---
   const clients = new Map<string, { client: WSClient; state: ClientState }>();
@@ -129,54 +119,6 @@ export function createCRDTWebSocketHandler(params?: {
     }
   }
 
-  function toBase64(data: Uint8Array): string {
-    return btoa(String.fromCharCode(...data));
-  }
-
-  function fromBase64(base64: string): Uint8Array {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  }
-
-  function setCheckpoint(params: { docId: string; data: Uint8Array; version?: string }): void {
-    docCheckpoints.set(params.docId, toBase64(params.data));
-    docCheckpointVersions.set(
-      params.docId,
-      params.version ?? getRecordSnapshotVersion({ data: params.data }),
-    );
-    allDocOps.delete(params.docId);
-  }
-
-  function broadcastSnapshot(broadcastParams: {
-    docId: string;
-    snapshot: Uint8Array;
-    version?: string;
-    excludeClientId?: string;
-  }): void {
-    const snapshot = toBase64(broadcastParams.snapshot);
-    const snapshotVersion = broadcastParams.version
-      ?? getRecordSnapshotVersion({ data: broadcastParams.snapshot });
-    const message = JSON.stringify({
-      type: "snapshot-publish",
-      docId: broadcastParams.docId,
-      snapshot,
-      snapshotVersion,
-    });
-
-    for (const [, entry] of clients) {
-      if (
-        entry.client.id !== broadcastParams.excludeClientId &&
-        entry.state.subscribedDocs.has(broadcastParams.docId)
-      ) {
-        entry.client.send(message);
-      }
-    }
-  }
-
   return {
     handleOpen({ client }) {
       clients.set(client.id, { client, state: { subscribedDocs: new Set() } });
@@ -195,9 +137,6 @@ export function createCRDTWebSocketHandler(params?: {
           docId?: string;
           clientId?: string;
           state?: AwarenessState;
-          snapshot?: string;
-          expectedVersion?: string;
-          mergeBias?: "local" | "remote";
         };
 
         if (!parsed.docId) return;
@@ -209,7 +148,6 @@ export function createCRDTWebSocketHandler(params?: {
 
           const existingOps = allDocOps.get(docId) ?? [];
           const checkpoint = docCheckpoints.get(docId);
-          const checkpointVersion = docCheckpointVersions.get(docId);
 
           if (parsed.stateVector && !checkpoint) {
             // Delta sync: compute missing ops (only when no checkpoint)
@@ -230,7 +168,6 @@ export function createCRDTWebSocketHandler(params?: {
               type: "sync-response",
               docId,
               snapshot: checkpoint,
-              snapshotVersion: checkpointVersion,
               ops: existingOps,
             }));
           } else {
@@ -292,54 +229,6 @@ export function createCRDTWebSocketHandler(params?: {
           });
           return;
         }
-
-        if (parsed.type === "snapshot-publish" && typeof parsed.snapshot === "string") {
-          const incoming = fromBase64(parsed.snapshot);
-          const currentRecord = getDoc({ manager: docManagerState.manager, docId });
-
-          if (parsed.expectedVersion && currentRecord) {
-            const currentBytes = encodeRecordSnapshot({ record: currentRecord });
-            if (!isRecordSnapshotVersion({
-              data: currentBytes,
-              expectedVersion: parsed.expectedVersion,
-            })) {
-              // Stale snapshot publish; rebroadcast authoritative checkpoint.
-              const checkpoint = docCheckpoints.get(docId);
-              if (checkpoint) {
-                client.send(JSON.stringify({
-                  type: "snapshot-publish",
-                  docId,
-                  snapshot: checkpoint,
-                  snapshotVersion: docCheckpointVersions.get(docId),
-                }));
-              }
-              return;
-            }
-          }
-
-          const nextManager = applySnapshotToDoc({
-            manager: docManagerState.manager,
-            docId,
-            snapshot: incoming,
-            mode: currentRecord ? "merge" : "replace",
-            mergeBias: parsed.mergeBias ?? "remote",
-          });
-          docManagerState = { ...docManagerState, manager: nextManager };
-
-          const nextRecord = getDoc({ manager: docManagerState.manager, docId });
-          if (!nextRecord) return;
-          const mergedBytes = encodeRecordSnapshot({ record: nextRecord });
-          const mergedVersion = getRecordSnapshotVersion({ data: mergedBytes });
-
-          setCheckpoint({ docId, data: mergedBytes, version: mergedVersion });
-          broadcastSnapshot({
-            docId,
-            snapshot: mergedBytes,
-            version: mergedVersion,
-          });
-
-          return;
-        }
       } catch {
         // Non-parseable messages — ignore
       }
@@ -355,10 +244,6 @@ export function createCRDTWebSocketHandler(params?: {
 
     broadcastAwareness({ docId, clientId: awarenessClientId, state }) {
       broadcastAwareness({ docId, clientId: awarenessClientId, state });
-    },
-
-    broadcastSnapshot({ docId, snapshot, version }) {
-      broadcastSnapshot({ docId, snapshot, version });
     },
 
     getDocManagerState() {
@@ -384,7 +269,12 @@ export function createCRDTWebSocketHandler(params?: {
       if (!record) return;
 
       const snapshotData = encodeRecordSnapshot({ record });
-      setCheckpoint({ docId, data: snapshotData });
+      // Store as base64 for JSON serialization
+      const base64 = btoa(String.fromCharCode(...snapshotData));
+      docCheckpoints.set(docId, base64);
+
+      // Clear ops — the snapshot contains all state
+      allDocOps.delete(docId);
     },
 
     hasCheckpoint({ docId }) {

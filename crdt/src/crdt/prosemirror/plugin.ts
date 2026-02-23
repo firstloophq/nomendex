@@ -188,26 +188,6 @@ export function applyRemoteOps(params: {
   return { state: newState };
 }
 
-export function applyRemoteSnapshot(params: {
-  state: EditorState;
-  plugin: Plugin<CRDTPluginState>;
-  snapshotDoc: CRDTDoc;
-}): { state: EditorState } {
-  const { state, plugin, snapshotDoc } = params;
-  const currentState = getCRDTState({ state, plugin });
-
-  const pmDoc = crdtToProseMirror({ doc: snapshotDoc, schema: state.schema });
-  const newPluginState: CRDTPluginState = {
-    ...currentState,
-    doc: snapshotDoc,
-    isRemoteUpdate: true,
-  };
-
-  const tr = state.tr.replaceWith(0, state.doc.content.size, pmDoc.content);
-  tr.setMeta(REMOTE_UPDATE_META, newPluginState);
-  return { state: state.apply(tr) };
-}
-
 // --- Undo/Redo Commands ---
 
 function applyUndoRedoOps(params: {

@@ -1,4 +1,4 @@
-// React/browser sub-entry point: @crdt/lib/react
+// React/browser sub-entry point: @firstloophq-demos/crdt-lib/react
 
 // Context provider
 export { CRDTProvider, colorForClient } from "../hooks/CRDTProvider";
