@@ -4,8 +4,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "debug": ["./src/polyfills/debug.ts"],
-      "@firstloophq-demos/crdt-lib": ["./src/types/crdt-lib"],
-      "@firstloophq-demos/crdt-lib/server": ["./src/types/crdt-server"]
+      "@crdt/lib": ["./src/types/crdt-lib"],
+      "@crdt/lib/server": ["./src/types/crdt-server"]
     }
   }
 }

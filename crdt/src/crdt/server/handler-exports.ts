@@ -1,4 +1,4 @@
-// Server sub-entry point: @firstloophq-demos/crdt-lib/server
+// Server sub-entry point: @crdt/lib/server
 
 // WebSocket handler
 export { createCRDTWebSocketHandler } from "./websocket-handler";

@@ -1,10 +1,10 @@
-# @firstloophq-demos/crdt-lib API Reference
+# @crdt/lib API Reference
 
 Quick reference for all public exports across the three entry points.
 
 ---
 
-## `@firstloophq-demos/crdt-lib` — Core
+## `@crdt/lib` — Core
 
 Everything needed to work with CRDT data structures. No React or ProseMirror dependency.
 
@@ -203,7 +203,7 @@ collectGarbage(params: { doc: CRDTDoc; peerStateVectors: ReadonlyArray<StateVect
 
 ---
 
-## `@firstloophq-demos/crdt-lib/server` — Server
+## `@crdt/lib/server` — Server
 
 ### WebSocket Handler
 
@@ -365,7 +365,7 @@ interface CRDTRelay {
 
 ---
 
-## `@firstloophq-demos/crdt-lib/react` — Browser / React
+## `@crdt/lib/react` — Browser / React
 
 ### CRDTProvider
 

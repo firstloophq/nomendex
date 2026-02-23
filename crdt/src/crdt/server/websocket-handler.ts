@@ -26,6 +26,7 @@ export interface CRDTWebSocketHandler {
 
   broadcastDocOps(params: { docId: string; ops: ReadonlyArray<RecordOp> }): void;
   broadcastAwareness(params: { docId: string; clientId: string; state: AwarenessState }): void;
+  broadcastSnapshot(params: { docId: string; snapshot: Uint8Array; version?: string }): void;
 
   getDocManagerState(): CardApiState;
   setDocManagerState(params: { state: CardApiState }): void;
@@ -108,6 +109,30 @@ export function createCRDTWebSocketHandler(params?: {
       docId: broadcastParams.docId,
       clientId: broadcastParams.clientId,
       state: broadcastParams.state,
+    });
+    for (const [, entry] of clients) {
+      if (
+        entry.client.id !== broadcastParams.excludeClientId &&
+        entry.state.subscribedDocs.has(broadcastParams.docId)
+      ) {
+        entry.client.send(message);
+      }
+    }
+  }
+
+  function broadcastSnapshot(broadcastParams: {
+    docId: string;
+    snapshot: Uint8Array;
+    version?: string;
+    excludeClientId?: string;
+  }): void {
+    const snapshotBase64 = btoa(String.fromCharCode(...broadcastParams.snapshot));
+    const message = JSON.stringify({
+      type: "sync-response",
+      docId: broadcastParams.docId,
+      snapshot: snapshotBase64,
+      ops: [],
+      version: broadcastParams.version,
     });
     for (const [, entry] of clients) {
       if (
@@ -244,6 +269,10 @@ export function createCRDTWebSocketHandler(params?: {
 
     broadcastAwareness({ docId, clientId: awarenessClientId, state }) {
       broadcastAwareness({ docId, clientId: awarenessClientId, state });
+    },
+
+    broadcastSnapshot({ docId, snapshot, version }) {
+      broadcastSnapshot({ docId, snapshot, version });
     },
 
     getDocManagerState() {

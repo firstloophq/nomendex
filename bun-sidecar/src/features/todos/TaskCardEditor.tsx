@@ -14,7 +14,7 @@ import { parseDateFromInput, toLocalDateString, parseLocalDateString } from "@/f
 import { Todo } from "./todo-types";
 import type { Attachment } from "@/types/attachments";
 import { AttachmentThumbnail } from "@/components/AttachmentThumbnail";
-import type { UserInfo } from "@firstloophq-demos/crdt-lib";
+import type { UserInfo } from "@crdt/lib";
 
 interface TaskCardEditorProps {
     todo: Todo | null;

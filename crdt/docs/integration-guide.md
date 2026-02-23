@@ -1,4 +1,4 @@
-# @firstloophq-demos/crdt-lib Integration Guide
+# @crdt/lib Integration Guide
 
 A TypeScript CRDT library for collaborative editing and real-time data sync. Designed to work with ProseMirror editors, kanban boards, or any application needing conflict-free replicated data.
 
@@ -7,17 +7,17 @@ A TypeScript CRDT library for collaborative editing and real-time data sync. Des
 Add the package from GitHub Packages:
 
 ```bash
-bun add @firstloophq-demos/crdt-lib@^0.2.0
+bun add /lib:../crdt
 ```
 
 Configure scoped registry auth in your consumer's `.npmrc`:
 
 ```ini
-@firstloophq-demos:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+/lib is linked locally from ../crdt
+No registry auth required for local file dependency
 ```
 
-Export `GITHUB_TOKEN` in your shell/CI before install.
+No token required for local file dependency.
 
 > **Note:** The library exports raw `.ts` files (no build step). Your consuming project must support TypeScript resolution. Bun handles this natively.
 
@@ -27,9 +27,9 @@ The library exposes three entry points:
 
 | Import | Use Case |
 |--------|----------|
-| `@firstloophq-demos/crdt-lib` | Core CRDT types, operations, data structures |
-| `@firstloophq-demos/crdt-lib/server` | WebSocket handler, document API, card API |
-| `@firstloophq-demos/crdt-lib/react` | React hooks, ProseMirror plugin, browser transport |
+| `@crdt/lib` | Core CRDT types, operations, data structures |
+| `@crdt/lib/server` | WebSocket handler, document API, card API |
+| `@crdt/lib/react` | React hooks, ProseMirror plugin, browser transport |
 
 ProseMirror and React are **optional peer dependencies** — server-only consumers don't need them installed.
 
@@ -78,7 +78,7 @@ When `snapshot` is present in a sync-response, the client decodes it via `decode
 ### 1. Create the WebSocket handler
 
 ```typescript
-import { createCRDTWebSocketHandler } from "@firstloophq-demos/crdt-lib/server";
+import { createCRDTWebSocketHandler } from "@crdt/lib/server";
 
 const handler = createCRDTWebSocketHandler({
   serverClientId: "my-server", // optional, defaults to "server"
@@ -190,8 +190,8 @@ Important: `WSClient.id` is the server's internal connection key. It must be uni
 The handler exposes state accessors for building REST APIs. All documents use the same pattern:
 
 ```typescript
-import { getDocumentText, createEmptyDocument, getDoc, applyDocOperation } from "@firstloophq-demos/crdt-lib";
-import { editDocument, listSuggestions } from "@firstloophq-demos/crdt-lib/server";
+import { getDocumentText, createEmptyDocument, getDoc, applyDocOperation } from "@crdt/lib";
+import { editDocument, listSuggestions } from "@crdt/lib/server";
 
 const COLLAB_DOC_ID = "__collab__";
 
@@ -227,7 +227,7 @@ app.post("/api/doc/edit", async (req) => {
 
 // Kanban board state
 app.get("/api/board", () => {
-  const { getBoardState } = require("@firstloophq-demos/crdt-lib/server");
+  const { getBoardState } = require("@crdt/lib/server");
   return getBoardState({ manager: handler.getDocManagerState().manager });
 });
 ```
@@ -251,7 +251,7 @@ app.get("/api/doc/ops", (req) => {
 The `CRDTProvider` creates a single WebSocket connection shared by all components. Every hook and component that needs CRDT access must be a descendant of this provider.
 
 ```tsx
-import { CRDTProvider } from "@firstloophq-demos/crdt-lib/react";
+import { CRDTProvider } from "@crdt/lib/react";
 
 function App() {
   return (
@@ -283,7 +283,7 @@ The provider handles:
 ### 2. Use hooks to access CRDT context
 
 ```tsx
-import { useCRDT, useClientId, useTransport } from "@firstloophq-demos/crdt-lib/react";
+import { useCRDT, useClientId, useTransport } from "@crdt/lib/react";
 
 function MyComponent() {
   // Full context — all CRDT operations
@@ -311,8 +311,8 @@ function MyComponent() {
 The `subscribeDoc` function returns an unsubscribe function — perfect for React cleanup:
 
 ```tsx
-import { useCRDT } from "@firstloophq-demos/crdt-lib/react";
-import { applyDocOperation, createDocManager } from "@firstloophq-demos/crdt-lib";
+import { useCRDT } from "@crdt/lib/react";
+import { applyDocOperation, createDocManager } from "@crdt/lib";
 
 function MyDocViewer({ docId }: { docId: string }) {
   const { subscribeDoc } = useCRDT();
@@ -345,7 +345,7 @@ function MyDocViewer({ docId }: { docId: string }) {
 Generic presence hooks that work with any UI — not just kanban. Both hooks accept an optional `boardDocId` to target a specific board's awareness channel (defaults to `BOARD_DOC_ID`):
 
 ```tsx
-import { usePresenceByDoc, useSendPresence } from "@firstloophq-demos/crdt-lib/react";
+import { usePresenceByDoc, useSendPresence } from "@crdt/lib/react";
 
 function CardList() {
   // Map<docId, UserInfo[]> — who's viewing which document
@@ -382,7 +382,7 @@ function CardList() {
 The `CRDTEditor` component uses the context automatically — just render it inside `CRDTProvider`:
 
 ```tsx
-import { CRDTProvider } from "@firstloophq-demos/crdt-lib/react";
+import { CRDTProvider } from "@crdt/lib/react";
 // CRDTEditor is an app-level component, not exported from the library
 import { CRDTEditor } from "./components/CRDTEditor";
 
@@ -482,7 +482,7 @@ fetch(req, server) {
 The `useKanbanCRDT` hook manages all CRDT state client-side with zero REST polling. It **must** be used inside `CRDTProvider`. Accepts an optional `boardDocId` for multi-board setups:
 
 ```tsx
-import { CRDTProvider, useKanbanCRDT } from "@firstloophq-demos/crdt-lib/react";
+import { CRDTProvider, useKanbanCRDT } from "@crdt/lib/react";
 
 function App() {
   return (
@@ -540,8 +540,8 @@ function KanbanBoard() {
 For non-React or custom use cases, `createMultiDocTransport` is still available directly:
 
 ```typescript
-import { createMultiDocTransport } from "@firstloophq-demos/crdt-lib/react";
-import { createDocManager, applyDocOperation } from "@firstloophq-demos/crdt-lib";
+import { createMultiDocTransport } from "@crdt/lib/react";
+import { createDocManager, applyDocOperation } from "@crdt/lib";
 
 let manager = createDocManager();
 
@@ -590,7 +590,7 @@ For the architecture where a desktop app has a Bun sidecar that acts as a WS ser
 Use `createCRDTRelay` — it wires up a local handler + upstream transport with echo prevention built in:
 
 ```typescript
-import { createCRDTRelay } from "@firstloophq-demos/crdt-lib/server";
+import { createCRDTRelay } from "@crdt/lib/server";
 
 const relay = createCRDTRelay({
   remoteUrl: "ws://central-server:1212/ws",
@@ -661,7 +661,7 @@ import {
   missingFromRecordSnapshot,
   applySnapshotToDoc,
   getDoc,
-} from "@firstloophq-demos/crdt-lib";
+} from "@crdt/lib";
 
 // Save a record to disk / database
 const record = getDoc({ manager, docId: "my-doc" });
@@ -749,7 +749,7 @@ import {
   createEmptyDocument,
   applyOperation,
   getDocumentText,
-} from "@firstloophq-demos/crdt-lib";
+} from "@crdt/lib";
 ```
 
 ### CRDTRecord
@@ -768,7 +768,7 @@ import {
   getField,
   getSetField,
   getBodyText,
-} from "@firstloophq-demos/crdt-lib";
+} from "@crdt/lib";
 ```
 
 ### DocManager
@@ -781,7 +781,7 @@ import {
   applyDocOperation,
   getDoc,
   BOARD_DOC_ID,
-} from "@firstloophq-demos/crdt-lib";
+} from "@crdt/lib";
 ```
 
 ---

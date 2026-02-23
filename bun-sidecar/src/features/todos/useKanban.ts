@@ -13,18 +13,18 @@ import {
     removeCardTags,
     removeColumn,
     updateCardFields,
-} from "@firstloophq-demos/crdt-lib";
-import type { CardApiResult, DocManager, LamportClock, RecordOp, UserInfo } from "@firstloophq-demos/crdt-lib";
+} from "@crdt/lib";
+import type { CardApiResult, DocManager, LamportClock, RecordOp, UserInfo } from "@crdt/lib";
 import { useCollab } from "@/contexts/CollabContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { todosAPI } from "@/hooks/useTodosAPI";
-import { crdtDebugLog, summarizeOpsForDebug } from "@-demos/crdt-lib/crdt-debug";
+import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
 import {
     buildKanbanBoardDocId,
     buildKanbanCardDocId,
     getWorkspaceCollabScope,
     todoIdFromKanbanCardDocId,
-} from "@-demos/crdt-lib/collab-doc-id";
+} from "@/lib/collab-doc-id";
 import type { Attachment } from "@/types/attachments";
 import type { Todo } from "./todo-types";
 

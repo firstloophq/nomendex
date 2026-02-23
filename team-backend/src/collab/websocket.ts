@@ -1,7 +1,6 @@
 import {
   applyDocOperation,
   applySnapshotToDoc,
-  createCRDTWebSocketHandler,
   decodeRecordSnapshot,
   encodeRecordSnapshot,
   getDoc,
@@ -9,8 +8,11 @@ import {
   mergeRecordSnapshots,
   receive,
   type RecordOp,
+} from "@crdt/lib";
+import {
+  createCRDTWebSocketHandler,
   type WSClient,
-} from "@firstloophq-demos/crdt-lib/server";
+} from "@crdt/lib/server";
 import { upgradeWebSocket } from "hono/bun";
 import type { Context } from "hono";
 import { authenticateBearerToken, type AuthIdentity } from "../auth";

@@ -8,16 +8,16 @@ import {
     getFields,
     increment,
     receive,
-} from "@firstloophq-demos/crdt-lib";
-import type { DocManager, FieldOp, LamportClock, RecordOp } from "@firstloophq-demos/crdt-lib";
+} from "@crdt/lib";
+import type { DocManager, FieldOp, LamportClock, RecordOp } from "@crdt/lib";
 import { useCollab } from "@/contexts/CollabContext";
 import { useWorkspaceSwitcher } from "@/hooks/useWorkspaceSwitcher";
 import { notesAPI } from "@/hooks/useNotesAPI";
-import { crdtDebugLog, summarizeOpsForDebug } from "@-demos/crdt-lib/crdt-debug";
+import { crdtDebugLog, summarizeOpsForDebug } from "@/lib/crdt-debug";
 import {
     buildFileIndexDocId,
     getWorkspaceCollabScope,
-} from "@-demos/crdt-lib/collab-doc-id";
+} from "@/lib/collab-doc-id";
 
 // --- Constants ---
 
