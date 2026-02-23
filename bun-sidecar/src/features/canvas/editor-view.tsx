@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useCanvasCRDT } from "./useCanvasCRDT";
 import type { CanvasItem } from "./index";
+import { subscribe } from "@/lib/events";
+import { toast } from "sonner";
 
 interface CanvasEditorViewProps {
     canvasId: string;
@@ -48,6 +50,7 @@ export function CanvasEditorView(props: CanvasEditorViewProps) {
         remoteCollaborators,
         followedCollaboratorId,
         followCollaborator,
+        hardResetCrdtPreserveContent,
     } = useCanvasCRDT({ canvasId });
 
     useEffect(() => {
@@ -80,6 +83,19 @@ export function CanvasEditorView(props: CanvasEditorViewProps) {
         if (activeTab?.id !== tabId) return;
         setTabName(tabId, canvas.title);
     }, [activeTab?.id, canvas, setTabName, tabId]);
+
+    useEffect(() => {
+        return subscribe("canvas:hardResetCrdt", async ({ canvasId: targetCanvasId }) => {
+            if (targetCanvasId !== canvasId) return;
+            try {
+                await hardResetCrdtPreserveContent();
+                toast("CRDT state reset and content re-seeded for this canvas.");
+            } catch (error) {
+                console.error("Failed to hard reset canvas CRDT state:", error);
+                toast("Failed to hard reset CRDT state");
+            }
+        });
+    }, [canvasId, hardResetCrdtPreserveContent]);
 
     const persistTitle = useCallback(async (nextTitle: string) => {
         const trimmed = nextTitle.trim();

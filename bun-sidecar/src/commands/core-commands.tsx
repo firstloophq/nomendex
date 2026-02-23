@@ -8,7 +8,7 @@ import { WorkspaceTab } from "@/types/Workspace";
 import { notesAPI } from "@/hooks/useNotesAPI";
 import { todosAPI } from "@/hooks/useTodosAPI";
 import { logsAPI } from "@/hooks/useLogsAPI";
-import { dispatchRefresh } from "@/lib/events";
+import { dispatchRefresh, emit } from "@/lib/events";
 import { useCommandDialog } from "@/components/CommandDialogProvider";
 import { useNativeSubmit } from "@/hooks/useNativeKeyboardBridge";
 
@@ -367,6 +367,27 @@ export function getCoreCommands(context: CoreCommandContext): Command[] {
                 // For now, this command works best when triggered from notes editor
                 // Todo support would need additional context about which todo is selected
                 console.log("Tags command: Not on a supported view (notes editor)");
+            },
+        },
+        {
+            id: "core.canvasHardResetCrdt",
+            name: "Hard Reset CRDT (Current Canvas)",
+            description: "Clear CRDT state for this canvas across peers and local snapshot cache",
+            icon: "RotateCcw",
+            when: {
+                activePluginId: "canvas",
+                activeViewId: "editor",
+            },
+            callback: () => {
+                context.closeCommandMenu();
+
+                const canvasId = context.activeTab?.pluginInstance?.instanceProps?.canvasId as string;
+                if (!canvasId) {
+                    console.error("No canvas id found in active tab");
+                    return;
+                }
+
+                emit("canvas:hardResetCrdt", { canvasId });
             },
         },
         {

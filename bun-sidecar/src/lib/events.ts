@@ -77,6 +77,9 @@ export interface AppEventMap {
     "notes:runSpellcheck": Record<string, never>;
     "notes:clearSpellcheck": Record<string, never>;
     "notes:openSearch": Record<string, never>;
+
+    // Canvas editor events
+    "canvas:hardResetCrdt": { canvasId: string };
 }
 
 type AppEventType = keyof AppEventMap;

@@ -428,6 +428,7 @@ export function NotesView(props: NotesViewProps) {
 
     const editorRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
+    const crdtPluginRef = useRef<Plugin<CRDTPluginState> | null>(null);
     const toolbarContainerRef = useRef<HTMLDivElement>(null);
     const scrollRef = useTabScrollPersistence(tabId);
     const { saveCursor, restoreCursor } = useTabCursorPersistence(tabId);
@@ -714,6 +715,64 @@ export function NotesView(props: NotesViewProps) {
         view.focus();
     }, []);
 
+    const publishCurrentNoteSnapshotNow = useCallback(async (params?: {
+        mergeBias?: "local" | "remote";
+    }) => {
+        if (!collab) return;
+        const view = viewRef.current;
+        const crdtPlugin = crdtPluginRef.current;
+        if (!view || view.isDestroyed || !crdtPlugin) return;
+
+        const pluginState = getCRDTState({
+            state: view.state,
+            plugin: crdtPlugin,
+        });
+        const pluginDoc = pluginState.doc as {
+            appliedOps: ReadonlySet<string>;
+            stateVector: ReadonlyMap<string, number>;
+        };
+        const record = {
+            fields: new Map<string, unknown>(),
+            sets: new Map<string, unknown>(),
+            body: pluginDoc as unknown,
+            appliedOps: new Set(pluginDoc.appliedOps),
+            stateVector: new Map(pluginDoc.stateVector),
+        };
+        const snapshot = encodeRecordSnapshot({ record: record as any });
+        const snapshotVersion = getRecordSnapshotVersion({ data: snapshot });
+        const stateVector = Object.fromEntries(record.stateVector);
+
+        await fetch("/api/crdt/note-snapshot/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                docId: collabDocId,
+                snapshot: encodeBase64Bytes(snapshot),
+                meta: {
+                    docId: collabDocId,
+                    snapshotVersion,
+                    updatedAt: new Date().toISOString(),
+                    stateVector,
+                    source: "local",
+                    lastKnownBackendVersion: backendSnapshotVersionRef.current ?? undefined,
+                },
+            }),
+        });
+
+        collab.sendSnapshot({
+            docId: collabDocId,
+            snapshot,
+            expectedVersion: backendSnapshotVersionRef.current ?? undefined,
+            mergeBias: params?.mergeBias ?? "remote",
+        });
+
+        localSnapshotSeedRef.current = {
+            bytes: snapshot,
+            version: snapshotVersion,
+            stateVector: new Map(pluginDoc.stateVector),
+        };
+    }, [collab, collabDocId]);
+
     // Subscribe to clear content events for test/editor automation flows.
     useEffect(() => {
         return subscribe("notes:clearContent", ({ noteFileName: targetFileName }) => {
@@ -752,13 +811,14 @@ export function NotesView(props: NotesViewProps) {
                 localSnapshotSeedRef.current = null;
                 backendSnapshotVersionRef.current = null;
                 replaceEditorWithMarkdown(preservedMarkdown);
+                await publishCurrentNoteSnapshotNow({ mergeBias: "local" });
                 toast("CRDT state reset and content re-seeded for this note.");
             } catch (error) {
                 console.error("Failed to hard reset CRDT note state:", error);
                 toast("Failed to hard reset CRDT state");
             }
         });
-    }, [collab, collabDocId, content, noteFileName, replaceEditorWithMarkdown]);
+    }, [collab, collabDocId, content, noteFileName, publishCurrentNoteSnapshotNow, replaceEditorWithMarkdown]);
 
     // Subscribe to run spellcheck events
     useEffect(() => {
@@ -1522,6 +1582,9 @@ export function NotesView(props: NotesViewProps) {
                 },
             });
             cursorPlugin = createCollabCursorPlugin({ localClientId: collab.clientId });
+            crdtPluginRef.current = crdtPlugin;
+        } else {
+            crdtPluginRef.current = null;
         }
 
         // CRDT undo/redo keymap (replaces default history in collab mode)
@@ -2422,6 +2485,7 @@ export function NotesView(props: NotesViewProps) {
         const toolbarContainer = toolbarContainerRef.current;
 
         return () => {
+            crdtPluginRef.current = null;
             if (snapshotPersistTimer) {
                 clearTimeout(snapshotPersistTimer);
                 snapshotPersistTimer = null;

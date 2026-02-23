@@ -221,6 +221,12 @@ function objectToStateVector(value: Record<string, number> | undefined): StateVe
     return sv.size > 0 ? sv : null;
 }
 
+function fieldNameToRecordId(fieldName: string): string | null {
+    if (!fieldName.startsWith(TL_FIELD_PREFIX)) return null;
+    const recordId = fieldName.slice(TL_FIELD_PREFIX.length);
+    return recordId.length > 0 ? recordId : null;
+}
+
 export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }) {
     const { canvasId, forceLocal = false } = params;
     const collab = useCollab();
@@ -1472,6 +1478,129 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         };
     }, [cancelNextFrame, clearRemotePresenceRecords]);
 
+    const hardResetCrdtPreserveContent = useCallback(async () => {
+        const ed = editorRef.current;
+        if (!ed) {
+            throw new Error("Canvas editor is not ready");
+        }
+        if (!collabEnabled || !collab?.sendOps) {
+            throw new Error("CRDT hard reset is only available in team mode");
+        }
+
+        const preservedFields = buildFieldMapFromEditor(ed);
+        const preservedRecords: Array<Record<string, unknown>> = [];
+        for (const value of preservedFields.values()) {
+            try {
+                preservedRecords.push(JSON.parse(value) as Record<string, unknown>);
+            } catch {
+                // Ignore malformed serialized records.
+            }
+        }
+
+        const response = await fetch("/api/crdt/canvas-snapshot/hard-reset", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ docId }),
+        });
+        if (!response.ok) {
+            const payload = await response.json().catch(() => null) as { error?: string; details?: string | null } | null;
+            throw new Error(payload?.error || payload?.details || `HTTP ${response.status}`);
+        }
+
+        if (flushSendTimerRef.current !== null) {
+            clearTimeout(flushSendTimerRef.current);
+            flushSendTimerRef.current = null;
+        }
+        if (flushRemoteTimerRef.current !== null) {
+            cancelNextFrame(flushRemoteTimerRef.current);
+            flushRemoteTimerRef.current = null;
+        }
+        if (localSaveTimerRef.current !== null) {
+            clearTimeout(localSaveTimerRef.current);
+            localSaveTimerRef.current = null;
+        }
+        pendingSendOpsRef.current = [];
+        pendingRemoteOpsRef.current = [];
+
+        let manager = createDocManager();
+        let clock = createClock({ clientId });
+        const seedOps: FieldOp[] = [];
+        for (const [fieldName, value] of preservedFields) {
+            const next = incrementClock(clock);
+            clock = next.clock;
+            const op: FieldOp = {
+                type: "field",
+                id: createFieldOpId({ clientId, clock: next.timestamp.clock }),
+                fieldName,
+                value,
+                timestamp: next.timestamp,
+            };
+            seedOps.push(op);
+            manager = applyDocOperation({ manager, docId, op });
+        }
+
+        stateRef.current = { manager, clock };
+        mirroredFieldsRef.current = new Map(preservedFields);
+        localSnapshotVersionRef.current = null;
+        backendSnapshotVersionRef.current = null;
+        localSeedSnapshotRef.current = null;
+        restoredStateVectorRef.current = null;
+
+        const currentFields = buildFieldMapFromEditor(ed);
+        const toRemoveIds: string[] = [];
+        for (const fieldName of currentFields.keys()) {
+            if (preservedFields.has(fieldName)) continue;
+            const recordId = fieldNameToRecordId(fieldName);
+            if (recordId) toRemoveIds.push(recordId);
+        }
+
+        isApplyingRemoteRef.current = true;
+        try {
+            ed.store.mergeRemoteChanges(() => {
+                if (toRemoveIds.length > 0) {
+                    ed.store.remove(toRemoveIds as Parameters<typeof ed.store.remove>[0]);
+                }
+                if (preservedRecords.length > 0) {
+                    ed.store.put(preservedRecords as unknown as Parameters<typeof ed.store.put>[0]);
+                }
+            });
+        } finally {
+            isApplyingRemoteRef.current = false;
+        }
+
+        if (seedOps.length > 0) {
+            collab.sendOps({ docId, ops: seedOps });
+        }
+
+        await persistSnapshotNow({
+            source: "local",
+            publish: true,
+            finalizeEditing: true,
+        });
+
+        didSyncRef.current = true;
+        setIsSynced(true);
+
+        crdtDebugLog({
+            event: "canvas_hard_reset_reseeded",
+            data: {
+                canvasId,
+                docId,
+                seedOpCount: seedOps.length,
+                preservedRecordCount: preservedRecords.length,
+            },
+        });
+    }, [
+        buildFieldMapFromEditor,
+        canvasId,
+        cancelNextFrame,
+        clientId,
+        collab,
+        collabEnabled,
+        docId,
+        persistSnapshotNow,
+    ]);
+
     return {
         docId,
         collabEnabled,
@@ -1481,5 +1610,6 @@ export function useCanvasCRDT(params: { canvasId: string; forceLocal?: boolean }
         followedCollaboratorId,
         followCollaborator,
         handleMount,
+        hardResetCrdtPreserveContent,
     };
 }

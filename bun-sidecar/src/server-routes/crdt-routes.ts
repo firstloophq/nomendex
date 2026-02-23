@@ -168,4 +168,40 @@ export const crdtRoutes = {
             return Response.json({ snapshots });
         },
     },
+    "/api/crdt/canvas-snapshot/hard-reset": {
+        async POST(req: Request) {
+            const args = (await req.json()) as { docId?: string };
+            const docId = args.docId?.trim();
+            if (!docId) {
+                return Response.json({ error: "docId is required" }, { status: 400 });
+            }
+
+            await deleteCanvasSnapshot({ docId });
+
+            const token = await getCurrentAuthToken();
+            if (!token) {
+                return Response.json({ error: "Not authenticated" }, { status: 401 });
+            }
+
+            const teamBackendUrl = resolveTeamBackendHttpUrl();
+            const response = await fetch(`${teamBackendUrl}/api/collab/reset-doc`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ docId }),
+            });
+
+            if (!response.ok) {
+                const payload = await response.text().catch(() => "");
+                return Response.json({
+                    error: `Backend hard reset failed (${response.status})`,
+                    details: payload || null,
+                }, { status: response.status });
+            }
+
+            return Response.json({ success: true });
+        },
+    },
 };
