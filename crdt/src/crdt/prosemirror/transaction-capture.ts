@@ -10,6 +10,7 @@ import {
   createAttrUpdateOp,
   createReparentOp,
   createOperationId,
+  operationIdEquals,
   type Operation,
   type OperationId,
   type BlockContent,
@@ -314,10 +315,38 @@ function handleReplaceStep(params: {
         parentId = result.lastItemId;
       } else {
         // Continuation of existing block — insert inline content only
+        let inlineParentId = parentId;
+        let inlineRightAnchor = rightAnchorId;
+        const contextItem = contextBlockId
+          ? crdtDoc.store.map.get(`${contextBlockId.clientId}:${contextBlockId.clock}`)
+          : null;
+        const parentItem = inlineParentId
+          ? crdtDoc.store.map.get(`${inlineParentId.clientId}:${inlineParentId.clock}`)
+          : null;
+        const rightAnchorItem = inlineRightAnchor
+          ? crdtDoc.store.map.get(`${inlineRightAnchor.clientId}:${inlineRightAnchor.clock}`)
+          : null;
+
+        // Heading input-rule conversions can leave the insertion anchor pointing at
+        // an adjacent paragraph block. Force inline continuation into the heading block.
+        if (
+          contextItem
+          && contextItem.content.type === "block"
+          && contextItem.content.blockType === "heading"
+          && parentItem
+          && parentItem.content.type === "block"
+          && !operationIdEquals({ a: parentItem.id, b: contextItem.id })
+        ) {
+          inlineParentId = contextItem.id;
+          if (rightAnchorItem && rightAnchorItem.content.type === "block" && !operationIdEquals({ a: rightAnchorItem.id, b: contextItem.id })) {
+            inlineRightAnchor = null;
+          }
+        }
+
         const result = insertInlineContent({
           node,
-          parentId,
-          rightAnchor: rightAnchorId,
+          parentId: inlineParentId,
+          rightAnchor: inlineRightAnchor,
           clock,
         });
         ops.push(...result.ops);
@@ -327,10 +356,37 @@ function handleReplaceStep(params: {
     }
   } else {
     // Simple inline insertion (no blocks)
+    let inlineParentId = parentId;
+    let inlineRightAnchor = rightAnchorId;
+    const contextItem = contextBlockId
+      ? crdtDoc.store.map.get(`${contextBlockId.clientId}:${contextBlockId.clock}`)
+      : null;
+    const parentItem = inlineParentId
+      ? crdtDoc.store.map.get(`${inlineParentId.clientId}:${inlineParentId.clock}`)
+      : null;
+    const rightAnchorItem = inlineRightAnchor
+      ? crdtDoc.store.map.get(`${inlineRightAnchor.clientId}:${inlineRightAnchor.clock}`)
+      : null;
+
+    // Same guard for plain-text insertion path after heading conversion.
+    if (
+      contextItem
+      && contextItem.content.type === "block"
+      && contextItem.content.blockType === "heading"
+      && parentItem
+      && parentItem.content.type === "block"
+      && !operationIdEquals({ a: parentItem.id, b: contextItem.id })
+    ) {
+      inlineParentId = contextItem.id;
+      if (rightAnchorItem && rightAnchorItem.content.type === "block" && !operationIdEquals({ a: rightAnchorItem.id, b: contextItem.id })) {
+        inlineRightAnchor = null;
+      }
+    }
+
     const result = insertInlineContentFromSlice({
       slice,
-      parentId,
-      rightAnchor: rightAnchorId,
+      parentId: inlineParentId,
+      rightAnchor: inlineRightAnchor,
       clock,
     });
     ops.push(...result.ops);
@@ -481,13 +537,22 @@ function handleReplaceAroundStep(params: {
     // Wrapping: insert the full wrapper chain (e.g. bullet_list -> list_item)
     // and then reparent the preserved gap blocks into the deepest wrapper.
     if (topWrapperNode && topWrapperNode.isBlock) {
+      const insertPos = proseMirrorPositionToCRDT({ doc: crdtDoc, pos: from, schema });
       if (topWrapperNode.type.name === "heading" && gapFrom === gapTo) {
-        const existingTopLevelParagraph = crdtDoc.store.items.find((item) => {
-          if (item.deleted || item.content.type !== "block") return false;
-          if (item.content.blockType !== "paragraph") return false;
-          return !item.content.parentBlockId;
-        });
-        if (existingTopLevelParagraph) {
+        const candidatePositions = [gapFrom, from, Math.max(0, to - 1)];
+        const paragraphToReplace = candidatePositions
+          .map((pos) => proseMirrorPositionToCRDT({ doc: crdtDoc, pos, schema }).blockId)
+          .find((blockId): blockId is OperationId => {
+            if (!blockId) return false;
+            const key = `${blockId.clientId}:${blockId.clock}`;
+            const item = crdtDoc.store.map.get(key);
+            return !!item
+              && !item.deleted
+              && item.content.type === "block"
+              && item.content.blockType === "paragraph";
+          });
+
+        if (paragraphToReplace) {
           const { clock: delClock, timestamp: delTs } = increment({ clock });
           clock = delClock;
           ops.push(createDeleteOp({
@@ -495,12 +560,10 @@ function handleReplaceAroundStep(params: {
               clientId: delTs.clientId,
               clock: delTs.clock,
             }),
-            targetId: existingTopLevelParagraph.id,
+            targetId: paragraphToReplace,
           }));
         }
       }
-
-      const insertPos = proseMirrorPositionToCRDT({ doc: crdtDoc, pos: from, schema });
       const wrapperChain = collectReplaceAroundWrapperChain(topWrapperNode);
       ensureImplicitListItemWrapper({ wrapperChain, schema });
 

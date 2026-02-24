@@ -37,6 +37,22 @@ describe("prosemirror collab regressions", () => {
         expect(a.normalizedMarkdown).toContain("# Test");
     });
 
+    it("heading input rule after paragraph keeps heading text on same line", async () => {
+        currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
+        await currentHarness.runSteps([
+            ...keys("A", "Okay now this is synced..."),
+            { actor: "A", key: "Enter" },
+            { actor: "A", key: "Enter" },
+            ...keys("A", "#"),
+            { actor: "A", key: "Space" },
+            ...keys("A", "This is a test"),
+        ]);
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toContain("# This is a test");
+        expect(a.normalizedMarkdown).not.toContain("# \n");
+    });
+
     it("does not promote # to heading inside ordered list items", async () => {
         currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
         await currentHarness.runSteps([
