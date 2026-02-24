@@ -9,13 +9,14 @@ import {
   readSnapshotBytes,
   writeSnapshotBytes,
 } from "./snapshot-store";
+import { logInfo, logWarn } from "../observability/logger";
 
 function logCollabPersistenceInfo(event: string, data: Record<string, unknown>): void {
-  console.info(`[COLLAB-PERSISTENCE] ${event} ${JSON.stringify(data)}`);
+  logInfo(`collab.persistence.${event}`, data);
 }
 
 function logCollabPersistenceWarn(event: string, data: Record<string, unknown>): void {
-  console.warn(`[COLLAB-PERSISTENCE] ${event} ${JSON.stringify(data)}`);
+  logWarn(`collab.persistence.${event}`, data);
 }
 
 async function getOrCreateCollabDoc(params: {

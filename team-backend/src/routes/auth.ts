@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createClerkClient } from "@clerk/backend";
 import { prisma } from "../db";
 import { verifyJWT } from "../auth";
+import { logError } from "../observability/logger";
 
 const app = new Hono();
 
@@ -268,7 +269,9 @@ app.post("/exchange", async (c) => {
       sessionStatus: session.status,
     });
   } catch (err) {
-    console.error("[auth/exchange] Clerk API error:", err instanceof Error ? err.message : String(err));
+    logError("auth_exchange_failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
     return c.json({ error: "Failed to exchange code" }, 500);
   }
 });
@@ -299,7 +302,9 @@ app.post("/refresh", async (c) => {
 
     return c.json({ jwt, expiresAt });
   } catch (err) {
-    console.error("[auth/refresh] Error:", err instanceof Error ? err.message : String(err));
+    logError("auth_refresh_failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
     return c.json({ error: "Failed to refresh token" }, 401);
   }
 });
@@ -320,7 +325,9 @@ app.post("/revoke", async (c) => {
     await clerkClient.sessions.revokeSession(clerkSessionId);
     return c.json({ success: true });
   } catch (err) {
-    console.error("[auth/revoke] Error:", err instanceof Error ? err.message : String(err));
+    logError("auth_revoke_failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
     // Return success even if revoke fails (session may already be expired)
     return c.json({ success: true });
   }

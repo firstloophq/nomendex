@@ -25,6 +25,49 @@ describe("prosemirror collab regressions", () => {
         expect(a.normalizedMarkdown).toContain("## Test");
     });
 
+    it("heading input rule syncs for # + Space", async () => {
+        currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
+        await currentHarness.runSteps([
+            ...keys("A", "#"),
+            { actor: "A", key: "Space" },
+            ...keys("A", "Test"),
+        ]);
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toContain("# Test");
+    });
+
+    it("does not promote # to heading inside ordered list items", async () => {
+        currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
+        await currentHarness.runSteps([
+            ...keys("A", "1. item"),
+            { actor: "A", key: "Enter" },
+            ...keys("A", "#"),
+            { actor: "A", key: "Space" },
+            ...keys("A", "Test"),
+        ]);
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toContain("2. \\# Test");
+        expect(JSON.stringify(a.docJson)).not.toContain("\"type\":\"heading\"");
+    });
+
+    it("heading input rule syncs for # + Space from peer B with queued duplicate replay", async () => {
+        currentHarness = createTwoPeerHarness({
+            schedulerMode: "queued",
+            duplicateDelivery: true,
+        });
+        await currentHarness.runSteps([
+            ...keys("B", "#"),
+            { actor: "B", key: "Space" },
+            ...keys("B", "Test"),
+        ]);
+        currentHarness.flushAll();
+        currentHarness.assertPeersEquivalent("strict");
+        const b = currentHarness.getPeerSnapshot("B");
+        expect(b.normalizedMarkdown).toContain("# Test");
+    });
+
     it("ordered list Enter split increments and converges", async () => {
         currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
         await currentHarness.runSteps([

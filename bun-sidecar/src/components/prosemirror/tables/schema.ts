@@ -120,7 +120,7 @@ const suggestionMarkSpec: MarkSpec = {
 /**
  * Extended markdown schema with table and wiki link support
  */
-export const tableSchema = new Schema({
+export const tableSchema: Schema = new Schema({
     nodes: markdownSchema.spec.nodes
         .append(tableNodeSpecs)
         .addBefore("image", "wiki_link", wikiLinkNodeSpec),

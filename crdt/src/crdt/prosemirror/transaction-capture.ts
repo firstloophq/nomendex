@@ -561,6 +561,7 @@ function handleReplaceAroundStep(params: {
       const deletedListContainerKeys = new Set<string>();
 
       for (const block of gapBlocks) {
+        if (block.content.type !== "block") continue;
         const parentListItemId = block.content.parentBlockId ?? null;
         if (!parentListItemId) continue;
 

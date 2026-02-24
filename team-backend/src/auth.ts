@@ -1,5 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { prisma } from "./db";
+import { logError, logInfo } from "./observability/logger";
 
 interface ClerkJWKS {
   keys: Array<{
@@ -65,11 +66,14 @@ async function getJWKS(): Promise<ClerkJWKS> {
   }
 
   const jwksUrl = getClerkJwksUrl();
-  console.log("[auth] Fetching JWKS from:", jwksUrl);
+  logInfo("auth_jwks_fetch", { jwksUrl });
 
   const response = await fetch(jwksUrl);
   if (!response.ok) {
-    console.error("[auth] JWKS fetch failed:", response.status, await response.text());
+    logError("auth_jwks_fetch_failed", {
+      status: response.status,
+      body: await response.text(),
+    });
     throw new Error(`Failed to fetch JWKS: ${response.status}`);
   }
 
@@ -213,7 +217,9 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(asy
     c.set("userName", identity.userName);
     c.set("userEmail", identity.userEmail);
   } catch (err) {
-    console.error("[auth] JWT verification failed:", err instanceof Error ? err.message : String(err));
+    logError("auth_jwt_verification_failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
     return c.json({ error: "Unauthorized" }, 401);
   }
 

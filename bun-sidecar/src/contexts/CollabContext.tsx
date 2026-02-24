@@ -280,6 +280,12 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                     },
                 });
             },
+            onDebug({ event, data }) {
+                crdtDebugLog({
+                    event: `transport_debug_${event}`,
+                    data: data ?? null,
+                });
+            },
         });
 
         transportRef.current = transport;
@@ -476,6 +482,8 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         docId: string;
         ops: ReadonlyArray<RecordOp>;
     }) => {
+        const pendingBefore = transportRef.current?.pendingOpsCount() ?? 0;
+        const connectedBefore = transportRef.current?.isConnected() ?? false;
         const txId = `${clientId}:auto:${++txCounterRef.current}`;
         transportRef.current?.sendTx({
             txId,
@@ -488,6 +496,9 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                 txId,
                 docId: sendParams.docId,
                 count: sendParams.ops.length,
+                connectedBefore,
+                pendingBefore,
+                pendingAfter: transportRef.current?.pendingOpsCount() ?? pendingBefore,
                 ops: summarizeOpsForDebug(sendParams.ops),
             },
         });
@@ -498,6 +509,8 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
         docId: string;
         ops: ReadonlyArray<RecordOp>;
     }) => {
+        const pendingBefore = transportRef.current?.pendingOpsCount() ?? 0;
+        const connectedBefore = transportRef.current?.isConnected() ?? false;
         transportRef.current?.sendTx({
             txId: sendParams.txId,
             docId: sendParams.docId,
@@ -509,6 +522,9 @@ export function CollabProvider(props: { vaultId: string; children: React.ReactNo
                 txId: sendParams.txId,
                 docId: sendParams.docId,
                 count: sendParams.ops.length,
+                connectedBefore,
+                pendingBefore,
+                pendingAfter: transportRef.current?.pendingOpsCount() ?? pendingBefore,
                 ops: summarizeOpsForDebug(sendParams.ops),
             },
         });

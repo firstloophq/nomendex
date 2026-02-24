@@ -1,10 +1,12 @@
 import {
   applyDocOperation,
   applySnapshotToDoc,
+  crdtToProseMirror,
   createRecord,
   decodeRecordSnapshot,
   encodeRecordSnapshot,
   getDoc,
+  getBodyText,
   getRecordSnapshotVersion,
   mergeRecordSnapshots,
   receive,
@@ -19,11 +21,15 @@ import type { Context } from "hono";
 import { authenticateBearerToken, type AuthIdentity } from "../auth";
 import { prisma } from "../db";
 import { parseWorkspaceScopedDocId } from "./doc-id";
+import { logError, logInfo, logWarn } from "../observability/logger";
+import { withSpan } from "../observability/telemetry";
 import {
   deleteCanonicalSnapshot,
   loadCanonicalSnapshot,
   saveCanonicalSnapshot,
 } from "./persistence";
+import { tableSchema } from "../../../bun-sidecar/src/components/prosemirror/tables/schema";
+import { tableMarkdownSerializer } from "../../../bun-sidecar/src/components/prosemirror/tables/serializer";
 
 interface SocketState {
   client: WSClient;
@@ -46,16 +52,21 @@ const persistedVersionByDoc = new Map<string, string>();
 const persistTimerByDoc = new Map<string, ReturnType<typeof setTimeout>>();
 const persistInFlightByDoc = new Set<string>();
 
+function renderRecordMarkdown(record: ReturnType<typeof decodeRecordSnapshot>): string {
+  const pmDoc = crdtToProseMirror({ doc: record.body, schema: tableSchema });
+  return tableMarkdownSerializer.serialize(pmDoc);
+}
+
 function logCollabInfo(event: string, data: Record<string, unknown>): void {
-  console.info(`[COLLAB] ${event} ${JSON.stringify(data)}`);
+  logInfo(`collab.${event}`, data);
 }
 
 function logCollabWarn(event: string, data: Record<string, unknown>): void {
-  console.warn(`[COLLAB] ${event} ${JSON.stringify(data)}`);
+  logWarn(`collab.${event}`, data);
 }
 
 function logCollabError(event: string, data: Record<string, unknown>): void {
-  console.error(`[COLLAB] ${event} ${JSON.stringify(data)}`);
+  logError(`collab.${event}`, data);
 }
 
 function getSocketState(ws: { raw?: unknown }): SocketState | null {
@@ -106,6 +117,13 @@ async function persistCanonicalSnapshot(params: {
   docId: string;
   orgWorkspaceId: string;
 }): Promise<void> {
+  return withSpan({
+    name: "collab.persist_snapshot",
+    attributes: {
+      "collab.doc_id": params.docId,
+      "collab.org_workspace_id": params.orgWorkspaceId,
+    },
+    fn: async () => {
   if (persistInFlightByDoc.has(params.docId)) {
     logCollabInfo("persist_skip_inflight", {
       docId: params.docId,
@@ -223,6 +241,8 @@ async function persistCanonicalSnapshot(params: {
   } finally {
     persistInFlightByDoc.delete(params.docId);
   }
+    },
+  });
 }
 
 function scheduleCanonicalPersist(params: {
@@ -255,6 +275,13 @@ function scheduleCanonicalPersist(params: {
 async function handleSnapshotPublish(params: {
   payload: SnapshotPublishPayload;
 }): Promise<void> {
+  return withSpan({
+    name: "collab.snapshot_publish",
+    attributes: {
+      "collab.doc_id": params.payload.docId,
+      "collab.merge_bias": params.payload.mergeBias ?? "remote",
+    },
+    fn: async () => {
   const scopedDoc = parseWorkspaceScopedDocId({ docId: params.payload.docId });
   if (!scopedDoc) {
     logCollabWarn("snapshot_publish_invalid_doc", {
@@ -345,11 +372,31 @@ async function handleSnapshotPublish(params: {
       orgWorkspaceId: scopedDoc.orgWorkspaceId,
     });
   }
+    },
+  });
 }
 
 const crdtHandler = createCRDTWebSocketHandler({
   serverClientId: "team-backend-crdt",
-  onDocChanged({ docId, ops, source }) {
+  onDocChanged({ docId, txId, ops, source }) {
+    logCollabInfo("doc_changed", {
+      docId,
+      txId: txId ?? null,
+      source,
+      opsCount: ops.length,
+      ops: ops.slice(0, 100).map((op) => ({
+        type: op.type,
+        id: "id" in op && op.id ? `${op.id.clientId}:${op.id.clock}` : null,
+        targetId: "targetId" in op && op.targetId
+          ? `${op.targetId.clientId}:${op.targetId.clock}`
+          : null,
+        parentId: "parentId" in op && op.parentId
+          ? `${op.parentId.clientId}:${op.parentId.clock}`
+          : null,
+        side: "side" in op ? op.side : null,
+        contentType: "content" in op && op.content ? op.content.type : null,
+      })),
+    });
     if (source !== "client" || ops.length === 0) return;
     const scopedDoc = parseWorkspaceScopedDocId({ docId });
     if (!scopedDoc) return;
@@ -423,10 +470,149 @@ export async function hardResetCollabDoc(params: {
   });
 }
 
+export async function inspectCollabDoc(params: {
+  docId: string;
+  includeOps: boolean;
+  includeItems: boolean;
+  includePersisted: boolean;
+  includeMarkdown: boolean;
+  maxOps: number;
+  identity?: AuthIdentity;
+  skipAccessCheck?: boolean;
+}): Promise<Record<string, unknown>> {
+  return withSpan({
+    name: "collab.inspect_doc_internal",
+    attributes: {
+      "collab.doc_id": params.docId,
+      "collab.include_ops": params.includeOps,
+      "collab.include_items": params.includeItems,
+      "collab.max_ops": params.maxOps,
+    },
+    fn: async () => {
+      const scopedDoc = parseWorkspaceScopedDocId({ docId: params.docId });
+      if (!scopedDoc) {
+        throw new Error(`Invalid document id format: "${params.docId}"`);
+      }
+      if (!params.skipAccessCheck) {
+        if (!params.identity) {
+          throw new Error("Forbidden");
+        }
+        const allowed = await canAccessWorkspace({
+          identity: params.identity,
+          orgWorkspaceId: scopedDoc.orgWorkspaceId,
+          cache: new Map(),
+        });
+        if (!allowed) {
+          throw new Error("Forbidden");
+        }
+      }
+
+      const managerState = crdtHandler.getDocManagerState();
+      const record = getDoc({ manager: managerState.manager, docId: params.docId });
+      const docOps = crdtHandler.getDocOps({ docId: params.docId });
+      const hydrated = hydratedDocs.has(params.docId);
+      const persistedVersion = persistedVersionByDoc.get(params.docId) ?? null;
+      const hasPersistTimer = persistTimerByDoc.has(params.docId);
+      const inFlightPersist = persistInFlightByDoc.has(params.docId);
+
+      const summary: Record<string, unknown> = {
+        docId: params.docId,
+        orgWorkspaceId: scopedDoc.orgWorkspaceId,
+        hydrated,
+        hasRecord: !!record,
+        persistedVersion,
+        hasPersistTimer,
+        inFlightPersist,
+        opCount: docOps.length,
+        stateVector: record ? Object.fromEntries(record.stateVector) : {},
+        fieldsCount: record ? record.fields.size : 0,
+        setsCount: record ? record.sets.size : 0,
+        bodyItemsCount: record ? record.body.store.items.length : 0,
+      };
+
+      if (params.includeMarkdown && record) {
+        try {
+          summary.markdown = renderRecordMarkdown(record);
+        } catch (error) {
+          summary.markdownError = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      if (params.includeOps) {
+        summary.ops = docOps.slice(-params.maxOps).map((op) => ({
+          type: op.type,
+          id: "id" in op && op.id ? `${op.id.clientId}:${op.id.clock}` : null,
+          targetId: "targetId" in op && op.targetId
+            ? `${op.targetId.clientId}:${op.targetId.clock}`
+            : null,
+          parentId: "parentId" in op && op.parentId
+            ? `${op.parentId.clientId}:${op.parentId.clock}`
+            : null,
+          side: "side" in op ? op.side : null,
+          contentType: "content" in op && op.content ? op.content.type : null,
+        }));
+      }
+
+      if (params.includeItems && record) {
+        summary.bodyItems = record.body.store.items.map((item) => ({
+          id: `${item.id.clientId}:${item.id.clock}`,
+          leftOrigin: item.leftOrigin ? `${item.leftOrigin.clientId}:${item.leftOrigin.clock}` : null,
+          rightOrigin: item.rightOrigin ? `${item.rightOrigin.clientId}:${item.rightOrigin.clock}` : null,
+          deleted: item.deleted,
+          contentType: item.content.type,
+          blockType: item.content.type === "block" ? item.content.blockType : null,
+          text: item.content.type === "text" ? item.content.value : null,
+        }));
+      }
+
+      if (params.includePersisted) {
+        const snapshot = await loadCanonicalSnapshot({
+          docId: params.docId,
+          orgWorkspaceId: scopedDoc.orgWorkspaceId,
+        });
+        if (snapshot) {
+          const persisted = decodeRecordSnapshot({ data: snapshot.bytes });
+          let markdown: string | null = null;
+          let markdownError: string | null = null;
+          if (params.includeMarkdown) {
+            try {
+              markdown = renderRecordMarkdown(persisted);
+            } catch (error) {
+              markdownError = error instanceof Error ? error.message : String(error);
+            }
+          }
+          summary.persisted = {
+            found: true,
+            snapshotVersion: snapshot.snapshotVersion ?? null,
+            bytes: snapshot.bytes.byteLength,
+            bodyItemsCount: persisted.body.store.items.length,
+            fieldsCount: persisted.fields.size,
+            setsCount: persisted.sets.size,
+            bodyText: getBodyText({ record: persisted }),
+            markdown,
+            markdownError,
+          };
+        } else {
+          summary.persisted = { found: false };
+        }
+      }
+
+      return summary;
+    },
+  });
+}
+
 async function hydrateDocIfNeeded(params: {
   docId: string;
   orgWorkspaceId: string;
 }): Promise<void> {
+  return withSpan({
+    name: "collab.hydrate_doc_if_needed",
+    attributes: {
+      "collab.doc_id": params.docId,
+      "collab.org_workspace_id": params.orgWorkspaceId,
+    },
+    fn: async () => {
   if (hydratedDocs.has(params.docId)) {
     logCollabInfo("hydrate_skip_already_hydrated", {
       docId: params.docId,
@@ -508,6 +694,8 @@ async function hydrateDocIfNeeded(params: {
 
   hydrateByDoc.set(params.docId, hydration);
   return hydration;
+    },
+  });
 }
 
 function generateConnectionId(): string {
@@ -645,38 +833,56 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
 
       const message = messageToString(event.data);
       if (!message) return;
+      await withSpan({
+        name: "collab.ws_message",
+        attributes: {
+          "collab.connection_id": state.client.id,
+          "collab.message_bytes": message.length,
+        },
+        fn: async () => {
+          const authResult = await authorizeAndPrepareMessage({
+            state,
+            message,
+          });
+          if (!authResult.ok) {
+            logCollabWarn("websocket_message_rejected", {
+              connectionId: state.client.id,
+              closeCode: authResult.closeCode,
+              reason: authResult.reason,
+            });
+            ws.close(authResult.closeCode, authResult.reason);
+            return;
+          }
 
-      const authResult = await authorizeAndPrepareMessage({
-        state,
-        message,
-      });
-      if (!authResult.ok) {
-        logCollabWarn("websocket_message_rejected", {
-          connectionId: state.client.id,
-          closeCode: authResult.closeCode,
-          reason: authResult.reason,
-        });
-        ws.close(authResult.closeCode, authResult.reason);
-        return;
-      }
+          try {
+            const parsed = JSON.parse(message) as SnapshotPublishPayload & {
+              txId?: string;
+              ops?: ReadonlyArray<RecordOp>;
+            };
+            logCollabInfo("websocket_message_received", {
+              connectionId: state.client.id,
+              type: parsed.type ?? "unknown",
+              docId: parsed.docId ?? null,
+              txId: parsed.txId ?? null,
+              opsCount: Array.isArray(parsed.ops) ? parsed.ops.length : null,
+            });
+            if (
+              parsed.type === "snapshot-publish"
+              && typeof parsed.docId === "string"
+              && typeof parsed.snapshot === "string"
+            ) {
+              await handleSnapshotPublish({ payload: parsed });
+              return;
+            }
+          } catch {
+            // fall through for non-JSON messages
+          }
 
-      try {
-        const parsed = JSON.parse(message) as SnapshotPublishPayload;
-        if (
-          parsed.type === "snapshot-publish"
-          && typeof parsed.docId === "string"
-          && typeof parsed.snapshot === "string"
-        ) {
-          await handleSnapshotPublish({ payload: parsed });
-          return;
-        }
-      } catch {
-        // fall through for non-JSON messages
-      }
-
-      crdtHandler.handleMessage({
-        client: state.client,
-        message,
+          crdtHandler.handleMessage({
+            client: state.client,
+            message,
+          });
+        },
       });
     },
 

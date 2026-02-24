@@ -13,6 +13,7 @@ import {
   createInstallationAccessToken,
   listInstallationRepos,
 } from "../github-app";
+import { logError } from "../observability/logger";
 
 // --- Authenticated routes (mounted under /api/github) ---
 
@@ -262,7 +263,10 @@ export async function handleGitHubCallback(req: Request): Promise<Response> {
   try {
     installationInfo = await getInstallation({ installationId });
   } catch (err) {
-    console.error("[github-callback] Failed to fetch installation:", err);
+    logError("github_callback_installation_fetch_failed", {
+      installationId,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return jsonResponse({ error: "Failed to fetch installation details from GitHub" }, 500);
   }
 

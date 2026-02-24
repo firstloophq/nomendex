@@ -78,6 +78,7 @@ export function createMultiDocTransport(params: {
   onDisconnect?: () => void;
   onDocSyncComplete?: (params: { docId: string }) => void;
   onProtocolError?: (params: { docId?: string; reason: string }) => void;
+  onDebug?: (params: { event: string; data?: Record<string, unknown> }) => void;
   getAuthToken?: () => string | Promise<string>;
 }): MultiDocTransport {
   let ws: WebSocket | null = null;
@@ -100,6 +101,10 @@ export function createMultiDocTransport(params: {
   const TX_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
   const TX_DEDUPE_MAX_PER_DOC = 2000;
 
+  const debug = (event: string, data?: Record<string, unknown>) => {
+    params.onDebug?.({ event, data });
+  };
+
   function updateDocSV(docId: string, ops: ReadonlyArray<RecordOp>) {
     const sv = new Map<string, number>(docStateVectors.get(docId) ?? []);
     let changed = false;
@@ -120,6 +125,7 @@ export function createMultiDocTransport(params: {
   function enqueueOrSendTx(paramsTx: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) {
     const { txId, docId, ops } = paramsTx;
     if (!subscribedDocs.has(docId)) {
+      debug("send_tx_rejected_not_subscribed", { txId, docId, opsCount: ops.length });
       params.onProtocolError?.({
         docId,
         reason: "send_tx_before_subscribe",
@@ -129,8 +135,18 @@ export function createMultiDocTransport(params: {
     updateDocSV(docId, ops);
 
     if (connected && ws && !syncingDocs.has(docId)) {
+      debug("send_tx_immediate", { txId, docId, opsCount: ops.length });
       ws.send(JSON.stringify({ type: "tx", txId, docId, ops }));
     } else {
+      debug("send_tx_queued", {
+        txId,
+        docId,
+        opsCount: ops.length,
+        connected,
+        wsState: ws?.readyState ?? null,
+        isSyncing: syncingDocs.has(docId),
+        pendingCount: pendingMessages.length + 1,
+      });
       pendingMessages.push({ type: "tx", txId, docId, ops });
     }
   }
@@ -165,16 +181,20 @@ export function createMultiDocTransport(params: {
 
   async function connect() {
     let url = `${params.url}?clientId=${encodeURIComponent(params.clientId)}`;
+    debug("ws_connect_start", { url: params.url, clientId: params.clientId });
 
     if (params.getAuthToken) {
       const token = await params.getAuthToken();
+      debug("ws_auth_token_resolved", { tokenPresent: !!token });
       url += `&token=${encodeURIComponent(token)}`;
     }
 
     ws = new WebSocket(url);
+    debug("ws_created", { readyState: ws.readyState });
 
     ws.onopen = () => {
       connected = true;
+      debug("ws_open", { subscribedDocs: subscribedDocs.size });
 
       // Re-subscribe to all docs with current state vectors for delta sync
       for (const docId of subscribedDocs) {
@@ -186,6 +206,7 @@ export function createMultiDocTransport(params: {
         docPhases.set(docId, "syncing");
         bufferedDocTx.set(docId, []);
         ws!.send(JSON.stringify(msg));
+        debug("ws_subscribe_sent", { docId, hasStateVector: !!(sv && sv.size > 0) });
       }
 
       params.onConnect?.();
@@ -194,9 +215,14 @@ export function createMultiDocTransport(params: {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data as string) as IncomingMessage;
+        debug("ws_message_received", {
+          type: (msg as { type?: string }).type ?? "unknown",
+          docId: (msg as { docId?: string }).docId ?? null,
+        });
 
         if (msg.type === "sync-response" && msg.docId) {
           if (!subscribedDocs.has(msg.docId)) {
+            debug("sync_response_ignored_unsubscribed", { docId: msg.docId });
             params.onProtocolError?.({
               docId: msg.docId,
               reason: "sync_response_for_unsubscribed_doc",
@@ -217,6 +243,7 @@ export function createMultiDocTransport(params: {
           if (msg.ops.length > 0) {
             updateDocSV(msg.docId, msg.ops);
             params.onOps({ docId: msg.docId, ops: msg.ops });
+            debug("sync_response_ops_applied", { docId: msg.docId, opsCount: msg.ops.length });
           }
 
           // Apply buffered ops that arrived during sync
@@ -245,12 +272,14 @@ export function createMultiDocTransport(params: {
           if (toFlush.length > 0 && ws && connected) {
             for (const pending of toFlush) {
               ws.send(JSON.stringify(pending));
+              debug("pending_tx_flushed", { docId: pending.docId, txId: pending.txId, opsCount: pending.ops.length });
             }
           }
 
           syncingDocs.delete(msg.docId);
           docPhases.set(msg.docId, "live");
           params.onDocSyncComplete?.({ docId: msg.docId });
+          debug("doc_sync_complete", { docId: msg.docId });
         } else if (msg.type === "snapshot" && msg.docId && msg.snapshot && params.onSnapshot) {
           const binaryStr = atob(msg.snapshot);
           const bytes = new Uint8Array(binaryStr.length);
@@ -260,6 +289,7 @@ export function createMultiDocTransport(params: {
           params.onSnapshot({ docId: msg.docId, data: bytes, version: msg.version });
         } else if (msg.type === "tx" && msg.docId && typeof msg.txId === "string" && Array.isArray(msg.ops)) {
           if (!subscribedDocs.has(msg.docId)) {
+            debug("tx_ignored_unsubscribed", { docId: msg.docId, txId: msg.txId });
             params.onProtocolError?.({
               docId: msg.docId,
               reason: "tx_for_unsubscribed_doc",
@@ -269,6 +299,7 @@ export function createMultiDocTransport(params: {
 
           const phase = docPhases.get(msg.docId);
           if (!phase) {
+            debug("tx_ignored_before_subscribe", { docId: msg.docId, txId: msg.txId });
             params.onProtocolError?.({
               docId: msg.docId,
               reason: "tx_before_subscribe",
@@ -281,12 +312,15 @@ export function createMultiDocTransport(params: {
             if (buf) {
               if (!buf.some((entry) => entry.txId === msg.txId)) {
                 buf.push({ txId: msg.txId, ops: msg.ops });
+                debug("tx_buffered_while_syncing", { docId: msg.docId, txId: msg.txId, opsCount: msg.ops.length });
               }
             } else {
               bufferedDocTx.set(msg.docId, [{ txId: msg.txId, ops: msg.ops }]);
+              debug("tx_buffer_created_while_syncing", { docId: msg.docId, txId: msg.txId, opsCount: msg.ops.length });
             }
           } else {
             if (isDuplicateTx({ docId: msg.docId, txId: msg.txId })) {
+              debug("tx_deduped", { docId: msg.docId, txId: msg.txId });
               return;
             }
             updateDocSV(msg.docId, msg.ops);
@@ -294,6 +328,7 @@ export function createMultiDocTransport(params: {
             if (!params.onTx) {
               params.onOps({ docId: msg.docId, ops: msg.ops });
             }
+            debug("tx_applied_live", { docId: msg.docId, txId: msg.txId, opsCount: msg.ops.length });
           }
         } else if (msg.type === "awareness" && msg.docId) {
           params.onAwareness?.({
@@ -301,14 +336,17 @@ export function createMultiDocTransport(params: {
             clientId: msg.clientId,
             state: msg.state,
           });
+          debug("awareness_received", { docId: msg.docId, clientId: msg.clientId });
         }
       } catch {
         // Ignore non-JSON messages
+        debug("ws_message_parse_failed");
       }
     };
 
     ws.onclose = () => {
       connected = false;
+      debug("ws_close", { intentionalDisconnect });
       // Clear sync state on disconnect
       syncingDocs.clear();
       bufferedDocTx.clear();
@@ -316,10 +354,12 @@ export function createMultiDocTransport(params: {
 
       if (!intentionalDisconnect) {
         reconnectTimer = setTimeout(() => { connect(); }, 1000);
+        debug("ws_reconnect_scheduled", { delayMs: 1000 });
       }
     };
 
     ws.onerror = () => {
+      debug("ws_error");
       ws?.close();
     };
   }
@@ -344,7 +384,9 @@ export function createMultiDocTransport(params: {
           ? { type: "subscribe", docId, stateVector: encodeStateVector({ sv }) }
           : { type: "subscribe", docId };
         ws.send(JSON.stringify(msg));
+        debug("subscribe_sent", { docId, hasStateVector: !!(sv && sv.size > 0) });
       }
+      debug("subscribe_local", { docId, connected, wsState: ws?.readyState ?? null });
     },
 
     unsubscribe({ docId }) {
@@ -355,7 +397,9 @@ export function createMultiDocTransport(params: {
       seenTxIdsByDoc.delete(docId);
       if (connected && ws) {
         ws.send(JSON.stringify({ type: "unsubscribe", docId }));
+        debug("unsubscribe_sent", { docId });
       }
+      debug("unsubscribe_local", { docId, connected, wsState: ws?.readyState ?? null });
     },
 
     send({ docId, ops }) {
@@ -389,6 +433,7 @@ export function createMultiDocTransport(params: {
         reconnectTimer = null;
       }
       ws?.close();
+      debug("disconnect_called");
       ws = null;
       connected = false;
     },
@@ -396,8 +441,10 @@ export function createMultiDocTransport(params: {
     reconnect() {
       intentionalDisconnect = false;
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        debug("reconnect_skipped_already_open_or_connecting", { wsState: ws.readyState });
         return;
       }
+      debug("reconnect_called");
       connect();
     },
 
@@ -416,6 +463,7 @@ export function createMultiDocTransport(params: {
         ws.close();
         ws = null;
       }
+      debug("close_called");
       connected = false;
     },
 
