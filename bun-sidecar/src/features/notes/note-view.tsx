@@ -2122,6 +2122,7 @@ export function NotesView(props: NotesViewProps) {
                     plugin: crdtPlugin,
                     snapshotDoc: record.body,
                 });
+                let seedValid = true;
                 try {
                     seeded.state.doc.check();
                 } catch (validationError) {
@@ -2134,20 +2135,37 @@ export function NotesView(props: NotesViewProps) {
                             docShape: summarizeDocShapeForDebug(seeded.state.doc),
                         },
                     });
-                    return;
-                }
-                const updated = updateEditorStateSafely(editorView, seeded.state, "bootstrap_seed");
-                if (updated) {
-                    const markdown = tableMarkdownSerializer.serialize(seeded.state.doc);
-                    updateContent(markdown);
+                    // Never abort editor setup here. Falling back keeps transport
+                    // subscriptions alive so remote snapshot/ops can recover state.
+                    localSnapshotSeedRef.current = null;
+                    bootstrapModeRef.current = "none";
+                    backendSnapshotVersionRef.current = null;
                     crdtDebugLog({
-                        event: "bootstrap_seed_applied",
+                        event: "bootstrap_seed_invalid_doc_fatal",
+                        level: "error",
                         data: {
                             docId: collabDocId,
-                            bytes: seed.bytes.byteLength,
-                            version: seed.version,
                         },
                     });
+                    seedValid = false;
+                    throw new Error(
+                        `Invalid bootstrap CRDT seed for ${collabDocId}: ${summarizeErrorForDebug(validationError).message}`
+                    );
+                }
+                if (seedValid) {
+                    const updated = updateEditorStateSafely(editorView, seeded.state, "bootstrap_seed");
+                    if (updated) {
+                        const markdown = tableMarkdownSerializer.serialize(seeded.state.doc);
+                        updateContent(markdown);
+                        crdtDebugLog({
+                            event: "bootstrap_seed_applied",
+                            data: {
+                                docId: collabDocId,
+                                bytes: seed.bytes.byteLength,
+                                version: seed.version,
+                            },
+                        });
+                    }
                 }
             } catch (error) {
                 crdtDebugLog({
@@ -2158,6 +2176,9 @@ export function NotesView(props: NotesViewProps) {
                         error: summarizeErrorForDebug(error),
                     },
                 });
+                throw error instanceof Error
+                    ? error
+                    : new Error(`Failed to apply bootstrap seed for ${collabDocId}: ${String(error)}`);
             }
         }
 
