@@ -1656,6 +1656,21 @@ export function NotesView(props: NotesViewProps) {
         const updateEditorStateSafely = (view: EditorView, nextState: EditorState, source: string): boolean => {
             const shouldRestoreFocus = view.hasFocus();
             try {
+                nextState.doc.check();
+            } catch (invalidDocError) {
+                crdtDebugLog({
+                    event: "editor_updatestate_invalid_doc",
+                    level: "error",
+                    data: {
+                        source,
+                        docId: collabDocId,
+                        error: summarizeErrorForDebug(invalidDocError),
+                        docShape: summarizeDocShapeForDebug(nextState.doc),
+                    },
+                });
+                return false;
+            }
+            try {
                 view.updateState(nextState);
                 return true;
             } catch (updateError) {
@@ -1833,6 +1848,15 @@ export function NotesView(props: NotesViewProps) {
                 }
                 const updated = updateEditorStateSafely(v, canonicalized.state, "local_dispatch");
                 if (!updated) {
+                    crdtDebugLog({
+                        event: "local_dispatch_rejected_invalid_state",
+                        level: "warn",
+                        data: {
+                            docId: collabDocId,
+                            transaction: summarizeTransactionForDebug(transaction),
+                            docShape: summarizeDocShapeForDebug(canonicalized.state.doc),
+                        },
+                    });
                     return;
                 }
                 if (transaction.docChanged || transaction.selectionSet) {
@@ -1901,6 +1925,27 @@ export function NotesView(props: NotesViewProps) {
                     return false;
                 },
                 keydown: (view, event) => {
+                    try {
+                        view.state.doc.check();
+                    } catch (invalidStateError) {
+                        crdtDebugLog({
+                            event: "editor_keydown_invalid_state_blocked",
+                            level: "error",
+                            data: {
+                                docId: collabDocId,
+                                key: event.key,
+                                code: event.code,
+                                selection: {
+                                    from: view.state.selection.from,
+                                    to: view.state.selection.to,
+                                },
+                                error: summarizeErrorForDebug(invalidStateError),
+                                docShape: summarizeDocShapeForDebug(view.state.doc),
+                            },
+                        });
+                        event.preventDefault();
+                        return true;
+                    }
                     crdtDebugLog({
                         event: "editor_keydown",
                         data: {
@@ -2046,6 +2091,20 @@ export function NotesView(props: NotesViewProps) {
                     plugin: crdtPlugin,
                     snapshotDoc: record.body,
                 });
+                try {
+                    seeded.state.doc.check();
+                } catch (validationError) {
+                    crdtDebugLog({
+                        event: "bootstrap_seed_invalid_doc",
+                        level: "error",
+                        data: {
+                            docId: collabDocId,
+                            error: summarizeErrorForDebug(validationError),
+                            docShape: summarizeDocShapeForDebug(seeded.state.doc),
+                        },
+                    });
+                    return;
+                }
                 const updated = updateEditorStateSafely(editorView, seeded.state, "bootstrap_seed");
                 if (updated) {
                     const markdown = tableMarkdownSerializer.serialize(seeded.state.doc);
@@ -2234,6 +2293,20 @@ export function NotesView(props: NotesViewProps) {
                         });
                         const canonicalized = canonicalizeState(result.state);
                         const nextState = canonicalized.state;
+                        try {
+                            nextState.doc.check();
+                        } catch (validationError) {
+                            crdtDebugLog({
+                                event: "remote_snapshot_invalid_doc",
+                                level: "error",
+                                data: {
+                                    docId,
+                                    error: summarizeErrorForDebug(validationError),
+                                    docShape: summarizeDocShapeForDebug(nextState.doc),
+                                },
+                            });
+                            return;
+                        }
                         const updated = updateEditorStateSafely(editorView, nextState, "remote_snapshot");
                         if (!updated) return;
 
