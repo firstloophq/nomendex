@@ -4,6 +4,8 @@ import type { AwarenessState } from "../network/awareness";
 import { createMultiDocTransport, type MultiDocTransport } from "../network/multi-doc-transport";
 import { applyDocOperation, getDoc } from "../document/doc-manager";
 import { receive } from "../core/lamport-clock";
+import { encodeRecordSnapshot, getRecordSnapshotVersion } from "../document/snapshot";
+import { getBodyText } from "../document/record";
 
 // --- Public interface ---
 
@@ -32,6 +34,7 @@ export function createCRDTRelay(params: {
   getAuthToken?: () => string | Promise<string>;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  getDiagnosticsPayload?: (params: { docId: string }) => Record<string, unknown>;
 }): CRDTRelay {
   const relayedDocs = new Set<string>();
   const seenRemoteTxIdsByDoc = new Map<string, Set<string>>();
@@ -139,6 +142,47 @@ export function createCRDTRelay(params: {
         if (!relayedDocs.has(docId)) return;
         // Forward remote awareness to local clients
         handlerRef.broadcastAwareness({ docId, clientId: remoteClientId, state });
+      },
+
+      onClientDiagnosticsRequest({ requestId, docId }) {
+        const diagnosticsPayload = params.getDiagnosticsPayload
+          ? params.getDiagnosticsPayload({ docId })
+          : (() => {
+            const record = getDoc({
+              manager: handlerRef.getDocManagerState().manager,
+              docId,
+            });
+            const ops = handlerRef.getDocOps({ docId });
+            if (!record) {
+              return {
+                relayClientId: params.clientId,
+                generatedAt: new Date().toISOString(),
+                hasDoc: false,
+                opCount: ops.length,
+              };
+            }
+            const snapshotBytes = encodeRecordSnapshot({ record });
+            return {
+              relayClientId: params.clientId,
+              generatedAt: new Date().toISOString(),
+              hasDoc: true,
+              snapshotVersion: getRecordSnapshotVersion({ data: snapshotBytes }),
+              snapshotBytes: snapshotBytes.byteLength,
+              snapshotBase64: btoa(String.fromCharCode(...snapshotBytes)),
+              bodyText: getBodyText({ record }),
+              stateVector: Object.fromEntries(record.stateVector),
+              bodyItemsCount: record.body.store.items.length,
+              fieldsCount: record.fields.size,
+              setsCount: record.sets.size,
+              opCount: ops.length,
+            };
+          })();
+
+        transport?.sendClientDiagnosticsResponse({
+          requestId,
+          docId,
+          payload: diagnosticsPayload,
+        });
       },
 
       onConnect() {

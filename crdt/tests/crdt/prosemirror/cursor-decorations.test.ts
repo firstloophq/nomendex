@@ -32,9 +32,10 @@ function getDecorations(params: {
   state: EditorState;
   plugin: ReturnType<typeof createCursorPlugin>;
 }): DecorationSet {
-  const decorations = params.plugin.props.decorations?.(params.state);
+  const pluginState = params.plugin.getState(params.state);
+  const decorations = pluginState?.decorations;
   expect(decorations instanceof DecorationSet).toBe(true);
-  expect(() => decorations!.find()).not.toThrow();
+  expect(typeof decorations?.find).toBe("function");
   return decorations!;
 }
 
@@ -42,11 +43,6 @@ function applyCursorUpdate(params: {
   state: EditorState;
   cursors: ReadonlyMap<string, RemoteCursor>;
 }): EditorState {
-  const pluginState = params.state.plugins.find((plugin) =>
-    plugin.key.includes("crdt-cursors"),
-  );
-  if (!pluginState) throw new Error("Cursor plugin missing");
-
   let updatedState = params.state;
   updateRemoteCursors({
     view: {

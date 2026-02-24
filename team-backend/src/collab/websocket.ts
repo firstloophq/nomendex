@@ -35,6 +35,11 @@ interface SocketState {
   client: WSClient;
   identity: AuthIdentity;
   workspaceAccessCache: Map<string, boolean>;
+  logicalClientId: string;
+  openedAt: string;
+  lastMessageAt: string | null;
+  lastMessageType: string | null;
+  subscribedDocs: Set<string>;
 }
 
 interface SnapshotPublishPayload {
@@ -45,7 +50,48 @@ interface SnapshotPublishPayload {
   mergeBias?: "local" | "remote";
 }
 
+interface ClientDiagnosticsRequestPayload {
+  type: "client-diagnostics-request";
+  requestId: string;
+  docId: string;
+}
+
+interface ClientDiagnosticsResponsePayload {
+  type: "client-diagnostics-response";
+  requestId: string;
+  docId: string;
+  payload: Record<string, unknown>;
+}
+
+interface PendingDiagnosticsRequest {
+  requestId: string;
+  docId: string;
+  createdAt: string;
+  expectedConnectionIds: Set<string>;
+  responses: Map<string, Record<string, unknown>>;
+  resolve: (value: {
+    requestId: string;
+    docId: string;
+    createdAt: string;
+    completedAt: string;
+    timedOut: boolean;
+    expectedConnectionCount: number;
+    responseCount: number;
+    missingConnectionIds: string[];
+    responses: Array<{
+      connectionId: string;
+      logicalClientId: string;
+      clerkUserId: string;
+      userId: string;
+      payload: Record<string, unknown>;
+    }>;
+  }) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 const socketStateByRaw = new WeakMap<object, SocketState>();
+const activeConnections = new Map<string, SocketState>();
+const pendingDiagnosticsRequests = new Map<string, PendingDiagnosticsRequest>();
 const hydratedDocs = new Set<string>();
 const hydrateByDoc = new Map<string, Promise<void>>();
 const persistedVersionByDoc = new Map<string, string>();
@@ -609,6 +655,99 @@ export async function inspectCollabDoc(params: {
   });
 }
 
+export async function inspectCollabConnections(params: {
+  identity?: AuthIdentity;
+  skipAccessCheck?: boolean;
+}): Promise<{
+  connectionCount: number;
+  generatedAt: string;
+  connections: Array<{
+    connectionId: string;
+    logicalClientId: string;
+    clerkUserId: string;
+    userId: string;
+    openedAt: string;
+    lastMessageAt: string | null;
+    lastMessageType: string | null;
+    subscribedDocs: string[];
+    inaccessibleDocCount: number;
+    totalSubscribedDocCount: number;
+  }>;
+}> {
+  return withSpan({
+    name: "collab.inspect_connections",
+    fn: async () => {
+      const accessCache = new Map<string, boolean>();
+      const connections: Array<{
+        connectionId: string;
+        logicalClientId: string;
+        clerkUserId: string;
+        userId: string;
+        openedAt: string;
+        lastMessageAt: string | null;
+        lastMessageType: string | null;
+        subscribedDocs: string[];
+        inaccessibleDocCount: number;
+        totalSubscribedDocCount: number;
+      }> = [];
+
+      for (const state of activeConnections.values()) {
+        const visibleDocs: string[] = [];
+        let inaccessibleDocCount = 0;
+
+        for (const docId of state.subscribedDocs) {
+          const scopedDoc = parseWorkspaceScopedDocId({ docId });
+          if (!scopedDoc) {
+            inaccessibleDocCount++;
+            continue;
+          }
+          if (params.skipAccessCheck) {
+            visibleDocs.push(docId);
+            continue;
+          }
+          if (!params.identity) {
+            inaccessibleDocCount++;
+            continue;
+          }
+          const allowed = await canAccessWorkspace({
+            identity: params.identity,
+            orgWorkspaceId: scopedDoc.orgWorkspaceId,
+            cache: accessCache,
+          });
+          if (allowed) {
+            visibleDocs.push(docId);
+          } else {
+            inaccessibleDocCount++;
+          }
+        }
+
+        if (!params.skipAccessCheck && state.subscribedDocs.size > 0 && visibleDocs.length === 0) {
+          continue;
+        }
+
+        connections.push({
+          connectionId: state.client.id,
+          logicalClientId: state.logicalClientId,
+          clerkUserId: state.identity.clerkUserId,
+          userId: state.identity.userId,
+          openedAt: state.openedAt,
+          lastMessageAt: state.lastMessageAt,
+          lastMessageType: state.lastMessageType,
+          subscribedDocs: visibleDocs,
+          inaccessibleDocCount,
+          totalSubscribedDocCount: state.subscribedDocs.size,
+        });
+      }
+
+      return {
+        connectionCount: connections.length,
+        generatedAt: new Date().toISOString(),
+        connections,
+      };
+    },
+  });
+}
+
 export async function getCollabBootstrapSnapshot(params: {
   docId: string;
   identity: AuthIdentity;
@@ -816,6 +955,108 @@ function messageToString(data: unknown): string | null {
   return null;
 }
 
+function updateConnectionTrackingFromMessage(params: {
+  state: SocketState;
+  message: string;
+}): void {
+  try {
+    const parsed = JSON.parse(params.message) as { type?: string; docId?: string };
+    const messageType = typeof parsed.type === "string" ? parsed.type : null;
+    const docId = typeof parsed.docId === "string" ? parsed.docId : null;
+
+    params.state.lastMessageAt = new Date().toISOString();
+    params.state.lastMessageType = messageType;
+
+    if (messageType === "subscribe" && docId) {
+      params.state.subscribedDocs.add(docId);
+      return;
+    }
+    if (messageType === "unsubscribe" && docId) {
+      params.state.subscribedDocs.delete(docId);
+      return;
+    }
+  } catch {
+    params.state.lastMessageAt = new Date().toISOString();
+    params.state.lastMessageType = null;
+  }
+}
+
+function maybeHandleDiagnosticsResponse(params: {
+  state: SocketState;
+  message: string;
+}): boolean {
+  try {
+    const parsed = JSON.parse(params.message) as Partial<ClientDiagnosticsResponsePayload>;
+    if (
+      parsed.type !== "client-diagnostics-response"
+      || typeof parsed.requestId !== "string"
+      || typeof parsed.docId !== "string"
+      || !parsed.payload
+      || typeof parsed.payload !== "object"
+    ) {
+      return false;
+    }
+
+    const pending = pendingDiagnosticsRequests.get(parsed.requestId);
+    if (!pending) {
+      logCollabWarn("client_diagnostics_response_unmatched", {
+        requestId: parsed.requestId,
+        docId: parsed.docId,
+        connectionId: params.state.client.id,
+      });
+      return true;
+    }
+    if (pending.docId !== parsed.docId) {
+      logCollabWarn("client_diagnostics_response_doc_mismatch", {
+        requestId: parsed.requestId,
+        expectedDocId: pending.docId,
+        receivedDocId: parsed.docId,
+        connectionId: params.state.client.id,
+      });
+      return true;
+    }
+
+    pending.responses.set(params.state.client.id, parsed.payload as Record<string, unknown>);
+    logCollabInfo("client_diagnostics_response_received", {
+      requestId: parsed.requestId,
+      docId: parsed.docId,
+      connectionId: params.state.client.id,
+      logicalClientId: params.state.logicalClientId,
+      responseCount: pending.responses.size,
+      expectedConnectionCount: pending.expectedConnectionIds.size,
+    });
+
+    if (pending.responses.size >= pending.expectedConnectionIds.size) {
+      clearTimeout(pending.timer);
+      pendingDiagnosticsRequests.delete(parsed.requestId);
+      const completedAt = new Date().toISOString();
+      pending.resolve({
+        requestId: pending.requestId,
+        docId: pending.docId,
+        createdAt: pending.createdAt,
+        completedAt,
+        timedOut: false,
+        expectedConnectionCount: pending.expectedConnectionIds.size,
+        responseCount: pending.responses.size,
+        missingConnectionIds: [],
+        responses: Array.from(pending.responses.entries()).map(([connectionId, payload]) => {
+          const connection = activeConnections.get(connectionId);
+          return {
+            connectionId,
+            logicalClientId: connection?.logicalClientId ?? "unknown",
+            clerkUserId: connection?.identity.clerkUserId ?? "unknown",
+            userId: connection?.identity.userId ?? "unknown",
+            payload,
+          };
+        }),
+      });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function authorizeAndPrepareMessage(params: {
   state: SocketState;
   message: string;
@@ -874,6 +1115,141 @@ async function authorizeAndPrepareMessage(params: {
   return { ok: true };
 }
 
+export async function requestCollabClientDiagnostics(params: {
+  docId: string;
+  timeoutMs?: number;
+  identity?: AuthIdentity;
+  skipAccessCheck?: boolean;
+}): Promise<{
+  requestId: string;
+  docId: string;
+  createdAt: string;
+  completedAt: string;
+  timedOut: boolean;
+  expectedConnectionCount: number;
+  responseCount: number;
+  missingConnectionIds: string[];
+  responses: Array<{
+    connectionId: string;
+    logicalClientId: string;
+    clerkUserId: string;
+    userId: string;
+    payload: Record<string, unknown>;
+  }>;
+}> {
+  return withSpan({
+    name: "collab.request_client_diagnostics",
+    attributes: {
+      "collab.doc_id": params.docId,
+    },
+    fn: async () => {
+      const scopedDoc = parseWorkspaceScopedDocId({ docId: params.docId });
+      if (!scopedDoc) {
+        throw new Error(`Invalid document id format: "${params.docId}"`);
+      }
+
+      if (!params.skipAccessCheck) {
+        if (!params.identity) {
+          throw new Error("Forbidden");
+        }
+        const allowed = await canAccessWorkspace({
+          identity: params.identity,
+          orgWorkspaceId: scopedDoc.orgWorkspaceId,
+          cache: new Map(),
+        });
+        if (!allowed) {
+          throw new Error("Forbidden");
+        }
+      }
+
+      const targetConnections = Array.from(activeConnections.values())
+        .filter((connection) => connection.subscribedDocs.has(params.docId));
+
+      const requestId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const timeoutMs = Number.isFinite(params.timeoutMs)
+        ? Math.max(200, Math.min(params.timeoutMs ?? 2000, 30000))
+        : 2000;
+
+      if (targetConnections.length === 0) {
+        return {
+          requestId,
+          docId: params.docId,
+          createdAt,
+          completedAt: new Date().toISOString(),
+          timedOut: false,
+          expectedConnectionCount: 0,
+          responseCount: 0,
+          missingConnectionIds: [],
+          responses: [],
+        };
+      }
+
+      const payload: ClientDiagnosticsRequestPayload = {
+        type: "client-diagnostics-request",
+        requestId,
+        docId: params.docId,
+      };
+      const serializedPayload = JSON.stringify(payload);
+
+      return await new Promise((resolve) => {
+        const expectedConnectionIds = new Set(targetConnections.map((connection) => connection.client.id));
+        const timer = setTimeout(() => {
+          const pending = pendingDiagnosticsRequests.get(requestId);
+          if (!pending) return;
+          pendingDiagnosticsRequests.delete(requestId);
+          const completedAt = new Date().toISOString();
+          const missingConnectionIds = Array.from(expectedConnectionIds).filter(
+            (connectionId) => !pending.responses.has(connectionId),
+          );
+          resolve({
+            requestId,
+            docId: params.docId,
+            createdAt,
+            completedAt,
+            timedOut: true,
+            expectedConnectionCount: expectedConnectionIds.size,
+            responseCount: pending.responses.size,
+            missingConnectionIds,
+            responses: Array.from(pending.responses.entries()).map(([connectionId, responsePayload]) => {
+              const connection = activeConnections.get(connectionId);
+              return {
+                connectionId,
+                logicalClientId: connection?.logicalClientId ?? "unknown",
+                clerkUserId: connection?.identity.clerkUserId ?? "unknown",
+                userId: connection?.identity.userId ?? "unknown",
+                payload: responsePayload,
+              };
+            }),
+          });
+        }, timeoutMs);
+
+        pendingDiagnosticsRequests.set(requestId, {
+          requestId,
+          docId: params.docId,
+          createdAt,
+          expectedConnectionIds,
+          responses: new Map(),
+          resolve,
+          timer,
+        });
+
+        logCollabInfo("client_diagnostics_request_sent", {
+          requestId,
+          docId: params.docId,
+          timeoutMs,
+          targetConnectionCount: targetConnections.length,
+          targetConnectionIds: targetConnections.map((connection) => connection.client.id),
+        });
+
+        for (const connection of targetConnections) {
+          connection.client.send(serializedPayload);
+        }
+      });
+    },
+  });
+}
+
 export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response> {
   const url = new URL(c.req.url);
   const token = url.searchParams.get("token");
@@ -905,14 +1281,22 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
           ws.send(message);
         },
       };
+      const openedAt = new Date().toISOString();
+      const socketState: SocketState = {
+        client,
+        identity,
+        workspaceAccessCache: new Map(),
+        logicalClientId,
+        openedAt,
+        lastMessageAt: null,
+        lastMessageType: null,
+        subscribedDocs: new Set<string>(),
+      };
       const raw = ws.raw;
       if (raw && typeof raw === "object") {
-        socketStateByRaw.set(raw, {
-          client,
-          identity,
-          workspaceAccessCache: new Map(),
-        });
+        socketStateByRaw.set(raw, socketState);
       }
+      activeConnections.set(connectionId, socketState);
 
       logCollabInfo("websocket_open", {
         connectionId,
@@ -931,6 +1315,7 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
 
       const message = messageToString(event.data);
       if (!message) return;
+      updateConnectionTrackingFromMessage({ state, message });
       await withSpan({
         name: "collab.ws_message",
         attributes: {
@@ -972,6 +1357,9 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
               await handleSnapshotPublish({ payload: parsed });
               return;
             }
+            if (maybeHandleDiagnosticsResponse({ state, message })) {
+              return;
+            }
           } catch {
             // fall through for non-JSON messages
           }
@@ -996,6 +1384,7 @@ export async function handleCollabWebSocketUpgrade(c: Context): Promise<Response
       if (raw && typeof raw === "object") {
         socketStateByRaw.delete(raw);
       }
+      activeConnections.delete(state.client.id);
     },
   });
 }

@@ -43,7 +43,26 @@ interface SnapshotMessage {
   readonly version?: string;
 }
 
-type IncomingMessage = DocTxMessage | SyncResponseMessage | AwarenessMessage | SnapshotMessage;
+interface ClientDiagnosticsRequestMessage {
+  readonly type: "client-diagnostics-request";
+  readonly requestId: string;
+  readonly docId: string;
+}
+
+interface ClientDiagnosticsResponseMessage {
+  readonly type: "client-diagnostics-response";
+  readonly requestId: string;
+  readonly docId: string;
+  readonly payload: Record<string, unknown>;
+}
+
+type IncomingMessage =
+  | DocTxMessage
+  | SyncResponseMessage
+  | AwarenessMessage
+  | SnapshotMessage
+  | ClientDiagnosticsRequestMessage
+  | ClientDiagnosticsResponseMessage;
 
 type PendingMessage =
   | { type: "tx"; txId: string; docId: string; ops: ReadonlyArray<RecordOp> };
@@ -59,6 +78,11 @@ export interface MultiDocTransport {
   readonly send: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
   readonly sendTx: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
   readonly sendAwareness: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
+  readonly sendClientDiagnosticsResponse: (params: {
+    requestId: string;
+    docId: string;
+    payload: Record<string, unknown>;
+  }) => void;
   readonly disconnect: () => void;
   readonly reconnect: () => void;
   readonly close: () => void;
@@ -74,6 +98,12 @@ export function createMultiDocTransport(params: {
   onTx?: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
   onAwareness?: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
   onSnapshot?: (params: { docId: string; data: Uint8Array; version?: string }) => void;
+  onClientDiagnosticsRequest?: (params: { requestId: string; docId: string }) => void;
+  onClientDiagnosticsResponse?: (params: {
+    requestId: string;
+    docId: string;
+    payload: Record<string, unknown>;
+  }) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
   onDocSyncComplete?: (params: { docId: string }) => void;
@@ -337,6 +367,35 @@ export function createMultiDocTransport(params: {
             state: msg.state,
           });
           debug("awareness_received", { docId: msg.docId, clientId: msg.clientId });
+        } else if (
+          msg.type === "client-diagnostics-request"
+          && typeof msg.requestId === "string"
+          && typeof msg.docId === "string"
+        ) {
+          params.onClientDiagnosticsRequest?.({
+            requestId: msg.requestId,
+            docId: msg.docId,
+          });
+          debug("client_diagnostics_request_received", {
+            requestId: msg.requestId,
+            docId: msg.docId,
+          });
+        } else if (
+          msg.type === "client-diagnostics-response"
+          && typeof msg.requestId === "string"
+          && typeof msg.docId === "string"
+          && msg.payload
+          && typeof msg.payload === "object"
+        ) {
+          params.onClientDiagnosticsResponse?.({
+            requestId: msg.requestId,
+            docId: msg.docId,
+            payload: msg.payload,
+          });
+          debug("client_diagnostics_response_received", {
+            requestId: msg.requestId,
+            docId: msg.docId,
+          });
         }
       } catch {
         // Ignore non-JSON messages
@@ -420,6 +479,20 @@ export function createMultiDocTransport(params: {
           clientId,
           state,
         }));
+      }
+    },
+
+    sendClientDiagnosticsResponse({ requestId, docId, payload }) {
+      if (connected && ws) {
+        ws.send(JSON.stringify({
+          type: "client-diagnostics-response",
+          requestId,
+          docId,
+          payload,
+        }));
+        debug("client_diagnostics_response_sent", { requestId, docId });
+      } else {
+        debug("client_diagnostics_response_dropped_not_connected", { requestId, docId });
       }
     },
 

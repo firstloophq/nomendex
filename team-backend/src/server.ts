@@ -6,7 +6,9 @@ import {
   getCollabBootstrapSnapshot,
   handleCollabWebSocketUpgrade,
   hardResetCollabDoc,
+  inspectCollabConnections,
   inspectCollabDoc,
+  requestCollabClientDiagnostics,
 } from "./collab/websocket";
 import meRoutes from "./routes/me";
 import orgsRoutes from "./routes/orgs";
@@ -182,6 +184,69 @@ app.get("/debug/collab/doc-state", async (c) => {
     return c.json({ error: "Failed to inspect doc" }, 500);
   }
 });
+
+app.get("/debug/collab/connections", async (c) => {
+  if (!isLocalDebugRouteEnabled()) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  if (!isLoopbackHost(c.req.header("host") ?? null)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  try {
+    const result = await withSpan({
+      name: "collab.inspect_connections_local_debug",
+      fn: async () => inspectCollabConnections({
+        skipAccessCheck: true,
+      }),
+    });
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError("collab_inspect_connections_local_debug_failed", { message });
+    return c.json({ error: "Failed to inspect connections" }, 500);
+  }
+});
+
+app.post("/debug/collab/request-client-diagnostics", async (c) => {
+  if (!isLocalDebugRouteEnabled()) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  if (!isLoopbackHost(c.req.header("host") ?? null)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => null) as { docId?: unknown; timeoutMs?: unknown } | null;
+  const docId = typeof body?.docId === "string" ? body.docId.trim() : "";
+  if (!docId) {
+    return c.json({ error: "docId is required" }, 400);
+  }
+  const timeoutRaw = typeof body?.timeoutMs === "number" ? body.timeoutMs : Number(body?.timeoutMs);
+  const timeoutMs = Number.isFinite(timeoutRaw) ? timeoutRaw : undefined;
+
+  try {
+    const result = await withSpan({
+      name: "collab.request_client_diagnostics_local_debug",
+      attributes: {
+        "collab.doc_id": docId,
+      },
+      fn: async () => requestCollabClientDiagnostics({
+        docId,
+        timeoutMs,
+        skipAccessCheck: true,
+      }),
+    });
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith("Invalid document id format:")) {
+      return c.json({ error: message }, 400);
+    }
+    logError("collab_request_client_diagnostics_local_debug_failed", { docId, message });
+    return c.json({ error: "Failed to request client diagnostics" }, 500);
+  }
+});
+
 app.get("/api/collab/doc-state", async (c) => {
   const docId = c.req.query("docId")?.trim();
   if (!docId) {
@@ -231,6 +296,70 @@ app.get("/api/collab/doc-state", async (c) => {
     }
     logError("collab_inspect_doc_failed", { docId, message });
     return c.json({ error: "Failed to inspect doc" }, 500);
+  }
+});
+
+app.get("/api/collab/connections", async (c) => {
+  try {
+    const result = await withSpan({
+      name: "collab.inspect_connections",
+      fn: async () => inspectCollabConnections({
+        identity: {
+          userId: c.get("userId"),
+          clerkUserId: c.get("clerkUserId"),
+          userName: c.get("userName"),
+          userEmail: c.get("userEmail"),
+        },
+      }),
+    });
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "Forbidden") {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    logError("collab_inspect_connections_failed", { message });
+    return c.json({ error: "Failed to inspect connections" }, 500);
+  }
+});
+
+app.post("/api/collab/request-client-diagnostics", async (c) => {
+  const body = await c.req.json().catch(() => null) as { docId?: unknown; timeoutMs?: unknown } | null;
+  const docId = typeof body?.docId === "string" ? body.docId.trim() : "";
+  if (!docId) {
+    return c.json({ error: "docId is required" }, 400);
+  }
+  const timeoutRaw = typeof body?.timeoutMs === "number" ? body.timeoutMs : Number(body?.timeoutMs);
+  const timeoutMs = Number.isFinite(timeoutRaw) ? timeoutRaw : undefined;
+
+  try {
+    const result = await withSpan({
+      name: "collab.request_client_diagnostics",
+      attributes: {
+        "collab.doc_id": docId,
+      },
+      fn: async () => requestCollabClientDiagnostics({
+        docId,
+        timeoutMs,
+        identity: {
+          userId: c.get("userId"),
+          clerkUserId: c.get("clerkUserId"),
+          userName: c.get("userName"),
+          userEmail: c.get("userEmail"),
+        },
+      }),
+    });
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "Forbidden") {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    if (message.startsWith("Invalid document id format:")) {
+      return c.json({ error: message }, 400);
+    }
+    logError("collab_request_client_diagnostics_failed", { docId, message });
+    return c.json({ error: "Failed to request client diagnostics" }, 500);
   }
 });
 app.route("/api/me", meRoutes);
