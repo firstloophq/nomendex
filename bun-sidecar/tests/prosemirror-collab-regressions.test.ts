@@ -53,6 +53,20 @@ describe("prosemirror collab regressions", () => {
         expect(a.normalizedMarkdown).not.toContain("# \n");
     });
 
+    it("prefixing # space on existing paragraph promotes same-line heading", async () => {
+        currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
+        await currentHarness.runSteps([
+            ...keys("A", "asdfasdf"),
+            { actor: "A", key: "__SET_START__" },
+            ...keys("A", "#"),
+            { actor: "A", key: "Space" },
+        ]);
+        currentHarness.assertPeersEquivalent("strict");
+        const a = currentHarness.getPeerSnapshot("A");
+        expect(a.normalizedMarkdown).toContain("# asdfasdf");
+        expect(a.normalizedMarkdown).not.toContain("# \n");
+    });
+
     it("does not promote # to heading inside ordered list items", async () => {
         currentHarness = createTwoPeerHarness({ schedulerMode: "immediate" });
         await currentHarness.runSteps([

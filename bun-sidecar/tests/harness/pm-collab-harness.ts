@@ -293,6 +293,12 @@ export function createTwoPeerHarness(options?: {
         const peer = getPeer(peerId);
         const combo = parseKeyCombo(key);
         peer.view.focus();
+        if (combo.key === "__SET_START__") {
+            peer.view.dispatch(peer.view.state.tr.setSelection(TextSelection.create(peer.view.state.doc, 1)));
+            logs.push(`set-selection-start actor=${peerId}`);
+            await new Promise((resolve) => setTimeout(resolve, KEY_DELAY_MS));
+            return;
+        }
         const handled = fireKeydown(peer.view, combo);
         const lowerKey = combo.key.toLowerCase();
         if (!handled) {

@@ -526,6 +526,87 @@ function handleReplaceAroundStep(params: {
   const gapTo = step.gapTo;
   const slice = step.slice;
   const topWrapperNode = slice.content.firstChild;
+
+  // Heading input-rule/prefix promotion is encoded as ReplaceAround where the
+  // inline content to preserve lives in the gap (not in the wrapper slice).
+  // Capture that content explicitly so remote peers keep text on the heading line.
+  if (topWrapperNode?.type.name === "heading") {
+    const gapInlineItems = getItemsInRange({ doc: crdtDoc, from: gapFrom, to: gapTo, schema })
+      .filter((item): item is Item & { content: Extract<Content, { type: "text" | "inline_atom" }> } => {
+        if (item.deleted) return false;
+        return item.content.type === "text" || item.content.type === "inline_atom";
+      });
+    const blocksToReplace = getBlockItemsInRange({ doc: crdtDoc, from, to, schema });
+
+    for (const block of blocksToReplace) {
+      const { clock: delClock, timestamp: delTs } = increment({ clock });
+      clock = delClock;
+      ops.push(createDeleteOp({
+        id: createOperationId({ clientId: delTs.clientId, clock: delTs.clock }),
+        targetId: block.id,
+      }));
+    }
+
+    const insertPos = proseMirrorPositionToCRDT({ doc: crdtDoc, pos: from, schema });
+    const { clock: headingClock, timestamp: headingTs } = increment({ clock });
+    clock = headingClock;
+    const headingId = createOperationId({
+      clientId: headingTs.clientId,
+      clock: headingTs.clock,
+    });
+    const headingContent: Content = {
+      type: "block",
+      blockType: "heading",
+      ...extractBlockAttrs(topWrapperNode),
+    };
+
+    if (insertPos.rightItemId) {
+      ops.push(createInsertOp({
+        id: headingId,
+        parentId: insertPos.rightItemId,
+        side: "left",
+        secondParentId: insertPos.leftItemId ?? undefined,
+        content: headingContent,
+      }));
+    } else {
+      ops.push(createInsertOp({
+        id: headingId,
+        parentId: insertPos.leftItemId,
+        side: "right",
+        content: headingContent,
+      }));
+    }
+
+    let inlineParentId: OperationId = headingId;
+    for (const item of gapInlineItems) {
+      const { clock: insClock, timestamp: insTs } = increment({ clock });
+      clock = insClock;
+      const inlineId = createOperationId({
+        clientId: insTs.clientId,
+        clock: insTs.clock,
+      });
+      const insertContent: Content =
+        item.content.type === "text"
+          ? { type: "text", value: item.content.value }
+          : {
+              type: "inline_atom",
+              nodeType: item.content.nodeType,
+              ...extractInlineAtomAttrsFromContent(item.content),
+            };
+
+      ops.push(createInsertOp({
+        id: inlineId,
+        parentId: inlineParentId,
+        side: "right",
+        content: insertContent,
+        marks: item.marks,
+      }));
+      inlineParentId = inlineId;
+    }
+
+    return { ops, clock };
+  }
+
   const treatAsLiftUnwrap =
     Boolean(topWrapperNode)
     && Boolean(topWrapperNode?.isBlock)
@@ -538,32 +619,6 @@ function handleReplaceAroundStep(params: {
     // and then reparent the preserved gap blocks into the deepest wrapper.
     if (topWrapperNode && topWrapperNode.isBlock) {
       const insertPos = proseMirrorPositionToCRDT({ doc: crdtDoc, pos: from, schema });
-      if (topWrapperNode.type.name === "heading" && gapFrom === gapTo) {
-        const candidatePositions = [gapFrom, from, Math.max(0, to - 1)];
-        const paragraphToReplace = candidatePositions
-          .map((pos) => proseMirrorPositionToCRDT({ doc: crdtDoc, pos, schema }).blockId)
-          .find((blockId): blockId is OperationId => {
-            if (!blockId) return false;
-            const key = `${blockId.clientId}:${blockId.clock}`;
-            const item = crdtDoc.store.map.get(key);
-            return !!item
-              && !item.deleted
-              && item.content.type === "block"
-              && item.content.blockType === "paragraph";
-          });
-
-        if (paragraphToReplace) {
-          const { clock: delClock, timestamp: delTs } = increment({ clock });
-          clock = delClock;
-          ops.push(createDeleteOp({
-            id: createOperationId({
-              clientId: delTs.clientId,
-              clock: delTs.clock,
-            }),
-            targetId: paragraphToReplace,
-          }));
-        }
-      }
       const wrapperChain = collectReplaceAroundWrapperChain(topWrapperNode);
       ensureImplicitListItemWrapper({ wrapperChain, schema });
 
@@ -1322,4 +1377,11 @@ function extractInlineAtomAttrs(node: PMNode): { attrs?: Record<string, string |
     result[key] = attrs[key] as string | number | boolean | null;
   }
   return { attrs: result };
+}
+
+function extractInlineAtomAttrsFromContent(content: Extract<Content, { type: "inline_atom" }>): {
+  attrs?: Record<string, string | number | boolean | null>;
+} {
+  if (!content.attrs || Object.keys(content.attrs).length === 0) return {};
+  return { attrs: { ...content.attrs } };
 }
