@@ -408,6 +408,9 @@ export function NotesView(props: NotesViewProps) {
         version: string;
         stateVector: Map<string, number>;
     } | null>(null);
+    const bootstrapRemoteReachableRef = useRef(false);
+    const bootstrapRemoteSourceRef = useRef<"live" | "persisted" | "none" | null>(null);
+    const bootstrapModeRef = useRef<"authoritative" | "provisional_local" | "none">("none");
     const backendSnapshotVersionRef = useRef<string | null>(null);
     const hydrationRequestIdRef = useRef(0);
     const { currentTheme } = useTheme();
@@ -1153,6 +1156,9 @@ export function NotesView(props: NotesViewProps) {
                 });
                 if (collab) {
                     try {
+                        bootstrapRemoteReachableRef.current = false;
+                        bootstrapRemoteSourceRef.current = null;
+                        bootstrapModeRef.current = "none";
                         const bootstrapRes = await fetch("/api/crdt/note-bootstrap/get", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
@@ -1182,6 +1188,10 @@ export function NotesView(props: NotesViewProps) {
                             const remoteBytes = payload.remote?.snapshot
                                 ? decodeBase64Bytes(payload.remote.snapshot)
                                 : null;
+                            const remoteSource = payload.remote?.meta?.source ?? null;
+                            const remoteReachable = !payload.remoteError && payload.remote !== null;
+                            bootstrapRemoteReachableRef.current = remoteReachable;
+                            bootstrapRemoteSourceRef.current = remoteSource;
 
                             let seedBytes: Uint8Array | null = null;
                             let seedSource = "none";
@@ -1194,12 +1204,23 @@ export function NotesView(props: NotesViewProps) {
                                 });
                                 seedBytes = encodeRecordSnapshot({ record: merged });
                                 seedSource = "merged_local_remote";
+                                bootstrapModeRef.current = "authoritative";
                             } else if (remoteBytes) {
                                 seedBytes = remoteBytes;
                                 seedSource = "remote_only";
-                            } else if (localBytes) {
+                                bootstrapModeRef.current = "authoritative";
+                            } else if (localBytes && remoteReachable && remoteSource === "none") {
+                                // Only bootstrap from local when backend is reachable and
+                                // explicitly reports no remote snapshot yet (new doc path).
                                 seedBytes = localBytes;
-                                seedSource = "local_only";
+                                seedSource = "local_only_backend_none";
+                                bootstrapModeRef.current = "authoritative";
+                            } else if (localBytes) {
+                                // Offline-first path: allow local bootstrap, but mark provisional so
+                                // subscribe/remote snapshot can force deterministic reconciliation.
+                                seedBytes = localBytes;
+                                seedSource = "local_only_remote_unavailable";
+                                bootstrapModeRef.current = "provisional_local";
                             }
 
                             if (seedBytes) {
@@ -1238,13 +1259,17 @@ export function NotesView(props: NotesViewProps) {
                                     source: seedSource,
                                     hasLocal: Boolean(localBytes),
                                     hasRemote: Boolean(remoteBytes),
-                                    remoteSource: payload.remote?.meta?.source ?? null,
+                                    remoteSource,
+                                    remoteReachable,
                                     remoteError: payload.remoteError ?? null,
                                 },
                             });
                         } else {
                             localSnapshotSeedRef.current = null;
                             backendSnapshotVersionRef.current = null;
+                            bootstrapRemoteReachableRef.current = false;
+                            bootstrapRemoteSourceRef.current = null;
+                            bootstrapModeRef.current = "none";
                             logHydration({
                                 event: "note_bootstrap_seed_fetch_failed",
                                 reqId,
@@ -1257,6 +1282,9 @@ export function NotesView(props: NotesViewProps) {
                     } catch (snapshotError) {
                         localSnapshotSeedRef.current = null;
                         backendSnapshotVersionRef.current = null;
+                        bootstrapRemoteReachableRef.current = false;
+                        bootstrapRemoteSourceRef.current = null;
+                        bootstrapModeRef.current = "none";
                         logHydration({
                             event: "note_bootstrap_seed_error",
                             reqId,
@@ -1269,6 +1297,9 @@ export function NotesView(props: NotesViewProps) {
                 } else {
                     localSnapshotSeedRef.current = null;
                     backendSnapshotVersionRef.current = null;
+                    bootstrapRemoteReachableRef.current = false;
+                    bootstrapRemoteSourceRef.current = null;
+                    bootstrapModeRef.current = "none";
                 }
                 if (cancelled) {
                     logHydration({
@@ -2168,7 +2199,9 @@ export function NotesView(props: NotesViewProps) {
             });
             unsubscribeDoc = collab.subscribeDoc({
                 docId,
-                initialStateVector: localSnapshotSeedRef.current?.stateVector,
+                initialStateVector: bootstrapModeRef.current === "provisional_local"
+                    ? undefined
+                    : localSnapshotSeedRef.current?.stateVector,
                 onOps: ({ ops }) => {
                     if (!editorView || editorView.isDestroyed) return;
                     // Filter to only CRDT tree operations (not field/set ops)
@@ -2270,7 +2303,52 @@ export function NotesView(props: NotesViewProps) {
                         },
                     });
                     try {
-                        const record = decodeRecordSnapshot({ data: snapshot });
+                        const remoteRecord = decodeRecordSnapshot({ data: snapshot });
+                        const record = (() => {
+                            if (bootstrapModeRef.current !== "provisional_local") {
+                                return remoteRecord;
+                            }
+                            try {
+                                const pluginState = getCRDTState({
+                                    state: editorView.state,
+                                    plugin: capturedCrdtPlugin,
+                                });
+                                const pluginDoc = pluginState.doc as {
+                                    appliedOps: ReadonlySet<string>;
+                                    stateVector: ReadonlyMap<string, number>;
+                                };
+                                const localRecord = {
+                                    fields: new Map<string, unknown>(),
+                                    sets: new Map<string, unknown>(),
+                                    body: pluginDoc as unknown,
+                                    appliedOps: new Set(pluginDoc.appliedOps),
+                                    stateVector: new Map(pluginDoc.stateVector),
+                                };
+                                const merged = mergeRecordSnapshots({
+                                    local: localRecord as any,
+                                    remote: remoteRecord,
+                                    bias: "remote",
+                                });
+                                crdtDebugLog({
+                                    event: "provisional_bootstrap_remote_merge_applied",
+                                    data: {
+                                        docId,
+                                    },
+                                });
+                                bootstrapModeRef.current = "authoritative";
+                                return merged;
+                            } catch (mergeError) {
+                                crdtDebugLog({
+                                    event: "provisional_bootstrap_remote_merge_failed",
+                                    level: "error",
+                                    data: {
+                                        docId,
+                                        error: summarizeErrorForDebug(mergeError),
+                                    },
+                                });
+                                return remoteRecord;
+                            }
+                        })();
                         if (
                             !snapshotRecordHasVisibleContent(record)
                             && editorView.state.doc.textContent.trim().length > 0
@@ -2398,6 +2476,19 @@ export function NotesView(props: NotesViewProps) {
                         && pendingLocalTxBatches.length === 0
                         && hasMeaningfulEditorContent()
                     ) {
+                        // If backend isn't reachable during bootstrap, do not auto-publish local
+                        // content because it can cement divergence across peers.
+                        if (!bootstrapRemoteReachableRef.current && bootstrapModeRef.current !== "provisional_local") {
+                            crdtDebugLog({
+                                event: "initial_snapshot_publish_skipped_remote_unreachable",
+                                level: "warn",
+                                data: {
+                                    docId,
+                                    remoteSource: bootstrapRemoteSourceRef.current,
+                                },
+                            });
+                            return;
+                        }
                         initialSnapshotPublishAttempted = true;
                         crdtDebugLog({
                             event: "initial_snapshot_publish_start",
