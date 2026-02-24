@@ -192,7 +192,17 @@ function handleReplaceStep(params: {
       return null;
     }
 
-    let inferredParent = contextItem.content.parentBlockId ?? null;
+    const contextBlockType = contextItem.content.blockType;
+    const contextParent = contextItem.content.parentBlockId ?? null;
+    let inferredParent = contextParent;
+
+    // If insertion context is the list_item wrapper itself, non-list_item block
+    // inserts (e.g. paragraph created by list exit) must remain inside list_item.
+    // Otherwise we can emit paragraph directly under ordered/bullet_list, which
+    // violates PM schema and corrupts CRDT snapshots.
+    if (contextBlockType === "list_item" && node.type.name !== "list_item") {
+      return contextBlockId;
+    }
 
     // Splitting a list item inserts a sibling list_item. If the cursor is inside
     // the list item's paragraph, context parent is the list_item itself; lift one

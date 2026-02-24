@@ -410,6 +410,7 @@ export function NotesView(props: NotesViewProps) {
     } | null>(null);
     const bootstrapRemoteReachableRef = useRef(false);
     const bootstrapRemoteSourceRef = useRef<"live" | "persisted" | "none" | null>(null);
+    const bootstrapRemoteAuthoritativeResetRef = useRef(false);
     const bootstrapModeRef = useRef<"authoritative" | "provisional_local" | "none">("none");
     const backendSnapshotVersionRef = useRef<string | null>(null);
     const hydrationRequestIdRef = useRef(0);
@@ -1177,6 +1178,7 @@ export function NotesView(props: NotesViewProps) {
                                         snapshotVersion: string | null;
                                         source: "live" | "persisted" | "none";
                                         bytes: number;
+                                        authoritativeReset?: boolean;
                                     } | null;
                                 } | null;
                                 remoteError?: string | null;
@@ -1190,13 +1192,19 @@ export function NotesView(props: NotesViewProps) {
                                 : null;
                             const remoteSource = payload.remote?.meta?.source ?? null;
                             const remoteReachable = !payload.remoteError && payload.remote !== null;
+                            const authoritativeReset = Boolean(payload.remote?.meta?.authoritativeReset);
                             bootstrapRemoteReachableRef.current = remoteReachable;
                             bootstrapRemoteSourceRef.current = remoteSource;
+                            bootstrapRemoteAuthoritativeResetRef.current = authoritativeReset;
 
                             let seedBytes: Uint8Array | null = null;
                             let seedSource = "none";
 
-                            if (localBytes && remoteBytes) {
+                            if (remoteBytes && authoritativeReset) {
+                                seedBytes = remoteBytes;
+                                seedSource = "remote_authoritative_reset";
+                                bootstrapModeRef.current = "authoritative";
+                            } else if (localBytes && remoteBytes) {
                                 const merged = mergeRecordSnapshots({
                                     local: decodeRecordSnapshot({ data: localBytes }),
                                     remote: decodeRecordSnapshot({ data: remoteBytes }),
@@ -1261,6 +1269,7 @@ export function NotesView(props: NotesViewProps) {
                                     hasRemote: Boolean(remoteBytes),
                                     remoteSource,
                                     remoteReachable,
+                                    authoritativeReset,
                                     remoteError: payload.remoteError ?? null,
                                 },
                             });
@@ -1269,6 +1278,7 @@ export function NotesView(props: NotesViewProps) {
                             backendSnapshotVersionRef.current = null;
                             bootstrapRemoteReachableRef.current = false;
                             bootstrapRemoteSourceRef.current = null;
+                            bootstrapRemoteAuthoritativeResetRef.current = false;
                             bootstrapModeRef.current = "none";
                             logHydration({
                                 event: "note_bootstrap_seed_fetch_failed",
@@ -1284,6 +1294,7 @@ export function NotesView(props: NotesViewProps) {
                         backendSnapshotVersionRef.current = null;
                         bootstrapRemoteReachableRef.current = false;
                         bootstrapRemoteSourceRef.current = null;
+                        bootstrapRemoteAuthoritativeResetRef.current = false;
                         bootstrapModeRef.current = "none";
                         logHydration({
                             event: "note_bootstrap_seed_error",
@@ -1299,6 +1310,7 @@ export function NotesView(props: NotesViewProps) {
                     backendSnapshotVersionRef.current = null;
                     bootstrapRemoteReachableRef.current = false;
                     bootstrapRemoteSourceRef.current = null;
+                    bootstrapRemoteAuthoritativeResetRef.current = false;
                     bootstrapModeRef.current = "none";
                 }
                 if (cancelled) {
@@ -2502,6 +2514,17 @@ export function NotesView(props: NotesViewProps) {
                         if (!bootstrapRemoteReachableRef.current && bootstrapModeRef.current !== "provisional_local") {
                             crdtDebugLog({
                                 event: "initial_snapshot_publish_skipped_remote_unreachable",
+                                level: "warn",
+                                data: {
+                                    docId,
+                                    remoteSource: bootstrapRemoteSourceRef.current,
+                                },
+                            });
+                            return;
+                        }
+                        if (bootstrapRemoteAuthoritativeResetRef.current) {
+                            crdtDebugLog({
+                                event: "initial_snapshot_publish_skipped_authoritative_reset",
                                 level: "warn",
                                 data: {
                                     docId,

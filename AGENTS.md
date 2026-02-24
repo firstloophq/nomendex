@@ -86,6 +86,17 @@ A scenario passes only when:
 - no CRDT apply errors occur
 - screenshots confirm visual parity for the tested case
 
+## Error Handling Policy (Fail Fast)
+
+For CRDT/editor/sync code paths, never silently recover from invalid state.
+
+- Do not swallow exceptions in sync/bootstrap/apply paths.
+- Throw explicit errors with doc identifiers and operation context.
+- Log the failure with structured fields before throwing.
+- Do not "fallback and continue" when document validity checks fail.
+- Treat invalid ProseMirror document shape and CRDT invariant violations as fatal.
+- If temporary handling is required during debugging, mark it clearly as temporary and open a follow-up issue in `/Users/jacobcolling/nomendex/issues/crdt/`.
+
 ## Debug and Artifacts
 
 - Keep CRDT debug logging enabled by default.

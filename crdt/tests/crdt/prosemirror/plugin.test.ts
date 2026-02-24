@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Schema, type Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+import { liftEmptyBlock } from "prosemirror-commands";
 import { splitListItem } from "prosemirror-schema-list";
 import {
   createCRDTPlugin,
@@ -389,6 +390,90 @@ describe("crdtPlugin", () => {
     expect(orderedList.childCount).toBe(2);
     expect(orderedList.child(0)!.child(0)!.textContent).toBe("asdasfdf");
     expect(orderedList.child(1)!.child(0)!.textContent).toBe("");
+  });
+
+  it("double Enter exits ordered list without invalid list children", () => {
+    const opsFromA: Array<Operation> = [];
+
+    const pluginA = createCRDTPlugin({
+      clientId: "A",
+      schema: listSchema,
+      onLocalOps: (ops) => opsFromA.push(...ops),
+    });
+
+    const pluginB = createCRDTPlugin({
+      clientId: "B",
+      schema: listSchema,
+    });
+
+    let stateA = EditorState.create({ schema: listSchema, plugins: [pluginA] });
+    let stateB = EditorState.create({ schema: listSchema, plugins: [pluginB] });
+
+    const bootstrapDoc = listSchema.nodes.doc.create(null, [
+      listSchema.nodes.ordered_list.create({ order: 1 }, [
+        listSchema.nodes.list_item.create(null, [
+          listSchema.nodes.paragraph.create(null, [listSchema.text("one")]),
+        ]),
+      ]),
+    ]);
+
+    stateA = stateA.apply(
+      stateA.tr.replaceWith(0, stateA.doc.content.size, bootstrapDoc.content),
+    );
+    stateB = applyRemoteOps({ state: stateB, plugin: pluginB, ops: opsFromA }).state;
+    expect(stateA.doc.eq(stateB.doc)).toBe(true);
+
+    const beforeEnterOps = opsFromA.length;
+    const splitPos = findTextEndPos({ doc: stateA.doc, text: "one" });
+    stateA = stateA.apply(stateA.tr.setSelection(TextSelection.create(stateA.doc, splitPos)));
+
+    let splitTr = null;
+    const splitHandled = splitListItem(listSchema.nodes.list_item)(
+      stateA,
+      (tr) => {
+        splitTr = tr;
+      },
+    );
+    expect(splitHandled).toBe(true);
+    expect(splitTr).not.toBeNull();
+    stateA = stateA.apply(splitTr!);
+
+    let liftTr = null;
+    const lifted = liftEmptyBlock(
+      stateA,
+      (tr) => {
+        liftTr = tr;
+      },
+    );
+    expect(lifted).toBe(true);
+    expect(liftTr).not.toBeNull();
+    stateA = stateA.apply(liftTr!);
+
+    const deltaOps = opsFromA.slice(beforeEnterOps);
+    stateB = applyRemoteOps({ state: stateB, plugin: pluginB, ops: deltaOps }).state;
+
+    expect(() => stateA.doc.check()).not.toThrow();
+    expect(() => stateB.doc.check()).not.toThrow();
+    expect(stateA.doc.eq(stateB.doc)).toBe(true);
+
+    const orderedList = stateB.doc.child(0);
+    expect(orderedList.type.name).toBe("ordered_list");
+    expect(orderedList.childCount).toBe(1);
+    expect(orderedList.child(0)!.type.name).toBe("list_item");
+    expect(orderedList.child(0)!.child(0)!.textContent).toBe("one");
+    expect(stateB.doc.child(1)?.type.name).toBe("paragraph");
+
+    const crdtDoc = getCRDTState({ state: stateA, plugin: pluginA }).doc;
+    for (const item of crdtDoc.store.items) {
+      if (item.deleted || item.content.type !== "block") continue;
+      const parent = item.content.parentBlockId;
+      if (!parent) continue;
+      const parentItem = crdtDoc.store.map.get(`${parent.clientId}:${parent.clock}`);
+      if (!parentItem || parentItem.deleted || parentItem.content.type !== "block") continue;
+      if (parentItem.content.blockType === "ordered_list" || parentItem.content.blockType === "bullet_list") {
+        expect(item.content.blockType).toBe("list_item");
+      }
+    }
   });
 
   it("does not emit remote ops through onLocalOps", () => {

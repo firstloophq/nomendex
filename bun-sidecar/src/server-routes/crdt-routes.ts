@@ -136,6 +136,7 @@ export const crdtRoutes = {
                     snapshotVersion: string | null;
                     source: "live" | "persisted" | "none";
                     bytes: number;
+                    authoritativeReset?: boolean;
                 } | null;
             } = { snapshot: null, meta: null };
             let remoteError: string | null = null;

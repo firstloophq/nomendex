@@ -12,6 +12,7 @@ interface ErrorBoundaryState {
     hasError: boolean;
     error: Error | null;
     errorInfo: React.ErrorInfo | null;
+    isRecovering: boolean;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -21,6 +22,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             hasError: false,
             error: null,
             errorInfo: null,
+            isRecovering: false,
         };
     }
 
@@ -68,12 +70,75 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             hasError: false,
             error: null,
             errorInfo: null,
+            isRecovering: false,
         });
+    };
+
+    private getBootstrapNoteRecoveryTarget(): { docId: string; fileName: string } | null {
+        const message = this.state.error?.message ?? "";
+        const match = message.match(/Invalid bootstrap CRDT seed for\s+([^:]+:[^:]+:note:[^\s:]+)\s*:/);
+        const docId = match?.[1]?.trim();
+        if (!docId) return null;
+
+        const parsed = docId.match(/^ws:[^:]+:note:(.+)$/);
+        if (!parsed?.[1]) return null;
+
+        let fileName = parsed[1];
+        try {
+            fileName = decodeURIComponent(fileName);
+        } catch {
+            // leave as-is
+        }
+        if (!fileName.endsWith(".md")) return null;
+
+        return { docId, fileName };
+    }
+
+    handleWipeNoteAndResetCrdt = async () => {
+        const target = this.getBootstrapNoteRecoveryTarget();
+        if (!target) {
+            toast.error("Unable to resolve note/doc from error");
+            return;
+        }
+
+        this.setState({ isRecovering: true });
+        try {
+            const resetRes = await fetch("/api/crdt/note-snapshot/hard-reset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ docId: target.docId }),
+            });
+            if (!resetRes.ok) {
+                const payload = await resetRes.text().catch(() => "");
+                throw new Error(`CRDT hard reset failed (${resetRes.status})${payload ? `: ${payload}` : ""}`);
+            }
+
+            const saveRes = await fetch("/api/notes/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    fileName: target.fileName,
+                    content: "",
+                }),
+            });
+            if (!saveRes.ok) {
+                const payload = await saveRes.text().catch(() => "");
+                throw new Error(`Note wipe failed (${saveRes.status})${payload ? `: ${payload}` : ""}`);
+            }
+
+            toast.success(`Wiped "${target.fileName}" and reset CRDT. Reloading...`);
+            window.location.reload();
+        } catch (error) {
+            console.error("Failed to wipe note/reset CRDT from error boundary:", error);
+            toast.error(error instanceof Error ? error.message : "Recovery failed");
+            this.setState({ isRecovering: false });
+        }
     };
 
     override render() {
         if (this.state.hasError) {
-            const { error } = this.state;
+            const { error, isRecovering } = this.state;
+            const recoveryTarget = this.getBootstrapNoteRecoveryTarget();
 
             return (
                 <div className="flex items-center justify-center min-h-screen p-4 bg-background">
@@ -113,6 +178,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                                 <Copy className="h-4 w-4 mr-2" />
                                 Copy Error
                             </Button>
+                            {recoveryTarget && (
+                                <Button
+                                    variant="destructive"
+                                    onClick={this.handleWipeNoteAndResetCrdt}
+                                    disabled={isRecovering}
+                                >
+                                    {isRecovering ? "Recovering..." : "Wipe Note + Reset CRDT"}
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={this.handleReload}>
                                 <RotateCcw className="h-4 w-4 mr-2" />
                                 Reload

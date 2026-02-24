@@ -49,6 +49,7 @@ const socketStateByRaw = new WeakMap<object, SocketState>();
 const hydratedDocs = new Set<string>();
 const hydrateByDoc = new Map<string, Promise<void>>();
 const persistedVersionByDoc = new Map<string, string>();
+const authoritativeResetVersionByDoc = new Map<string, string>();
 const persistTimerByDoc = new Map<string, ReturnType<typeof setTimeout>>();
 const persistInFlightByDoc = new Set<string>();
 
@@ -402,6 +403,7 @@ const crdtHandler = createCRDTWebSocketHandler({
       })),
     });
     if (source !== "client" || ops.length === 0) return;
+    authoritativeResetVersionByDoc.delete(docId);
     const scopedDoc = parseWorkspaceScopedDocId({ docId });
     if (!scopedDoc) return;
     scheduleCanonicalPersist({
@@ -448,6 +450,7 @@ export async function hardResetCollabDoc(params: {
   const emptyRecord = createRecord();
   const emptyBytes = encodeRecordSnapshot({ record: emptyRecord });
   const emptyVersion = getRecordSnapshotVersion({ data: emptyBytes });
+  authoritativeResetVersionByDoc.set(params.docId, emptyVersion);
   const currentState = crdtHandler.getDocManagerState();
   const nextManager = applySnapshotToDoc({
     manager: currentState.manager,
@@ -615,6 +618,7 @@ export async function getCollabBootstrapSnapshot(params: {
     snapshotVersion: string | null;
     source: "live" | "persisted" | "none";
     bytes: number;
+    authoritativeReset: boolean;
   };
 }> {
   return withSpan({
@@ -646,12 +650,18 @@ export async function getCollabBootstrapSnapshot(params: {
       const liveRecord = getDoc({ manager: managerState.manager, docId: params.docId });
       if (liveRecord) {
         const liveBytes = encodeRecordSnapshot({ record: liveRecord });
+        const liveVersion = getRecordSnapshotVersion({ data: liveBytes });
+        const authoritativeReset = authoritativeResetVersionByDoc.get(params.docId) === liveVersion;
+        if (!authoritativeReset) {
+          authoritativeResetVersionByDoc.delete(params.docId);
+        }
         return {
           snapshot: toBase64(liveBytes),
           meta: {
-            snapshotVersion: getRecordSnapshotVersion({ data: liveBytes }),
+            snapshotVersion: liveVersion,
             source: "live",
             bytes: liveBytes.byteLength,
+            authoritativeReset,
           },
         };
       }
@@ -661,12 +671,18 @@ export async function getCollabBootstrapSnapshot(params: {
         orgWorkspaceId: scopedDoc.orgWorkspaceId,
       });
       if (persisted) {
+        const persistedVersion = persisted.snapshotVersion ?? getRecordSnapshotVersion({ data: persisted.bytes });
+        const authoritativeReset = authoritativeResetVersionByDoc.get(params.docId) === persistedVersion;
+        if (!authoritativeReset) {
+          authoritativeResetVersionByDoc.delete(params.docId);
+        }
         return {
           snapshot: toBase64(persisted.bytes),
           meta: {
-            snapshotVersion: persisted.snapshotVersion ?? getRecordSnapshotVersion({ data: persisted.bytes }),
+            snapshotVersion: persistedVersion,
             source: "persisted",
             bytes: persisted.bytes.byteLength,
+            authoritativeReset,
           },
         };
       }
@@ -677,6 +693,7 @@ export async function getCollabBootstrapSnapshot(params: {
           snapshotVersion: null,
           source: "none",
           bytes: 0,
+          authoritativeReset: false,
         },
       };
     },
