@@ -66,6 +66,7 @@ import {
     encodeRecordSnapshot,
     getRecordSnapshotStateVector,
     getRecordSnapshotVersion,
+    mergeRecordSnapshots,
     undoCommand,
     redoCommand,
 } from "@crdt/lib";
@@ -1152,64 +1153,112 @@ export function NotesView(props: NotesViewProps) {
                 });
                 if (collab) {
                     try {
-                        const snapshotRes = await fetch("/api/crdt/note-snapshot/get", {
+                        const bootstrapRes = await fetch("/api/crdt/note-bootstrap/get", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ docId: collabDocId }),
                         });
 
-                        if (snapshotRes.ok) {
-                            const payload = await snapshotRes.json() as {
-                                snapshot: string | null;
-                                meta: {
-                                    snapshotVersion?: string;
-                                    lastKnownBackendVersion?: string;
+                        if (bootstrapRes.ok) {
+                            const payload = await bootstrapRes.json() as {
+                                local: {
+                                    snapshot: string;
+                                    meta: { snapshotVersion?: string } | null;
                                 } | null;
+                                remote: {
+                                    snapshot: string | null;
+                                    meta: {
+                                        snapshotVersion: string | null;
+                                        source: "live" | "persisted" | "none";
+                                        bytes: number;
+                                    } | null;
+                                } | null;
+                                remoteError?: string | null;
                             };
-                            if (payload.snapshot) {
-                                const bytes = decodeBase64Bytes(payload.snapshot);
-                                const version = payload.meta?.snapshotVersion
-                                    ?? getRecordSnapshotVersion({ data: bytes });
-                                const stateVector = new Map(getRecordSnapshotStateVector({ data: bytes }));
-                                localSnapshotSeedRef.current = { bytes, version, stateVector };
-                                backendSnapshotVersionRef.current = payload.meta?.lastKnownBackendVersion
-                                    ?? payload.meta?.snapshotVersion
-                                    ?? null;
-                                crdtDebugLog({
-                                    event: "note_snapshot_seed_loaded",
-                                    data: {
-                                        docId: collabDocId,
-                                        hasSnapshot: true,
-                                        bytes: bytes.byteLength,
-                                        version,
-                                    },
+
+                            const localBytes = payload.local?.snapshot
+                                ? decodeBase64Bytes(payload.local.snapshot)
+                                : null;
+                            const remoteBytes = payload.remote?.snapshot
+                                ? decodeBase64Bytes(payload.remote.snapshot)
+                                : null;
+
+                            let seedBytes: Uint8Array | null = null;
+                            let seedSource = "none";
+
+                            if (localBytes && remoteBytes) {
+                                const merged = mergeRecordSnapshots({
+                                    local: decodeRecordSnapshot({ data: localBytes }),
+                                    remote: decodeRecordSnapshot({ data: remoteBytes }),
+                                    bias: "remote",
                                 });
-                                logHydration({
-                                    event: "note_snapshot_seed_loaded",
-                                    reqId,
-                                    source: "fetch",
-                                    data: {
-                                        hasSnapshot: true,
-                                        bytes: bytes.byteLength,
-                                        version,
-                                    },
+                                seedBytes = encodeRecordSnapshot({ record: merged });
+                                seedSource = "merged_local_remote";
+                            } else if (remoteBytes) {
+                                seedBytes = remoteBytes;
+                                seedSource = "remote_only";
+                            } else if (localBytes) {
+                                seedBytes = localBytes;
+                                seedSource = "local_only";
+                            }
+
+                            if (seedBytes) {
+                                const seedVersion = getRecordSnapshotVersion({ data: seedBytes });
+                                const seedStateVector = new Map(getRecordSnapshotStateVector({ data: seedBytes }));
+                                localSnapshotSeedRef.current = {
+                                    bytes: seedBytes,
+                                    version: seedVersion,
+                                    stateVector: seedStateVector,
+                                };
+                                await fetch("/api/crdt/note-snapshot/save", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        docId: collabDocId,
+                                        snapshot: encodeBase64Bytes(seedBytes),
+                                        meta: {
+                                            docId: collabDocId,
+                                            snapshotVersion: seedVersion,
+                                            updatedAt: new Date().toISOString(),
+                                            source: seedSource,
+                                            lastKnownBackendVersion: payload.remote?.meta?.snapshotVersion ?? undefined,
+                                        },
+                                    }),
                                 });
                             } else {
-                                logHydration({
-                                    event: "note_snapshot_seed_loaded",
-                                    reqId,
-                                    source: "fetch",
-                                    data: {
-                                        hasSnapshot: false,
-                                    },
-                                });
                                 localSnapshotSeedRef.current = null;
                             }
+
+                            backendSnapshotVersionRef.current = payload.remote?.meta?.snapshotVersion ?? null;
+                            logHydration({
+                                event: "note_bootstrap_seed_prepared",
+                                reqId,
+                                source: "fetch",
+                                data: {
+                                    source: seedSource,
+                                    hasLocal: Boolean(localBytes),
+                                    hasRemote: Boolean(remoteBytes),
+                                    remoteSource: payload.remote?.meta?.source ?? null,
+                                    remoteError: payload.remoteError ?? null,
+                                },
+                            });
+                        } else {
+                            localSnapshotSeedRef.current = null;
+                            backendSnapshotVersionRef.current = null;
+                            logHydration({
+                                event: "note_bootstrap_seed_fetch_failed",
+                                reqId,
+                                source: "fetch",
+                                data: {
+                                    status: bootstrapRes.status,
+                                },
+                            });
                         }
                     } catch (snapshotError) {
                         localSnapshotSeedRef.current = null;
+                        backendSnapshotVersionRef.current = null;
                         logHydration({
-                            event: "note_snapshot_seed_error",
+                            event: "note_bootstrap_seed_error",
                             reqId,
                             source: "fetch",
                             data: {
@@ -1992,56 +2041,27 @@ export function NotesView(props: NotesViewProps) {
             try {
                 const seed = localSnapshotSeedRef.current;
                 const record = decodeRecordSnapshot({ data: seed.bytes });
-                if (!snapshotRecordHasVisibleContent(record) && contentToUse.trim().length > 0) {
+                const seeded = applyRemoteSnapshot({
+                    state: editorView.state,
+                    plugin: crdtPlugin,
+                    snapshotDoc: record.body,
+                });
+                const updated = updateEditorStateSafely(editorView, seeded.state, "bootstrap_seed");
+                if (updated) {
+                    const markdown = tableMarkdownSerializer.serialize(seeded.state.doc);
+                    updateContent(markdown);
                     crdtDebugLog({
-                        event: "local_snapshot_seed_skipped",
+                        event: "bootstrap_seed_applied",
                         data: {
                             docId: collabDocId,
-                            reason: "seed_empty_markdown_nonempty",
                             bytes: seed.bytes.byteLength,
                             version: seed.version,
                         },
                     });
-                    logHydration({
-                        event: "note_local_snapshot_seed_skipped",
-                        source: "local_snapshot",
-                        data: {
-                            bytes: seed.bytes.byteLength,
-                            version: seed.version,
-                            markdownLen: contentToUse.length,
-                        },
-                    });
-                } else {
-                    const seeded = applyRemoteSnapshot({
-                        state: editorView.state,
-                        plugin: crdtPlugin,
-                        snapshotDoc: record.body,
-                    });
-                    const updated = updateEditorStateSafely(editorView, seeded.state, "local_snapshot_seed");
-                    if (updated) {
-                        const markdown = tableMarkdownSerializer.serialize(seeded.state.doc);
-                        updateContent(markdown);
-                        crdtDebugLog({
-                            event: "local_snapshot_seed_applied",
-                            data: {
-                                docId: collabDocId,
-                                bytes: seed.bytes.byteLength,
-                                version: seed.version,
-                            },
-                        });
-                        logHydration({
-                            event: "note_render_state",
-                            source: "local_snapshot",
-                            data: {
-                                docTextLen: seeded.state.doc.textContent.length,
-                                markdownLen: markdown.length,
-                            },
-                        });
-                    }
                 }
             } catch (error) {
                 crdtDebugLog({
-                    event: "local_snapshot_seed_failed",
+                    event: "bootstrap_seed_failed",
                     level: "error",
                     data: {
                         docId: collabDocId,

@@ -84,6 +84,10 @@ function fromBase64(base64: string): Uint8Array {
   return bytes;
 }
 
+function toBase64(data: Uint8Array): string {
+  return btoa(String.fromCharCode(...data));
+}
+
 async function canAccessWorkspace(params: {
   identity: AuthIdentity;
   orgWorkspaceId: string;
@@ -598,6 +602,83 @@ export async function inspectCollabDoc(params: {
       }
 
       return summary;
+    },
+  });
+}
+
+export async function getCollabBootstrapSnapshot(params: {
+  docId: string;
+  identity: AuthIdentity;
+}): Promise<{
+  snapshot: string | null;
+  meta: {
+    snapshotVersion: string | null;
+    source: "live" | "persisted" | "none";
+    bytes: number;
+  };
+}> {
+  return withSpan({
+    name: "collab.get_bootstrap_snapshot",
+    attributes: {
+      "collab.doc_id": params.docId,
+    },
+    fn: async () => {
+      const scopedDoc = parseWorkspaceScopedDocId({ docId: params.docId });
+      if (!scopedDoc) {
+        throw new Error(`Invalid document id format: "${params.docId}"`);
+      }
+
+      const allowed = await canAccessWorkspace({
+        identity: params.identity,
+        orgWorkspaceId: scopedDoc.orgWorkspaceId,
+        cache: new Map(),
+      });
+      if (!allowed) {
+        throw new Error("Forbidden");
+      }
+
+      await hydrateDocIfNeeded({
+        docId: params.docId,
+        orgWorkspaceId: scopedDoc.orgWorkspaceId,
+      });
+
+      const managerState = crdtHandler.getDocManagerState();
+      const liveRecord = getDoc({ manager: managerState.manager, docId: params.docId });
+      if (liveRecord) {
+        const liveBytes = encodeRecordSnapshot({ record: liveRecord });
+        return {
+          snapshot: toBase64(liveBytes),
+          meta: {
+            snapshotVersion: getRecordSnapshotVersion({ data: liveBytes }),
+            source: "live",
+            bytes: liveBytes.byteLength,
+          },
+        };
+      }
+
+      const persisted = await loadCanonicalSnapshot({
+        docId: params.docId,
+        orgWorkspaceId: scopedDoc.orgWorkspaceId,
+      });
+      if (persisted) {
+        return {
+          snapshot: toBase64(persisted.bytes),
+          meta: {
+            snapshotVersion: persisted.snapshotVersion ?? getRecordSnapshotVersion({ data: persisted.bytes }),
+            source: "persisted",
+            bytes: persisted.bytes.byteLength,
+          },
+        };
+      }
+
+      return {
+        snapshot: null,
+        meta: {
+          snapshotVersion: null,
+          source: "none",
+          bytes: 0,
+        },
+      };
     },
   });
 }

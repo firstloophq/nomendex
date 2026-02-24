@@ -3,6 +3,7 @@ import { websocket } from "hono/bun";
 import { cors } from "hono/cors";
 import { authMiddleware, type AuthVariables } from "./auth";
 import {
+  getCollabBootstrapSnapshot,
   handleCollabWebSocketUpgrade,
   hardResetCollabDoc,
   inspectCollabDoc,
@@ -91,6 +92,43 @@ app.post("/api/collab/reset-doc", async (c) => {
     }
     logError("collab_reset_doc_failed", { docId, message });
     return c.json({ error: "Failed to reset doc" }, 500);
+  }
+});
+
+app.post("/api/collab/bootstrap-snapshot", async (c) => {
+  const body = await c.req.json().catch(() => null) as { docId?: unknown } | null;
+  const docId = typeof body?.docId === "string" ? body.docId.trim() : "";
+  if (!docId) {
+    return c.json({ error: "docId is required" }, 400);
+  }
+
+  try {
+    const result = await withSpan({
+      name: "collab.bootstrap_snapshot",
+      attributes: {
+        "collab.doc_id": docId,
+      },
+      fn: async () => getCollabBootstrapSnapshot({
+        docId,
+        identity: {
+          userId: c.get("userId"),
+          clerkUserId: c.get("clerkUserId"),
+          userName: c.get("userName"),
+          userEmail: c.get("userEmail"),
+        },
+      }),
+    });
+    return c.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "Forbidden") {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    if (message.startsWith("Invalid document id format:")) {
+      return c.json({ error: message }, 400);
+    }
+    logError("collab_bootstrap_snapshot_failed", { docId, message });
+    return c.json({ error: "Failed to load bootstrap snapshot" }, 500);
   }
 });
 

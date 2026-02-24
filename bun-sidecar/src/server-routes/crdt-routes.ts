@@ -121,6 +121,61 @@ export const crdtRoutes = {
             return Response.json({ success: true });
         },
     },
+    "/api/crdt/note-bootstrap/get": {
+        async POST(req: Request) {
+            const args = (await req.json()) as { docId?: string };
+            const docId = args.docId?.trim();
+            if (!docId) {
+                return Response.json({ error: "docId is required" }, { status: 400 });
+            }
+
+            const local = await readNoteSnapshot({ docId });
+            let remote: {
+                snapshot: string | null;
+                meta: {
+                    snapshotVersion: string | null;
+                    source: "live" | "persisted" | "none";
+                    bytes: number;
+                } | null;
+            } = { snapshot: null, meta: null };
+            let remoteError: string | null = null;
+
+            try {
+                const token = await getCurrentAuthToken();
+                if (token) {
+                    const teamBackendUrl = resolveTeamBackendHttpUrl();
+                    const response = await fetch(`${teamBackendUrl}/api/collab/bootstrap-snapshot`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({ docId }),
+                    });
+                    if (response.ok) {
+                        remote = await response.json() as typeof remote;
+                    } else {
+                        remoteError = `backend_bootstrap_${response.status}`;
+                    }
+                } else {
+                    remoteError = "missing_auth_token";
+                }
+            } catch (error) {
+                remoteError = error instanceof Error ? error.message : String(error);
+            }
+
+            return Response.json({
+                local: local
+                    ? {
+                        snapshot: toBase64(local.bytes),
+                        meta: local.meta,
+                    }
+                    : null,
+                remote,
+                remoteError,
+            });
+        },
+    },
     "/api/crdt/canvas-snapshot/get": {
         async POST(req: Request) {
             const args = (await req.json()) as { docId: string };
