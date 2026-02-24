@@ -189,6 +189,7 @@ export declare function createMultiDocTransport(params: {
     onDisconnect?: () => void;
     onDocSyncComplete?: (params: { docId: string }) => void;
     onProtocolError?: (params: { docId?: string; reason: string }) => void;
+    onDebug?: (params: { event: string; data?: Record<string, unknown> }) => void;
     getAuthToken?: () => string | Promise<string>;
 }): MultiDocTransport;
 
