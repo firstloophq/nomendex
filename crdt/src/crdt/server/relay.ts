@@ -2,7 +2,7 @@ import { createCRDTWebSocketHandler, type CRDTWebSocketHandler } from "./websock
 import type { RecordOp } from "../document/record";
 import type { AwarenessState } from "../network/awareness";
 import { createMultiDocTransport, type MultiDocTransport } from "../network/multi-doc-transport";
-import { applyDocOperation, getDoc } from "../document/doc-manager";
+import { applyDocOperation, applySnapshotToDoc, getDoc } from "../document/doc-manager";
 import { receive } from "../core/lamport-clock";
 import { encodeRecordSnapshot, getRecordSnapshotVersion } from "../document/snapshot";
 import { getBodyText } from "../document/record";
@@ -142,6 +142,27 @@ export function createCRDTRelay(params: {
         if (!relayedDocs.has(docId)) return;
         // Forward remote awareness to local clients
         handlerRef.broadcastAwareness({ docId, clientId: remoteClientId, state });
+      },
+
+      onSnapshot({ docId, data, version }) {
+        if (!relayedDocs.has(docId)) return;
+
+        const state = handlerRef.getDocManagerState();
+        const nextManager = applySnapshotToDoc({
+          manager: state.manager,
+          docId,
+          snapshot: data,
+          mode: "replace",
+        });
+        handlerRef.setDocManagerState({
+          state: { ...state, manager: nextManager },
+        });
+        handlerRef.checkpointDoc({ docId });
+        handlerRef.broadcastSnapshot({
+          docId,
+          snapshot: data,
+          version,
+        });
       },
 
       onClientDiagnosticsRequest({ requestId, docId }) {
