@@ -1,6 +1,6 @@
 import { createClock, receive } from "../core/lamport-clock";
 import type { LamportClock } from "../core/lamport-clock";
-import { createDocManager, applyDocOperation, deleteDoc } from "../document/doc-manager";
+import { createDocManager, applyDocOperations, deleteDoc } from "../document/doc-manager";
 import type { RecordOp } from "../document/record";
 import type { CardApiState } from "./card-api";
 import type { AwarenessState } from "../network/awareness";
@@ -11,6 +11,7 @@ import {
 } from "../network/state-vector";
 import { getDoc } from "../document/doc-manager";
 import { encodeRecordSnapshot } from "../document/snapshot";
+import { bytesToBase64 } from "./base64";
 
 // --- Public interfaces ---
 
@@ -71,8 +72,8 @@ export function createCRDTWebSocketHandler(params?: {
     clock: createClock({ clientId: serverClientId }),
   };
   const allDocOps = new Map<string, Array<RecordOp>>();
-  // Base64-encoded record snapshots (checkpoints)
-  const docCheckpoints = new Map<string, string>();
+  // Raw record snapshots (checkpoints). Encode only at JSON wire boundary.
+  const docCheckpoints = new Map<string, Uint8Array>();
   const seenTxIdsByDoc = new Map<string, Map<string, number>>();
   const TX_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
   const TX_DEDUPE_MAX_PER_DOC = 4000;
@@ -192,7 +193,7 @@ export function createCRDTWebSocketHandler(params?: {
     version?: string;
     excludeClientId?: string;
   }): void {
-    const snapshotBase64 = btoa(String.fromCharCode(...broadcastParams.snapshot));
+    const snapshotBase64 = bytesToBase64(broadcastParams.snapshot);
     const message = JSON.stringify({
       type: "snapshot",
       docId: broadcastParams.docId,
@@ -258,7 +259,7 @@ export function createCRDTWebSocketHandler(params?: {
             client.send(JSON.stringify({
               type: "sync-response",
               docId,
-              snapshot: checkpoint,
+              snapshot: bytesToBase64(checkpoint),
               ops: existingOps,
             }));
           } else {
@@ -295,23 +296,29 @@ export function createCRDTWebSocketHandler(params?: {
             return;
           }
 
+          docManagerState = {
+            ...docManagerState,
+            manager: applyDocOperations({
+              manager: docManagerState.manager,
+              docId,
+              ops,
+            }),
+          };
+          let maxRemoteClock: number | null = null;
           for (const op of ops) {
+            if ("id" in op && op.id && typeof op.id.clock === "number") {
+              if (maxRemoteClock === null || op.id.clock > maxRemoteClock) {
+                maxRemoteClock = op.id.clock;
+              }
+            }
+          }
+          if (maxRemoteClock !== null) {
             docManagerState = {
               ...docManagerState,
-              manager: applyDocOperation({
-                manager: docManagerState.manager,
-                docId,
-                op,
-              }),
+              clock: receive({ clock: docManagerState.clock, remoteCounter: maxRemoteClock }),
             };
-            if ("id" in op && op.id && typeof op.id.clock === "number") {
-              docManagerState = {
-                ...docManagerState,
-                clock: receive({ clock: docManagerState.clock, remoteCounter: op.id.clock }),
-              };
-            }
-            getOpsForDoc(docId).push(op);
           }
+          getOpsForDoc(docId).push(...ops);
 
           onDocChanged?.({ docId, txId, ops, source: "client" });
 
@@ -397,9 +404,7 @@ export function createCRDTWebSocketHandler(params?: {
       if (!record) return;
 
       const snapshotData = encodeRecordSnapshot({ record });
-      // Store as base64 for JSON serialization
-      const base64 = btoa(String.fromCharCode(...snapshotData));
-      docCheckpoints.set(docId, base64);
+      docCheckpoints.set(docId, snapshotData);
 
       // Clear ops — the snapshot contains all state
       allDocOps.delete(docId);

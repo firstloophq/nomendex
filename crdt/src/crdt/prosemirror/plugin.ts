@@ -6,13 +6,14 @@ import { createOperationId, createInsertOp, type Operation } from "../core/opera
 import {
   createEmptyDocument,
   applyOperation,
+  applyOperations,
   type CRDTDoc,
 } from "../core/apply-operations";
 import { transactionToCRDTOps } from "./transaction-capture";
 import { crdtToProseMirror } from "./state-mapping";
 import {
   createUndoManager,
-  trackOperation,
+  trackOperations,
   undo,
   redo,
   canUndo,
@@ -39,12 +40,28 @@ const SHARED_INITIAL_BLOCK_ID = createOperationId({
   clientId: "__crdt_init__",
   clock: 0,
 });
+const OPS_HISTORY_LIMIT = 1000;
 
 // Store onLocalOps callbacks keyed by plugin instance
 const pluginCallbacks = new WeakMap<
   Plugin<CRDTPluginState>,
   (ops: ReadonlyArray<Operation>) => void
 >();
+
+function appendOpsHistory(
+  existing: ReadonlyArray<Operation>,
+  incoming: ReadonlyArray<Operation>,
+): ReadonlyArray<Operation> {
+  if (incoming.length === 0) return existing;
+  if (incoming.length >= OPS_HISTORY_LIMIT) {
+    return incoming.slice(incoming.length - OPS_HISTORY_LIMIT);
+  }
+  const keepExisting = Math.max(0, OPS_HISTORY_LIMIT - incoming.length);
+  const trimmedExisting = existing.length > keepExisting
+    ? existing.slice(existing.length - keepExisting)
+    : existing;
+  return [...trimmedExisting, ...incoming];
+}
 
 // --- Plugin Creation ---
 
@@ -113,17 +130,14 @@ export function createCRDTPlugin(params: {
         if (result.ops.length === 0) return pluginState;
 
         // Apply the ops to the CRDT doc
-        let newDoc = pluginState.doc;
-        for (const op of result.ops) {
-          newDoc = applyOperation({ doc: newDoc, op });
-        }
+        const newDoc = applyOperations({ doc: pluginState.doc, ops: result.ops });
 
-        // Track in undo manager
-        const now = Date.now();
-        let um = pluginState.undoManager;
-        for (const op of result.ops) {
-          um = trackOperation({ um, op, timestamp: now });
-        }
+        // Track in undo manager as one batch to avoid quadratic array-copy on large deletes.
+        const um = trackOperations({
+          um: pluginState.undoManager,
+          ops: result.ops,
+          timestamp: Date.now(),
+        });
 
         // Emit local ops
         onLocalOps?.(result.ops);
@@ -133,7 +147,7 @@ export function createCRDTPlugin(params: {
           doc: newDoc,
           clock: result.clock,
           undoManager: um,
-          allOps: [...pluginState.allOps, ...result.ops],
+          allOps: appendOpsHistory(pluginState.allOps, result.ops),
           isRemoteUpdate: false,
         };
       },
@@ -165,10 +179,7 @@ export function applyRemoteOps(params: {
   const currentState = getCRDTState({ state, plugin });
 
   // Apply remote ops to the CRDT doc
-  let newDoc = currentState.doc;
-  for (const op of ops) {
-    newDoc = applyOperation({ doc: newDoc, op });
-  }
+  const newDoc = applyOperations({ doc: currentState.doc, ops });
 
   // Rebuild PM doc from CRDT state
   const pmDoc = crdtToProseMirror({ doc: newDoc, schema: state.schema });
@@ -176,7 +187,7 @@ export function applyRemoteOps(params: {
   const newPluginState: CRDTPluginState = {
     ...currentState,
     doc: newDoc,
-    allOps: [...currentState.allOps, ...ops],
+    allOps: appendOpsHistory(currentState.allOps, ops),
     isRemoteUpdate: true,
   };
 
@@ -227,10 +238,7 @@ function applyUndoRedoOps(params: {
   const pluginState = getCRDTState({ state, plugin });
 
   // Apply ops to the CRDT doc
-  let newDoc = pluginState.doc;
-  for (const op of ops) {
-    newDoc = applyOperation({ doc: newDoc, op });
-  }
+  const newDoc = applyOperations({ doc: pluginState.doc, ops });
 
   // Rebuild PM doc from updated CRDT state
   const pmDoc = crdtToProseMirror({ doc: newDoc, schema: state.schema });
@@ -246,7 +254,7 @@ function applyUndoRedoOps(params: {
     doc: newDoc,
     clock: { ...pluginState.clock, counter: maxClock },
     undoManager: newUndoManager,
-    allOps: [...pluginState.allOps, ...ops],
+    allOps: appendOpsHistory(pluginState.allOps, ops),
     isRemoteUpdate: true,
   };
 

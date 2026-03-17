@@ -1588,6 +1588,97 @@ export function NotesView(props: NotesViewProps) {
         let syncComplete = false;
         let localTxSequence = 0;
         let pendingLocalTxBatches: Array<{ txId: string; ops: ReadonlyArray<Operation> }> = [];
+        const LARGE_DELETE_SNAPSHOT_OP_THRESHOLD = 1500;
+
+        const summarizeDeleteHeavyBatch = (ops: ReadonlyArray<Operation>): {
+            isDeleteHeavy: boolean;
+            deleteCount: number;
+            insertCount: number;
+        } => {
+            let deleteCount = 0;
+            let insertCount = 0;
+            for (const op of ops) {
+                if (op.type === "delete") {
+                    deleteCount += 1;
+                } else if (op.type === "delete_batch") {
+                    deleteCount += op.targetIds.length;
+                } else if (op.type === "insert") {
+                    insertCount += 1;
+                }
+            }
+            const logicalTotal = deleteCount + insertCount;
+            const isDeleteHeavy = deleteCount >= LARGE_DELETE_SNAPSHOT_OP_THRESHOLD
+                && deleteCount >= Math.floor(logicalTotal * 0.9)
+                && insertCount <= 4;
+            return { isDeleteHeavy, deleteCount, insertCount };
+        };
+
+        const trySendSnapshotFastPath = (ops: ReadonlyArray<Operation>): boolean => {
+            const batch = summarizeDeleteHeavyBatch(ops);
+            if (!batch.isDeleteHeavy) return false;
+            if (!collab || !collab.sendSnapshot) return false;
+
+            const view = viewRef.current;
+            const plugin = crdtPluginRef.current;
+            if (!view || view.isDestroyed || !plugin) return false;
+
+            try {
+                const pluginState = getCRDTState({
+                    state: view.state,
+                    plugin,
+                });
+                const pluginDoc = pluginState.doc as {
+                    appliedOps: ReadonlySet<string>;
+                    stateVector: ReadonlyMap<string, number>;
+                };
+                const record = {
+                    fields: new Map<string, unknown>(),
+                    sets: new Map<string, unknown>(),
+                    body: pluginDoc as unknown,
+                    appliedOps: new Set(pluginDoc.appliedOps),
+                    stateVector: new Map(pluginDoc.stateVector),
+                };
+                const snapshot = encodeRecordSnapshot({ record: record as any });
+                const snapshotVersion = getRecordSnapshotVersion({ data: snapshot });
+
+                collab.sendSnapshot({
+                    docId: collabDocId,
+                    snapshot,
+                    expectedVersion: backendSnapshotVersionRef.current ?? undefined,
+                    mergeBias: "remote",
+                });
+
+                localSnapshotSeedRef.current = {
+                    bytes: snapshot,
+                    version: snapshotVersion,
+                    stateVector: new Map(pluginDoc.stateVector),
+                };
+
+                crdtDebugLog({
+                    event: "local_snapshot_fastpath_sent",
+                    data: {
+                        docId: collabDocId,
+                        opsCount: ops.length,
+                        deleteCount: batch.deleteCount,
+                        insertCount: batch.insertCount,
+                        snapshotBytes: snapshot.byteLength,
+                        expectedVersion: backendSnapshotVersionRef.current ?? null,
+                    },
+                });
+                return true;
+            } catch (error) {
+                crdtDebugLog({
+                    event: "local_snapshot_fastpath_failed",
+                    level: "error",
+                    data: {
+                        docId: collabDocId,
+                        opsCount: ops.length,
+                        error: summarizeErrorForDebug(error),
+                    },
+                });
+                return false;
+            }
+        };
 
         if (isCollabMode && collab) {
             crdtPlugin = createCRDTPlugin({
@@ -1620,6 +1711,10 @@ export function NotesView(props: NotesViewProps) {
                                 queuedOpCount: pendingLocalTxBatches.reduce((sum, tx) => sum + tx.ops.length, 0),
                             },
                         });
+                        return;
+                    }
+
+                    if (trySendSnapshotFastPath(ops)) {
                         return;
                     }
 

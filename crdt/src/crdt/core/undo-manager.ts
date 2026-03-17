@@ -72,6 +72,46 @@ export function trackOperation(params: {
   };
 }
 
+export function trackOperations(params: {
+  um: UndoManager;
+  ops: ReadonlyArray<Operation>;
+  timestamp: number;
+}): UndoManager {
+  const { um, ops, timestamp } = params;
+  if (ops.length === 0) return um;
+
+  const localOps: Array<Operation> = [];
+  for (const op of ops) {
+    if (op.id.clientId === um.clientId) {
+      localOps.push(op);
+    }
+  }
+  if (localOps.length === 0) return um;
+
+  const stack = [...um.undoStack];
+  const lastBatch = stack[stack.length - 1];
+
+  if (lastBatch && timestamp - lastBatch.timestamp <= um.captureTimeoutMs) {
+    stack[stack.length - 1] = {
+      ops: [...lastBatch.ops, ...localOps],
+      timestamp,
+    };
+  } else {
+    stack.push({ ops: localOps, timestamp });
+  }
+
+  const trimmed =
+    stack.length > um.maxStackDepth
+      ? stack.slice(stack.length - um.maxStackDepth)
+      : stack;
+
+  return {
+    ...um,
+    undoStack: trimmed,
+    redoStack: [],
+  };
+}
+
 // --- Shared inverse computation ---
 
 function computeInverse(params: {
@@ -99,6 +139,23 @@ function computeInverse(params: {
       case "delete": {
         const item = getItemById({ store: params.doc.store, id: op.targetId });
         if (item) {
+          inverseOps.push(
+            createInsertOp({
+              id: createOperationId({ clientId: params.clientId, clock: clock++ }),
+              parentId: item.leftOrigin,
+              side: "right",
+              content: item.content,
+              marks: item.marks,
+            })
+          );
+        }
+        break;
+      }
+      case "delete_batch": {
+        for (let j = 0; j < op.targetIds.length; j++) {
+          const targetId = op.targetIds[j]!;
+          const item = getItemById({ store: params.doc.store, id: targetId });
+          if (!item) continue;
           inverseOps.push(
             createInsertOp({
               id: createOperationId({ clientId: params.clientId, clock: clock++ }),

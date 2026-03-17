@@ -18,6 +18,7 @@ import {
 } from "@crdt/lib/server";
 import { upgradeWebSocket } from "hono/bun";
 import type { Context } from "hono";
+import { Buffer } from "node:buffer";
 import { authenticateBearerToken, type AuthIdentity } from "../auth";
 import { prisma } from "../db";
 import { parseWorkspaceScopedDocId } from "./doc-id";
@@ -123,16 +124,12 @@ function getSocketState(ws: { raw?: unknown }): SocketState | null {
 }
 
 function fromBase64(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
+  const buf = Buffer.from(base64, "base64");
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength).slice();
 }
 
 function toBase64(data: Uint8Array): string {
-  return btoa(String.fromCharCode(...data));
+  return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString("base64");
 }
 
 async function canAccessWorkspace(params: {
@@ -441,6 +438,9 @@ const crdtHandler = createCRDTWebSocketHandler({
         targetId: "targetId" in op && op.targetId
           ? `${op.targetId.clientId}:${op.targetId.clock}`
           : null,
+        targetIdsCount: "targetIds" in op && Array.isArray(op.targetIds)
+          ? op.targetIds.length
+          : null,
         parentId: "parentId" in op && op.parentId
           ? `${op.parentId.clientId}:${op.parentId.clock}`
           : null,
@@ -597,6 +597,9 @@ export async function inspectCollabDoc(params: {
           id: "id" in op && op.id ? `${op.id.clientId}:${op.id.clock}` : null,
           targetId: "targetId" in op && op.targetId
             ? `${op.targetId.clientId}:${op.targetId.clock}`
+            : null,
+          targetIdsCount: "targetIds" in op && Array.isArray(op.targetIds)
+            ? op.targetIds.length
             : null,
           parentId: "parentId" in op && op.parentId
             ? `${op.parentId.clientId}:${op.parentId.clock}`

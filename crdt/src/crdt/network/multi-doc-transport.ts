@@ -11,6 +11,14 @@ interface DocTxMessage {
   readonly ops: ReadonlyArray<RecordOp>;
 }
 
+interface SnapshotPublishMessage {
+  readonly type: "snapshot-publish";
+  readonly docId: string;
+  readonly snapshot: string; // base64-encoded CRDTRecord snapshot
+  readonly expectedVersion?: string;
+  readonly mergeBias?: "local" | "remote";
+}
+
 interface SubscribeMessage {
   readonly type: "subscribe";
   readonly docId: string;
@@ -65,10 +73,31 @@ type IncomingMessage =
   | ClientDiagnosticsResponseMessage;
 
 type PendingMessage =
-  | { type: "tx"; txId: string; docId: string; ops: ReadonlyArray<RecordOp> };
+  | { type: "tx"; txId: string; docId: string; ops: ReadonlyArray<RecordOp> }
+  | SnapshotPublishMessage;
 
 type BufferedTxMessage = { txId: string; ops: ReadonlyArray<RecordOp> };
 type DocPhase = "syncing" | "live";
+
+const BASE64_CHUNK_SIZE = 0x8000;
+
+function bytesToBase64(data: Uint8Array): string {
+  if (data.byteLength === 0) return "";
+  let binary = "";
+  for (let i = 0; i < data.byteLength; i += BASE64_CHUNK_SIZE) {
+    binary += String.fromCharCode(...data.subarray(i, i + BASE64_CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binaryStr = atob(base64);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+  return bytes;
+}
 
 // --- Public interface ---
 
@@ -77,6 +106,12 @@ export interface MultiDocTransport {
   readonly unsubscribe: (params: { docId: string }) => void;
   readonly send: (params: { docId: string; ops: ReadonlyArray<RecordOp> }) => void;
   readonly sendTx: (params: { txId: string; docId: string; ops: ReadonlyArray<RecordOp> }) => void;
+  readonly sendSnapshot: (params: {
+    docId: string;
+    snapshot: Uint8Array;
+    expectedVersion?: string;
+    mergeBias?: "local" | "remote";
+  }) => void;
   readonly sendAwareness: (params: { docId: string; clientId: string; state: AwarenessState }) => void;
   readonly sendClientDiagnosticsResponse: (params: {
     requestId: string;
@@ -181,6 +216,56 @@ export function createMultiDocTransport(params: {
     }
   }
 
+  function enqueueOrSendSnapshot(paramsSnapshot: {
+    docId: string;
+    snapshot: Uint8Array;
+    expectedVersion?: string;
+    mergeBias?: "local" | "remote";
+  }) {
+    const { docId, snapshot, expectedVersion, mergeBias } = paramsSnapshot;
+    if (!subscribedDocs.has(docId)) {
+      debug("send_snapshot_rejected_not_subscribed", {
+        docId,
+        bytes: snapshot.byteLength,
+      });
+      params.onProtocolError?.({
+        docId,
+        reason: "send_snapshot_before_subscribe",
+      });
+      return;
+    }
+
+    const message: SnapshotPublishMessage = {
+      type: "snapshot-publish",
+      docId,
+      snapshot: bytesToBase64(snapshot),
+      expectedVersion,
+      mergeBias,
+    };
+
+    if (connected && ws && !syncingDocs.has(docId)) {
+      debug("send_snapshot_immediate", {
+        docId,
+        bytes: snapshot.byteLength,
+        expectedVersion: expectedVersion ?? null,
+        mergeBias: mergeBias ?? null,
+      });
+      ws.send(JSON.stringify(message));
+    } else {
+      debug("send_snapshot_queued", {
+        docId,
+        bytes: snapshot.byteLength,
+        expectedVersion: expectedVersion ?? null,
+        mergeBias: mergeBias ?? null,
+        connected,
+        wsState: ws?.readyState ?? null,
+        isSyncing: syncingDocs.has(docId),
+        pendingCount: pendingMessages.length + 1,
+      });
+      pendingMessages.push(message);
+    }
+  }
+
   function isDuplicateTx(paramsTx: { docId: string; txId: string }): boolean {
     const { docId, txId } = paramsTx;
     const now = Date.now();
@@ -261,11 +346,7 @@ export function createMultiDocTransport(params: {
           }
           // If a snapshot is included, decode and apply it first
           if (msg.snapshot && params.onSnapshot) {
-            const binaryStr = atob(msg.snapshot);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
-            }
+            const bytes = base64ToBytes(msg.snapshot);
             params.onSnapshot({ docId: msg.docId, data: bytes });
           }
 
@@ -302,7 +383,16 @@ export function createMultiDocTransport(params: {
           if (toFlush.length > 0 && ws && connected) {
             for (const pending of toFlush) {
               ws.send(JSON.stringify(pending));
-              debug("pending_tx_flushed", { docId: pending.docId, txId: pending.txId, opsCount: pending.ops.length });
+              if (pending.type === "tx") {
+                debug("pending_tx_flushed", { docId: pending.docId, txId: pending.txId, opsCount: pending.ops.length });
+              } else {
+                debug("pending_snapshot_flushed", {
+                  docId: pending.docId,
+                  expectedVersion: pending.expectedVersion ?? null,
+                  mergeBias: pending.mergeBias ?? null,
+                  bytesApprox: pending.snapshot.length,
+                });
+              }
             }
           }
 
@@ -311,11 +401,7 @@ export function createMultiDocTransport(params: {
           params.onDocSyncComplete?.({ docId: msg.docId });
           debug("doc_sync_complete", { docId: msg.docId });
         } else if (msg.type === "snapshot" && msg.docId && msg.snapshot && params.onSnapshot) {
-          const binaryStr = atob(msg.snapshot);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
+          const bytes = base64ToBytes(msg.snapshot);
           params.onSnapshot({ docId: msg.docId, data: bytes, version: msg.version });
         } else if (msg.type === "tx" && msg.docId && typeof msg.txId === "string" && Array.isArray(msg.ops)) {
           if (!subscribedDocs.has(msg.docId)) {
@@ -470,6 +556,15 @@ export function createMultiDocTransport(params: {
       enqueueOrSendTx({ txId, docId, ops });
     },
 
+    sendSnapshot({ docId, snapshot, expectedVersion, mergeBias }) {
+      enqueueOrSendSnapshot({
+        docId,
+        snapshot,
+        expectedVersion,
+        mergeBias,
+      });
+    },
+
     sendAwareness({ docId, clientId, state }) {
       // Awareness is fire-and-forget, never queued
       if (connected && ws) {
@@ -549,7 +644,10 @@ export function createMultiDocTransport(params: {
     },
 
     pendingOpsCount() {
-      return pendingMessages.reduce((sum, entry) => sum + entry.ops.length, 0);
+      return pendingMessages.reduce((sum, entry) => {
+        if (entry.type === "tx") return sum + entry.ops.length;
+        return sum;
+      }, 0);
     },
   };
 }

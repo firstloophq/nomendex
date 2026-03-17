@@ -1,5 +1,5 @@
 import type { CRDTRecord, RecordOp } from "./record";
-import { createRecord, applyRecordOp } from "./record";
+import { createRecord, applyRecordOp, applyRecordOps } from "./record";
 import {
   decodeRecordSnapshot,
   mergeRecordSnapshots,
@@ -54,6 +54,21 @@ export function applyDocOperation(params: {
   const newDocs = new Map(m.docs);
   newDocs.set(docId, updatedDoc);
 
+  return { ...m, docs: newDocs };
+}
+
+export function applyDocOperations(params: {
+  manager: DocManager;
+  docId: string;
+  ops: ReadonlyArray<RecordOp>;
+}): DocManager {
+  if (params.ops.length === 0) return params.manager;
+  const { manager, docId, ops } = params;
+  const { manager: m, doc } = getOrCreateDoc({ manager, docId });
+  const updatedDoc = applyRecordOps({ record: doc, ops });
+  if (updatedDoc === doc) return m;
+  const newDocs = new Map(m.docs);
+  newDocs.set(docId, updatedDoc);
   return { ...m, docs: newDocs };
 }
 

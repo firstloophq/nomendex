@@ -2,10 +2,11 @@ import { createCRDTWebSocketHandler, type CRDTWebSocketHandler } from "./websock
 import type { RecordOp } from "../document/record";
 import type { AwarenessState } from "../network/awareness";
 import { createMultiDocTransport, type MultiDocTransport } from "../network/multi-doc-transport";
-import { applyDocOperation, applySnapshotToDoc, getDoc } from "../document/doc-manager";
+import { applyDocOperations, applySnapshotToDoc, getDoc } from "../document/doc-manager";
 import { receive } from "../core/lamport-clock";
 import { encodeRecordSnapshot, getRecordSnapshotVersion } from "../document/snapshot";
 import { getBodyText } from "../document/record";
+import { bytesToBase64 } from "./base64";
 
 // --- Public interface ---
 
@@ -100,15 +101,18 @@ export function createCRDTRelay(params: {
 
         // Apply remote ops to local handler state
         const state = handlerRef.getDocManagerState();
-        let manager = state.manager;
-        let clock = state.clock;
-
+        const manager = applyDocOperations({ manager: state.manager, docId, ops });
+        let maxRemoteClock: number | null = null;
         for (const op of ops) {
-          manager = applyDocOperation({ manager, docId, op });
           if ("id" in op && op.id && typeof op.id.clock === "number") {
-            clock = receive({ clock, remoteCounter: op.id.clock });
+            if (maxRemoteClock === null || op.id.clock > maxRemoteClock) {
+              maxRemoteClock = op.id.clock;
+            }
           }
         }
+        const clock = maxRemoteClock === null
+          ? state.clock
+          : receive({ clock: state.clock, remoteCounter: maxRemoteClock });
 
         handlerRef.setDocManagerState({ state: { manager, clock } });
         handlerRef.appendDocOps({ docId, ops });
@@ -123,15 +127,18 @@ export function createCRDTRelay(params: {
         if (!shouldAcceptRemoteTx({ docId, txId })) return;
 
         const state = handlerRef.getDocManagerState();
-        let manager = state.manager;
-        let clock = state.clock;
-
+        const manager = applyDocOperations({ manager: state.manager, docId, ops });
+        let maxRemoteClock: number | null = null;
         for (const op of ops) {
-          manager = applyDocOperation({ manager, docId, op });
           if ("id" in op && op.id && typeof op.id.clock === "number") {
-            clock = receive({ clock, remoteCounter: op.id.clock });
+            if (maxRemoteClock === null || op.id.clock > maxRemoteClock) {
+              maxRemoteClock = op.id.clock;
+            }
           }
         }
+        const clock = maxRemoteClock === null
+          ? state.clock
+          : receive({ clock: state.clock, remoteCounter: maxRemoteClock });
 
         handlerRef.setDocManagerState({ state: { manager, clock } });
         handlerRef.appendDocOps({ docId, ops });
@@ -189,7 +196,7 @@ export function createCRDTRelay(params: {
               hasDoc: true,
               snapshotVersion: getRecordSnapshotVersion({ data: snapshotBytes }),
               snapshotBytes: snapshotBytes.byteLength,
-              snapshotBase64: btoa(String.fromCharCode(...snapshotBytes)),
+              snapshotBase64: bytesToBase64(snapshotBytes),
               bodyText: getBodyText({ record }),
               stateVector: Object.fromEntries(record.stateVector),
               bodyItemsCount: record.body.store.items.length,

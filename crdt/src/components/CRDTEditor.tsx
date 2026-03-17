@@ -296,9 +296,13 @@ export function CRDTEditor(params: CRDTEditorProps) {
         if (docId !== params.docId) return;
         if (!viewRef.current || !pluginRef.current) return;
 
-        // Filter to body ops only (insert/delete/format) for ProseMirror
+        // Filter to body ops only for ProseMirror
         const bodyOps = ops.filter(
-          (op): op is Operation => op.type === "insert" || op.type === "delete" || op.type === "format"
+          (op): op is Operation =>
+            op.type === "insert"
+            || op.type === "delete"
+            || op.type === "delete_batch"
+            || op.type === "format"
         );
         if (bodyOps.length === 0) return;
 

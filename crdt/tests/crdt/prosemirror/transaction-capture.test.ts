@@ -181,6 +181,56 @@ describe("transactionToCRDTOps", () => {
     expect(inserts.length).toBe(1);
   });
 
+  it("converts full-document deletion to delete ops for all visible items", () => {
+    const text = "x".repeat(400);
+    const { doc: crdtDoc, clock } = buildDocWithText(text);
+
+    const pmDoc = schema.nodes["doc"]!.create(null, [
+      schema.nodes["paragraph"]!.create(null, [schema.text(text)]),
+    ]);
+    const state = EditorState.create({ doc: pmDoc, schema });
+
+    const tr = state.tr.delete(0, state.doc.content.size);
+
+    const result = transactionToCRDTOps({
+      crdtDoc,
+      transaction: tr,
+      clock,
+    });
+
+    const visibleItems = crdtDoc.store.items.filter((item) => !item.deleted);
+    const deletes = result.ops.filter((op) => op.type === "delete");
+    const inserts = result.ops.filter((op) => op.type === "insert");
+    expect(deletes.length).toBe(visibleItems.length);
+    // PM keeps the document valid by inserting an empty paragraph after full delete.
+    expect(inserts.length).toBe(1);
+  });
+
+  it("converts very large full-document deletion to a single delete_batch op", () => {
+    const text = "x".repeat(5000);
+    const { doc: crdtDoc, clock } = buildDocWithText(text);
+
+    const pmDoc = schema.nodes["doc"]!.create(null, [
+      schema.nodes["paragraph"]!.create(null, [schema.text(text)]),
+    ]);
+    const state = EditorState.create({ doc: pmDoc, schema });
+
+    const tr = state.tr.delete(0, state.doc.content.size);
+
+    const result = transactionToCRDTOps({
+      crdtDoc,
+      transaction: tr,
+      clock,
+    });
+
+    const deleteBatches = result.ops.filter((op) => op.type === "delete_batch");
+    expect(deleteBatches.length).toBe(1);
+    if (deleteBatches[0]?.type === "delete_batch") {
+      const visibleItems = crdtDoc.store.items.filter((item) => !item.deleted);
+      expect(deleteBatches[0].targetIds.length).toBe(visibleItems.length);
+    }
+  });
+
   it("converts adding a bold mark", () => {
     const { doc: crdtDoc, clock } = buildDocWithText("hello");
 

@@ -10,6 +10,7 @@ import {
 import {
   createInsertOp,
   createDeleteOp,
+  createDeleteBatchOp,
   createFormatOp,
   createOperationId,
   type Operation,
@@ -324,6 +325,92 @@ describe("applyOperation", () => {
       for (const result of results) {
         expect(result).toBe(results[0]!);
       }
+    });
+  });
+
+  describe("batch fast paths", () => {
+    it("bulk delete batch removes large content and updates state vector", () => {
+      let doc = createEmptyDocument();
+      const inserts: Array<Operation> = [];
+      let prev: ReturnType<typeof makeId> | null = null;
+      for (let i = 1; i <= 180; i++) {
+        const id = makeId("A", i);
+        inserts.push(createInsertOp({
+          id,
+          parentId: prev,
+          side: "right",
+          content: { type: "text", value: "x" },
+        }));
+        prev = id;
+      }
+      doc = applyOperations({ doc, ops: inserts });
+      expect(getDocumentText({ doc }).length).toBe(180);
+
+      const deletes: Array<Operation> = [];
+      for (let i = 1; i <= 180; i++) {
+        deletes.push(createDeleteOp({
+          id: makeId("B", i),
+          targetId: makeId("A", i),
+        }));
+      }
+      doc = applyOperations({ doc, ops: deletes });
+
+      expect(getDocumentText({ doc })).toBe("");
+      expect(doc.pendingDeletes.size).toBe(0);
+      expect(getDocumentStateVector({ doc }).get("B")).toBe(180);
+    });
+
+    it("bulk delete batch tracks pending deletes for missing targets", () => {
+      let doc = createEmptyDocument();
+
+      const missingDeletes: Array<Operation> = [];
+      for (let i = 1; i <= 160; i++) {
+        missingDeletes.push(createDeleteOp({
+          id: makeId("B", i),
+          targetId: makeId("Z", i),
+        }));
+      }
+
+      doc = applyOperations({ doc, ops: missingDeletes });
+      expect(doc.pendingDeletes.size).toBe(160);
+      expect(getDocumentStateVector({ doc }).get("B")).toBe(160);
+
+      // idempotent on replay
+      const replayed = applyOperations({ doc, ops: missingDeletes });
+      expect(replayed.pendingDeletes.size).toBe(160);
+      expect(getDocumentStateVector({ doc: replayed }).get("B")).toBe(160);
+    });
+
+    it("single delete_batch op removes large content and updates state vector", () => {
+      let doc = createEmptyDocument();
+      const inserts: Array<Operation> = [];
+      let prev: ReturnType<typeof makeId> | null = null;
+      for (let i = 1; i <= 2200; i++) {
+        const id = makeId("A", i);
+        inserts.push(createInsertOp({
+          id,
+          parentId: prev,
+          side: "right",
+          content: { type: "text", value: "x" },
+        }));
+        prev = id;
+      }
+      doc = applyOperations({ doc, ops: inserts });
+      expect(getDocumentText({ doc }).length).toBe(2200);
+
+      doc = applyOperations({
+        doc,
+        ops: [createDeleteBatchOp({
+          id: makeId("B", 1),
+          targetIds: inserts.map((op) =>
+            op.type === "insert" ? op.id : makeId("A", 1)
+          ),
+        })],
+      });
+
+      expect(getDocumentText({ doc })).toBe("");
+      expect(doc.pendingDeletes.size).toBe(0);
+      expect(getDocumentStateVector({ doc }).get("B")).toBe(1);
     });
   });
 

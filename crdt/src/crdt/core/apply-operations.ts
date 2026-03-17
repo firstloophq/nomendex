@@ -1,4 +1,4 @@
-import type { Operation, OperationId, Mark, BlockContent } from "./operations";
+import type { Operation, OperationId, Mark, BlockContent, InsertOp, DeleteOp, DeleteBatchOp } from "./operations";
 import { operationIdEquals } from "./operations";
 import {
   createItem,
@@ -10,6 +10,7 @@ import {
   type ItemStore,
   type Item,
 } from "./item";
+import { compareTimestamps } from "./lamport-clock";
 import {
   createStateVector,
   updateStateVector,
@@ -193,6 +194,58 @@ export function applyOperation(params: {
         store: doc.store,
         appliedOps: newAppliedOps,
         pendingDeletes: newPendingDeletes,
+        pendingFormats: doc.pendingFormats,
+        pendingAttrUpdates: doc.pendingAttrUpdates,
+        pendingReparents: doc.pendingReparents,
+        stateVector: newSV,
+      };
+    }
+    case "delete_batch": {
+      let pendingDeletes: ReadonlyMap<string, OperationId> = doc.pendingDeletes;
+      let pendingDeletesChanged = false;
+
+      const targetKeys = new Set<string>();
+      for (const targetId of op.targetIds) {
+        targetKeys.add(opKey(targetId));
+      }
+
+      let storeChanged = false;
+      const newItems = doc.store.items.map((item) => {
+        const keyItem = opKey(item.id);
+        if (!targetKeys.has(keyItem) || item.deleted) {
+          return item;
+        }
+        storeChanged = true;
+        return { ...item, deleted: true } satisfies Item;
+      });
+
+      for (const targetId of op.targetIds) {
+        const targetKey = opKey(targetId);
+        if (doc.store.map.has(targetKey)) continue;
+        if (!pendingDeletesChanged) {
+          pendingDeletes = new Map(doc.pendingDeletes);
+          pendingDeletesChanged = true;
+        }
+        (pendingDeletes as Map<string, OperationId>).set(targetKey, targetId);
+      }
+
+      let store: ItemStore = doc.store;
+      if (storeChanged) {
+        const newMap = new Map<string, Item>();
+        for (const item of newItems) {
+          newMap.set(opKey(item.id), item);
+        }
+        store = {
+          items: newItems,
+          map: newMap,
+          length: newItems.length,
+        };
+      }
+
+      return {
+        store,
+        appliedOps: newAppliedOps,
+        pendingDeletes,
         pendingFormats: doc.pendingFormats,
         pendingAttrUpdates: doc.pendingAttrUpdates,
         pendingReparents: doc.pendingReparents,
@@ -399,11 +452,321 @@ export function applyOperations(params: {
   doc: CRDTDoc;
   ops: ReadonlyArray<Operation>;
 }): CRDTDoc {
+  if (params.ops.length === 1 && params.ops[0]?.type === "delete_batch") {
+    return applyDeleteTargetsBatchFastPath({
+      doc: params.doc,
+      op: params.ops[0],
+    });
+  }
+  if (canUseInsertBatchFastPath({ doc: params.doc, ops: params.ops })) {
+    return applyInsertBatchFastPath({
+      doc: params.doc,
+      ops: params.ops as ReadonlyArray<InsertOp>,
+    });
+  }
+  if (canUseDeleteBatchFastPath({ ops: params.ops })) {
+    return applyDeleteBatchFastPath({
+      doc: params.doc,
+      ops: params.ops as ReadonlyArray<DeleteOp>,
+    });
+  }
+
   let doc = params.doc;
   for (const op of params.ops) {
     doc = applyOperation({ doc, op });
   }
   return doc;
+}
+
+function canUseInsertBatchFastPath(params: {
+  doc: CRDTDoc;
+  ops: ReadonlyArray<Operation>;
+}): boolean {
+  if (params.ops.length < 128) return false;
+  if (params.ops.some((op) => op.type !== "insert")) return false;
+  if (
+    params.doc.pendingDeletes.size > 0
+    || params.doc.pendingFormats.size > 0
+    || params.doc.pendingAttrUpdates.size > 0
+    || params.doc.pendingReparents.size > 0
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function canUseDeleteBatchFastPath(params: {
+  ops: ReadonlyArray<Operation>;
+}): boolean {
+  if (params.ops.length < 128) return false;
+  return params.ops.every((op) => op.type === "delete");
+}
+
+function applyInsertBatchFastPath(params: {
+  doc: CRDTDoc;
+  ops: ReadonlyArray<InsertOp>;
+}): CRDTDoc {
+  const items = [...params.doc.store.items];
+  const map = new Map(params.doc.store.map);
+  const appliedOps = new Set(params.doc.appliedOps);
+  const sv = new Map(params.doc.stateVector);
+  const cursor = { lastInsertKey: null as string | null, lastInsertIndex: -1 };
+
+  for (const op of params.ops) {
+    const opIdKey = opKey(op.id);
+    if (appliedOps.has(opIdKey)) continue;
+    appliedOps.add(opIdKey);
+
+    const current = sv.get(op.id.clientId) ?? 0;
+    if (op.id.clock > current) {
+      sv.set(op.id.clientId, op.id.clock);
+    }
+
+    const leftOrigin = op.side === "right"
+      ? op.parentId
+      : (op.secondParentId ?? null);
+    const rightOrigin = op.side === "left"
+      ? op.parentId
+      : (op.secondParentId ?? null);
+
+    const item = createItem({
+      id: op.id,
+      leftOrigin,
+      rightOrigin,
+      content: op.content,
+      deleted: false,
+      marks: op.marks ? [...op.marks] : undefined,
+    });
+
+    integrateItemMutable({ items, map, item, cursor });
+  }
+
+  return {
+    store: { items, map, length: items.length },
+    appliedOps,
+    pendingDeletes: params.doc.pendingDeletes,
+    pendingFormats: params.doc.pendingFormats,
+    pendingAttrUpdates: params.doc.pendingAttrUpdates,
+    pendingReparents: params.doc.pendingReparents,
+    stateVector: sv,
+  };
+}
+
+function applyDeleteBatchFastPath(params: {
+  doc: CRDTDoc;
+  ops: ReadonlyArray<DeleteOp>;
+}): CRDTDoc {
+  let itemsMutable: Array<Item> | null = null;
+  let mapMutable: Map<string, Item> | null = null;
+  let indexByItemKey: Map<string, number> | null = null;
+
+  let pendingDeletes: ReadonlyMap<string, OperationId> = params.doc.pendingDeletes;
+  let appliedOpsMutable: Set<string> | null = null;
+  let stateVectorMutable: Map<string, number> | null = null;
+  const seenInBatch = new Set<string>();
+  let changed = false;
+
+  const ensureMutableStore = () => {
+    if (itemsMutable && mapMutable && indexByItemKey) return;
+    itemsMutable = [...params.doc.store.items];
+    mapMutable = new Map(params.doc.store.map);
+    indexByItemKey = new Map<string, number>();
+    for (let i = 0; i < itemsMutable.length; i++) {
+      indexByItemKey.set(opKey(itemsMutable[i]!.id), i);
+    }
+  };
+
+  const ensureMutableAppliedOps = () => {
+    if (appliedOpsMutable) return;
+    appliedOpsMutable = new Set(params.doc.appliedOps);
+  };
+
+  const ensureMutableStateVector = () => {
+    if (stateVectorMutable) return;
+    stateVectorMutable = new Map(params.doc.stateVector);
+  };
+
+  const ensureMutablePendingDeletes = () => {
+    if (pendingDeletes !== params.doc.pendingDeletes) return;
+    pendingDeletes = new Map(params.doc.pendingDeletes);
+  };
+
+  for (const op of params.ops) {
+    const opIdKey = opKey(op.id);
+    if (params.doc.appliedOps.has(opIdKey) || seenInBatch.has(opIdKey)) continue;
+    seenInBatch.add(opIdKey);
+
+    changed = true;
+    ensureMutableAppliedOps();
+    appliedOpsMutable!.add(opIdKey);
+
+    ensureMutableStateVector();
+    const currentClock = stateVectorMutable!.get(op.id.clientId) ?? 0;
+    if (op.id.clock > currentClock) {
+      stateVectorMutable!.set(op.id.clientId, op.id.clock);
+    }
+
+    const targetKey = opKey(op.targetId);
+    const existing = (mapMutable ?? params.doc.store.map).get(targetKey);
+    if (existing) {
+      if (!existing.deleted) {
+        ensureMutableStore();
+        const idx = indexByItemKey!.get(targetKey);
+        if (typeof idx === "number") {
+          const current = itemsMutable![idx]!;
+          if (!current.deleted) {
+            const updated: Item = { ...current, deleted: true };
+            itemsMutable![idx] = updated;
+            mapMutable!.set(targetKey, updated);
+          }
+        }
+      }
+      continue;
+    }
+
+    ensureMutablePendingDeletes();
+    (pendingDeletes as Map<string, OperationId>).set(targetKey, op.targetId);
+  }
+
+  if (!changed) return params.doc;
+
+  let store: ItemStore = params.doc.store;
+  if (itemsMutable !== null && mapMutable !== null) {
+    store = { items: itemsMutable, map: mapMutable, length: params.doc.store.length };
+  }
+
+  return {
+    store,
+    appliedOps: appliedOpsMutable ?? params.doc.appliedOps,
+    pendingDeletes,
+    pendingFormats: params.doc.pendingFormats,
+    pendingAttrUpdates: params.doc.pendingAttrUpdates,
+    pendingReparents: params.doc.pendingReparents,
+    stateVector: stateVectorMutable ?? params.doc.stateVector,
+  };
+}
+
+function applyDeleteTargetsBatchFastPath(params: {
+  doc: CRDTDoc;
+  op: DeleteBatchOp;
+}): CRDTDoc {
+  const opIdKey = opKey(params.op.id);
+  if (params.doc.appliedOps.has(opIdKey)) return params.doc;
+
+  let pendingDeletes: ReadonlyMap<string, OperationId> = params.doc.pendingDeletes;
+  let pendingDeletesChanged = false;
+
+  const targetKeys = new Set<string>();
+  for (const targetId of params.op.targetIds) {
+    targetKeys.add(opKey(targetId));
+  }
+
+  let storeChanged = false;
+  const newItems = params.doc.store.items.map((item) => {
+    const keyItem = opKey(item.id);
+    if (!targetKeys.has(keyItem) || item.deleted) {
+      return item;
+    }
+    storeChanged = true;
+    return { ...item, deleted: true } satisfies Item;
+  });
+
+  for (const targetId of params.op.targetIds) {
+    const targetKey = opKey(targetId);
+    if (params.doc.store.map.has(targetKey)) continue;
+    if (!pendingDeletesChanged) {
+      pendingDeletes = new Map(params.doc.pendingDeletes);
+      pendingDeletesChanged = true;
+    }
+    (pendingDeletes as Map<string, OperationId>).set(targetKey, targetId);
+  }
+
+  const appliedOps = new Set(params.doc.appliedOps);
+  appliedOps.add(opIdKey);
+
+  const stateVector = new Map(params.doc.stateVector);
+  const currentClock = stateVector.get(params.op.id.clientId) ?? 0;
+  if (params.op.id.clock > currentClock) {
+    stateVector.set(params.op.id.clientId, params.op.id.clock);
+  }
+
+  let store: ItemStore = params.doc.store;
+  if (storeChanged) {
+    const newMap = new Map<string, Item>();
+    for (const item of newItems) {
+      newMap.set(opKey(item.id), item);
+    }
+    store = {
+      items: newItems,
+      map: newMap,
+      length: newItems.length,
+    };
+  }
+
+  return {
+    store,
+    appliedOps,
+    pendingDeletes,
+    pendingFormats: params.doc.pendingFormats,
+    pendingAttrUpdates: params.doc.pendingAttrUpdates,
+    pendingReparents: params.doc.pendingReparents,
+    stateVector,
+  };
+}
+
+function integrateItemMutable(params: {
+  items: Array<Item>;
+  map: Map<string, Item>;
+  item: Item;
+  cursor: { lastInsertKey: string | null; lastInsertIndex: number };
+}): void {
+  const key = opKey(params.item.id);
+  if (params.map.has(key)) return;
+
+  const findIndex = (id: OperationId): number => {
+    for (let i = 0; i < params.items.length; i++) {
+      if (operationIdEquals({ a: params.items[i]!.id, b: id })) return i;
+    }
+    return -1;
+  };
+
+  const getKey = (id: OperationId | null): string | null =>
+    id ? `${id.clientId}:${id.clock}` : null;
+
+  let left = -1;
+  if (params.item.leftOrigin !== null) {
+    const leftKey = getKey(params.item.leftOrigin);
+    if (leftKey && leftKey === params.cursor.lastInsertKey) {
+      left = params.cursor.lastInsertIndex;
+    } else {
+      left = findIndex(params.item.leftOrigin);
+    }
+    if (left < 0) left = -1;
+  }
+
+  let right = params.items.length;
+  if (params.item.rightOrigin !== null) {
+    right = findIndex(params.item.rightOrigin);
+    if (right < 0) right = params.items.length;
+  }
+
+  let insertPos = left + 1;
+  const newTs = { clientId: params.item.id.clientId, clock: params.item.id.clock };
+  for (let i = left + 1; i < right; i++) {
+    const existing = params.items[i]!;
+    const existingTs = { clientId: existing.id.clientId, clock: existing.id.clock };
+    const cmp = compareTimestamps({ a: existingTs, b: newTs });
+    if (cmp < 0) {
+      insertPos = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  params.items.splice(insertPos, 0, params.item);
+  params.map.set(key, params.item);
+  params.cursor.lastInsertKey = key;
+  params.cursor.lastInsertIndex = insertPos;
 }
 
 export function getDocumentText(params: { doc: CRDTDoc }): string {

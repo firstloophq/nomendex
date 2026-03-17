@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   createUndoManager,
   trackOperation,
+  trackOperations,
   undo,
   redo,
   canUndo,
@@ -15,6 +16,7 @@ import {
 import {
   createInsertOp,
   createDeleteOp,
+  createDeleteBatchOp,
   createFormatOp,
   createOperationId,
 } from "@/crdt/core/operations";
@@ -120,6 +122,43 @@ describe("UndoManager", () => {
         doc = applyOperation({ doc, op });
       }
       expect(getDocumentText({ doc })).toBe("h");
+    });
+
+    it("undoes a delete_batch by reinserting deleted content", () => {
+      const clientId = "A";
+      let um = createUndoManager({ clientId, captureTimeoutMs: 0 });
+      let doc = createEmptyDocument();
+
+      const insertA = createInsertOp({
+        id: makeId("A", 1),
+        parentId: null,
+        side: "right",
+        content: { type: "text", value: "a" },
+      });
+      const insertB = createInsertOp({
+        id: makeId("A", 2),
+        parentId: makeId("A", 1),
+        side: "right",
+        content: { type: "text", value: "b" },
+      });
+      doc = applyOperation({ doc, op: insertA });
+      doc = applyOperation({ doc, op: insertB });
+      expect(getDocumentText({ doc })).toBe("ab");
+
+      const deleteBatchOp = createDeleteBatchOp({
+        id: makeId("A", 3),
+        targetIds: [makeId("A", 1), makeId("A", 2)],
+      });
+      doc = applyOperation({ doc, op: deleteBatchOp });
+      um = trackOperation({ um, op: deleteBatchOp, timestamp: 100 });
+      expect(getDocumentText({ doc })).toBe("");
+
+      const undoResult = undo({ um, doc, nextClock: 4 });
+      if (!undoResult) throw new Error("undo returned null");
+      for (const op of undoResult.ops) {
+        doc = applyOperation({ doc, op });
+      }
+      expect(getDocumentText({ doc })).toBe("ab");
     });
   });
 
@@ -237,6 +276,56 @@ describe("UndoManager", () => {
         doc = applyOperation({ doc, op });
       }
       expect(getDocumentText({ doc })).toBe("");
+    });
+
+    it("tracks large local op arrays in one batch", () => {
+      const clientId = "A";
+      let um = createUndoManager({ clientId, captureTimeoutMs: 500 });
+
+      const ops = Array.from({ length: 500 }, (_, index) =>
+        createInsertOp({
+          id: makeId("A", index + 1),
+          parentId: null,
+          side: "right",
+          content: { type: "text", value: "x" },
+        })
+      );
+
+      um = trackOperations({
+        um,
+        ops,
+        timestamp: 100,
+      });
+
+      expect(um.undoStack.length).toBe(1);
+      expect(um.undoStack[0]?.ops.length).toBe(500);
+    });
+
+    it("ignores remote ops when tracking bulk arrays", () => {
+      const clientId = "A";
+      let um = createUndoManager({ clientId, captureTimeoutMs: 500 });
+      const localOp = createInsertOp({
+        id: makeId("A", 1),
+        parentId: null,
+        side: "right",
+        content: { type: "text", value: "a" },
+      });
+      const remoteOp = createInsertOp({
+        id: makeId("B", 1),
+        parentId: null,
+        side: "right",
+        content: { type: "text", value: "b" },
+      });
+
+      um = trackOperations({
+        um,
+        ops: [localOp, remoteOp],
+        timestamp: 100,
+      });
+
+      expect(um.undoStack.length).toBe(1);
+      expect(um.undoStack[0]?.ops.length).toBe(1);
+      expect(um.undoStack[0]?.ops[0]?.id.clientId).toBe("A");
     });
   });
 

@@ -5,7 +5,7 @@ import type { LWWRegister } from "../core/lww-register";
 import type { ORSet } from "../core/or-set";
 import { createLWWRegister, setLWWRegister } from "../core/lww-register";
 import { createORSet, addToSet, removeFromSet, getSetValues } from "../core/or-set";
-import { createEmptyDocument, applyOperation, getDocumentText } from "../core/apply-operations";
+import { createEmptyDocument, applyOperation, applyOperations, getDocumentText } from "../core/apply-operations";
 import { createStateVector, updateStateVector, type StateVector } from "../network/state-vector";
 
 // --- Record Operation Types ---
@@ -123,6 +123,7 @@ export function applyRecordOp(params: {
     // Body operations — delegate to existing CRDT engine
     case "insert":
     case "delete":
+    case "delete_batch":
     case "format":
     case "attr_update":
     case "reparent": {
@@ -136,6 +137,38 @@ export function applyRecordOps(params: {
   record: CRDTRecord;
   ops: ReadonlyArray<RecordOp>;
 }): CRDTRecord {
+  if (params.ops.length === 0) return params.record;
+
+  const allBodyOps = params.ops.every((op) =>
+    op.type === "insert"
+    || op.type === "delete"
+    || op.type === "delete_batch"
+    || op.type === "format"
+    || op.type === "attr_update"
+    || op.type === "reparent"
+  );
+
+  if (allBodyOps) {
+    const bodyOps = params.ops as ReadonlyArray<Operation>;
+    const newBody = applyOperations({ doc: params.record.body, ops: bodyOps });
+    let newSV = params.record.stateVector;
+    for (const op of params.ops) {
+      newSV = updateStateVector({
+        sv: newSV,
+        clientId: op.id.clientId,
+        clock: op.id.clock,
+      });
+    }
+    if (newBody === params.record.body && newSV === params.record.stateVector) {
+      return params.record;
+    }
+    return {
+      ...params.record,
+      body: newBody,
+      stateVector: newSV,
+    };
+  }
+
   let record = params.record;
   for (const op of params.ops) {
     record = applyRecordOp({ record, op });

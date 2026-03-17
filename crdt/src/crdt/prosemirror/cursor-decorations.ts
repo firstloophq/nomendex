@@ -55,7 +55,11 @@ export function createCursorPlugin(params: {
         if (tr.docChanged) {
           let mappedDecorations: DecorationSet;
           try {
-            mappedDecorations = pluginState.decorations.map(tr.mapping, tr.doc);
+            mappedDecorations = (
+              pluginState.decorations as unknown as {
+                map: (mapping: unknown, doc: unknown) => unknown;
+              }
+            ).map(tr.mapping, tr.doc) as DecorationSet;
           } catch {
             mappedDecorations = buildDecorations({
               doc: tr.doc,
@@ -75,7 +79,7 @@ export function createCursorPlugin(params: {
     },
 
     props: {
-      decorations(state) {
+      decorations(state): any {
         const decorations = CURSOR_PLUGIN_KEY.getState(state)?.decorations;
         return isDecorationSet(decorations) ? decorations : DecorationSet.empty;
       },

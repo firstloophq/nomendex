@@ -6,6 +6,7 @@ import { increment } from "../core/lamport-clock";
 import {
   createInsertOp,
   createDeleteOp,
+  createDeleteBatchOp,
   createFormatOp,
   createAttrUpdateOp,
   createReparentOp,
@@ -70,6 +71,8 @@ type SupportedStepKind =
   | "removeMark"
   | "attr";
 
+const LARGE_DELETE_BATCH_TARGET_THRESHOLD = 2048;
+
 export function transactionToCRDTOps(params: {
   crdtDoc: CRDTDoc;
   transaction: Transaction;
@@ -80,10 +83,17 @@ export function transactionToCRDTOps(params: {
   let crdtDoc = params.crdtDoc;
   const schema = params.transaction.doc.type.schema;
 
-  for (const step of params.transaction.steps) {
+  for (let stepIndex = 0; stepIndex < params.transaction.steps.length; stepIndex++) {
+    const step = params.transaction.steps[stepIndex]!;
     const stepKind = classifyStep(step);
     if (stepKind === "replace" && isReplaceStepLike(step)) {
-      const result = handleReplaceStep({ step, crdtDoc, clock, schema });
+      const result = handleReplaceStep({
+        step,
+        crdtDoc,
+        clock,
+        schema,
+        beforeDocSize: params.transaction.docs?.[stepIndex]?.content.size ?? null,
+      });
       ops.push(...result.ops);
       if (result.ops.length > 0) {
         crdtDoc = applyOperations({ doc: crdtDoc, ops: result.ops });
@@ -140,6 +150,7 @@ function handleReplaceStep(params: {
   crdtDoc: CRDTDoc;
   clock: LamportClock;
   schema: Schema;
+  beforeDocSize: number | null;
 }): { ops: Array<Operation>; clock: LamportClock } {
   const { step, crdtDoc, schema } = params;
   const ops: Array<Operation> = [];
@@ -150,20 +161,40 @@ function handleReplaceStep(params: {
 
   // Delete the range [from, to)
   if (from < to) {
-    const itemsToDelete = getItemsInRange({ doc: crdtDoc, from, to, schema });
+    const itemsToDelete = getItemsForDeleteRange({
+      doc: crdtDoc,
+      from,
+      to,
+      schema,
+      beforeDocSize: params.beforeDocSize,
+    });
 
-    for (const item of itemsToDelete) {
+    if (itemsToDelete.length >= LARGE_DELETE_BATCH_TARGET_THRESHOLD) {
       const { clock: newClock, timestamp } = increment({ clock });
       clock = newClock;
       ops.push(
-        createDeleteOp({
+        createDeleteBatchOp({
           id: createOperationId({
             clientId: timestamp.clientId,
             clock: timestamp.clock,
           }),
-          targetId: item.id,
+          targetIds: itemsToDelete.map((item) => item.id),
         })
       );
+    } else {
+      for (const item of itemsToDelete) {
+        const { clock: newClock, timestamp } = increment({ clock });
+        clock = newClock;
+        ops.push(
+          createDeleteOp({
+            id: createOperationId({
+              clientId: timestamp.clientId,
+              clock: timestamp.clock,
+            }),
+            targetId: item.id,
+          })
+        );
+      }
     }
   }
 
@@ -1329,6 +1360,30 @@ function getItemsInRange(params: {
   schema?: Schema;
 }): Array<Item> {
   return getItemsInProseMirrorRange({
+    doc: params.doc,
+    from: params.from,
+    to: params.to,
+    schema: params.schema,
+  });
+}
+
+function getItemsForDeleteRange(params: {
+  doc: CRDTDoc;
+  from: number;
+  to: number;
+  schema?: Schema;
+  beforeDocSize: number | null;
+}): Array<Item> {
+  const fullDocumentDelete = params.beforeDocSize !== null
+    && params.beforeDocSize > 0
+    && params.from <= 1
+    && params.to >= (params.beforeDocSize - 1);
+
+  if (fullDocumentDelete) {
+    return params.doc.store.items.filter((item) => !item.deleted);
+  }
+
+  return getItemsInRange({
     doc: params.doc,
     from: params.from,
     to: params.to,

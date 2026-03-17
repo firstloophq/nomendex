@@ -68,6 +68,12 @@ export interface DeleteOp {
     readonly targetId: OperationId;
 }
 
+export interface DeleteBatchOp {
+    readonly type: "delete_batch";
+    readonly id: OperationId;
+    readonly targetIds: ReadonlyArray<OperationId>;
+}
+
 export interface FormatOp {
     readonly type: "format";
     readonly id: OperationId;
@@ -93,7 +99,7 @@ export interface ReparentOp {
     readonly oldParentBlockId?: OperationId | null;
 }
 
-export type Operation = InsertOp | DeleteOp | FormatOp | AttrUpdateOp | ReparentOp;
+export type Operation = InsertOp | DeleteOp | DeleteBatchOp | FormatOp | AttrUpdateOp | ReparentOp;
 
 // --- Record types ---
 

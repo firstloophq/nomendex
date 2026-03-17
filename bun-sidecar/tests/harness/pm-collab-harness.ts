@@ -376,7 +376,7 @@ export function createTwoPeerHarness(options?: {
     const getPeerSnapshot = (peerId: PeerId) => {
         const peer = getPeer(peerId);
         const pluginDoc = getCRDTState({ state: peer.view.state, plugin: peer.plugin }).doc as {
-            stateVector: Map<string, number>;
+            stateVector: ReadonlyMap<string, number>;
         };
         return {
             markdown: serializeNotesMarkdown(peer.view.state.doc),

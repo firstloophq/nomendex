@@ -92,6 +92,7 @@ type MaybeOp = {
     type?: unknown;
     id?: { clientId?: unknown; clock?: unknown };
     targetId?: { clientId?: unknown; clock?: unknown };
+    targetIds?: ReadonlyArray<unknown>;
     attr?: unknown;
     action?: unknown;
     side?: unknown;
@@ -103,6 +104,7 @@ export function summarizeOpsForDebug(ops: ReadonlyArray<MaybeOp>): ReadonlyArray
         type: op.type,
         id: op.id ? `${String(op.id.clientId)}:${String(op.id.clock)}` : null,
         targetId: op.targetId ? `${String(op.targetId.clientId)}:${String(op.targetId.clock)}` : null,
+        targetIdsCount: Array.isArray(op.targetIds) ? op.targetIds.length : null,
         action: op.action ?? null,
         attr: op.attr ?? null,
         side: op.side ?? null,
