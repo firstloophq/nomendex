@@ -1,7 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap');
-@import url('tldraw/tldraw.css');
 @import "tailwindcss";
-/* TLDraw Agent Styles */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -1170,17 +1168,6 @@ button.prompt-tag span {
 
 .prompt-tag svg {
 	flex-shrink: 0;
-}
-
-/* Diff viewer */
-
-.tldraw-viewer {
-	height: 100px;
-	position: relative;
-}
-
-.tldraw-viewer .tlui-tooltip {
-	display: none;
 }
 
 .diff-shape-create-shadow {
