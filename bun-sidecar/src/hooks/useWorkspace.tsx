@@ -17,12 +17,10 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         activePaneId: null,
         splitRatio: 0.5,
         layoutMode: "single",
-        mcpServerConfigs: [],
         projectPreferences: {},
         gitAuthMode: "local",
         notesLocation: "root",
         autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
-        chatInputEnterToSend: true,
         showHiddenFiles: false,
     });
     const [loading, setLoading] = useState(true);
@@ -71,15 +69,12 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         }
 
         const dataValidated = WorkspaceStateSchema.parse(result.data);
-        console.log("[useWorkspace] Parsed workspace, chatInputEnterToSend:", dataValidated.chatInputEnterToSend);
 
         setWorkspace(dataValidated);
         setLoading(false);
     };
 
     const saveWorkspace = useCallback(async (newWorkspace: WorkspaceState) => {
-        console.log("[useWorkspace] Saving workspace, chatInputEnterToSend:", newWorkspace.chatInputEnterToSend);
-        console.log("[useWorkspace] Full workspace to save:", newWorkspace);
         const response = await fetch("/api/workspace", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -697,14 +692,6 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         [updateWorkspace]
     );
 
-    // Chat input preferences
-    const setChatInputEnterToSend = useCallback(
-        (enabled: boolean) => {
-            updateWorkspace((prev) => ({ ...prev, chatInputEnterToSend: enabled }));
-        },
-        [updateWorkspace]
-    );
-
     // Show hidden files
     const setShowHiddenFiles = useCallback(
         (enabled: boolean) => {
@@ -1086,10 +1073,6 @@ export function useWorkspace(_initialRoute?: RouteParams) {
         // Auto-sync
         autoSync: workspace.autoSync,
         setAutoSyncConfig,
-
-        // Chat input preferences
-        chatInputEnterToSend: workspace.chatInputEnterToSend,
-        setChatInputEnterToSend,
 
         // Show hidden files
         showHiddenFiles: workspace.showHiddenFiles,

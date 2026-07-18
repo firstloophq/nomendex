@@ -1,13 +1,11 @@
 import { startupLog } from "./lib/logger";
-import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, getActiveWorkspacePath } from "./storage/root-path";
+import { getRootPath, getNomendexPath, getTodosPath, getNotesPath, getUploadsPath, hasActiveWorkspace, getActiveWorkspacePath } from "./storage/root-path";
 import { mkdir, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { initializeBacklinksWithData } from "./features/notes/backlinks-service";
 import { initializeTagsWithData } from "./features/notes/tags-service";
 import { scanAndExtractAll } from "./features/notes/notes-indexer";
-import { initializeDefaultSkills } from "./services/default-skills";
 import { clearFileLocks } from "./services/file-locks";
-import type { SkillUpdateCheckResult } from "./services/skills-types";
 
 /**
  * Safely create a directory with error logging.
@@ -28,7 +26,7 @@ async function ensureDirectory(params: { path: string; label: string }): Promise
     }
 }
 
-export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
+export async function onStartup(): Promise<void> {
     startupLog.info("=== Server Startup Sequence ===");
     startupLog.info("Starting initialization...");
 
@@ -45,7 +43,7 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
     if (!hasActiveWorkspace()) {
         startupLog.info("No active workspace configured - skipping directory creation");
         startupLog.info("=== Startup Sequence Complete ===");
-        return null;
+        return;
     }
 
     const workspacePath = getActiveWorkspacePath();
@@ -80,10 +78,9 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
     const notesOk = await ensureDirectory({ path: getNotesPath(), label: "Notes" });
     const uploadsOk = await ensureDirectory({ path: getUploadsPath(), label: "Uploads" });
     const nomendexOk = await ensureDirectory({ path: getNomendexPath(), label: ".nomendex" });
-    const skillsOk = await ensureDirectory({ path: getSkillsPath(), label: ".claude/skills" });
 
     // Log summary of directory creation
-    const allDirsOk = todosOk && notesOk && uploadsOk && nomendexOk && skillsOk;
+    const allDirsOk = todosOk && notesOk && uploadsOk && nomendexOk;
     if (!allDirsOk) {
         startupLog.warn("Some directories failed to create - app may have reduced functionality");
     }
@@ -142,21 +139,6 @@ export async function onStartup(): Promise<SkillUpdateCheckResult | null> {
         // Non-fatal - continue startup
     }
 
-    // Initialize default skills
-    startupLog.info("Initializing default skills...");
-    let skillUpdateResult: SkillUpdateCheckResult | null = null;
-    try {
-        skillUpdateResult = await initializeDefaultSkills();
-        startupLog.info("Default skills initialized");
-    } catch (error) {
-        startupLog.error("Failed to initialize default skills", {
-            error: error instanceof Error ? error.message : String(error),
-        });
-        // Non-fatal - continue startup
-    }
-
     startupLog.info("Initialization complete");
     startupLog.info("=== Startup Sequence Complete ===");
-
-    return skillUpdateResult;
 }

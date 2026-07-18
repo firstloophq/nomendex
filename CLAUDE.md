@@ -1,5 +1,5 @@
 # Nomendex
-Nomendex is a desktop application for working with notes, tasks, and AI agents.
+Nomendex is a desktop application for working with notes and tasks.
 
 It is NOT an Electron app. It is a desktop application built with Bun and React. Bun is used as a sidebar within a MacOS Swift container.
 
@@ -14,7 +14,7 @@ It is NOT an Electron app. It is a desktop application built with Bun and React.
 
 ### Features
 The application has two built-in features:
-- **Todos** (`/src/features/todos/`) - Task management with kanban, projects, archive
+- **Todos** (`/src/features/todos/`) - Task management with kanban and archive
 - **Notes** (`/src/features/notes/`) - Markdown note-taking with file browser
 
 ### Core Technologies
@@ -39,7 +39,7 @@ interface GlobalConfig {
 ```
 
 **Workspace Paths** (`src/storage/root-path.ts`):
-- `getRootPath()`, `getTodosPath()`, `getNotesPath()`, `getAgentsPath()`, `getSkillsPath()`, `getUploadsPath()`
+- `getRootPath()`, `getTodosPath()`, `getNotesPath()`, `getUploadsPath()`
 - `hasActiveWorkspace()` - check before accessing paths
 
 **Workspace Directory Structure**:
@@ -48,14 +48,12 @@ interface GlobalConfig {
 ├── todos/              # Todo items (markdown + YAML frontmatter)
 ├── notes/              # Notes
 ├── uploads/            # Images and attachments
-├── agents/             # Agent configurations
-├── .claude/skills/     # Custom skills
 └── workspace.json      # UI state (tabs, theme, etc.)
 ```
 
 **Workspace State** (`src/types/Workspace.ts`):
 - Stored in `{workspace}/workspace.json`
-- Contains tabs, activeTabId, sidebarOpen, themeName, mcpServerConfigs
+- Contains tabs, activeTabId, sidebarOpen, themeName
 
 **Key Hooks**:
 - `useWorkspace.tsx` - Manages workspace UI state (tabs, theme)

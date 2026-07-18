@@ -191,7 +191,6 @@ export const NotesPluginBase: PluginBase = {
     id: notesPluginSerial.id,
     name: notesPluginSerial.name,
     icon: notesPluginSerial.icon,
-    mcpServers: {},
     views,
     functionStubs: functionStubs,
     commands: [], // Commands will be dynamically populated from getNotesCommands

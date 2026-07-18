@@ -54,7 +54,6 @@ export const TagsPluginBase: PluginBase = {
     id: tagsPluginSerial.id,
     name: tagsPluginSerial.name,
     icon: tagsPluginSerial.icon,
-    mcpServers: {},
     views,
     functionStubs: {},
     commands: [],

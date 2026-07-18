@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, MessageCircle, AlertTriangle, Columns2, FolderSync, Terminal } from "lucide-react";
+import { FileText, Settings, Trash2, ListTodo, ListChecks, FolderOpen, Plus, Calendar, CalendarMinus, CalendarPlus, CalendarDays, Save, AlertTriangle, Columns2, FolderSync } from "lucide-react";
 import { Command as CommandRoot, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
@@ -7,7 +7,6 @@ import { useRouting } from "@/hooks/useRouting";
 import { useCommandDialog } from "./CommandDialogProvider";
 import { getNotesCommands } from "@/features/notes";
 import { getTodosCommands } from "@/features/todos";
-import { getChatCommands } from "@/features/chat/commands";
 import { getCoreCommands } from "@/commands/core-commands";
 import type { Command } from "@/types/Commands";
 import { subscribe } from "@/lib/events";
@@ -118,20 +117,6 @@ export function CommandMenu() {
                 commands["notes"] = notesCommands;
             }
 
-            // Get commands from Chat feature
-            const chatCommands = getChatCommands({
-                closeCommandMenu: () => setOpen(false),
-                addNewTab,
-                openTab,
-                setActiveTabId,
-                navigate,
-                currentPath,
-            });
-
-            if (chatCommands.length > 0) {
-                commands["chat"] = chatCommands;
-            }
-
             setFeatureCommands(commands);
         }
 
@@ -236,11 +221,9 @@ export function CommandMenu() {
                                             CalendarPlus,
                                             CalendarDays,
                                             Save,
-                                            MessageCircle,
                                             AlertTriangle,
                                             Columns2,
                                             FolderSync,
-                                            Terminal,
                                         };
                                         const IconComponent = iconMap[command.icon as keyof typeof iconMap] || FileText;
 

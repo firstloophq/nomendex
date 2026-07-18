@@ -17,7 +17,6 @@ import { RotateCcw, Eye, EyeOff, Check, X, Key, RefreshCw, Info, Plus, Trash2, F
 import { Input } from "../components/ui/input";
 import { RadioGroup, RadioGroupItem } from "../components/ui/radio-group";
 import { Label } from "../components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import type { NotesLocation } from "@/types/Workspace";
 
 type SecretInfo = {
@@ -231,74 +230,6 @@ function SettingsContent() {
     const [recordingKeys, setRecordingKeys] = useState<string[]>([]);
     const { setTheme, themes, currentTheme } = useTheme();
     const { shortcuts, updateShortcut, resetShortcut, resetAllShortcuts } = useKeyboardShortcuts();
-    const { chatInputEnterToSend, setChatInputEnterToSend, workspace } = useWorkspaceContext();
-
-    // Local state for pending preference change
-    const [pendingEnterToSend, setPendingEnterToSend] = useState<boolean | null>(null);
-    const [savingPreference, setSavingPreference] = useState(false);
-    const [savedPreference, setSavedPreference] = useState(false);
-
-    // Debug logging
-    useEffect(() => {
-        console.log("[Preferences] chatInputEnterToSend from context:", chatInputEnterToSend);
-        console.log("[Preferences] Full workspace state:", workspace);
-    }, [chatInputEnterToSend, workspace]);
-
-    const handleSavePreference = async () => {
-        if (pendingEnterToSend === null) return;
-
-        console.log("[Preferences] Saving chatInputEnterToSend:", pendingEnterToSend);
-        setSavingPreference(true);
-        setSavedPreference(false);
-
-        try {
-            // Fetch current workspace state from server
-            const fetchResponse = await fetch("/api/workspace");
-            const fetchResult = await fetchResponse.json();
-            console.log("[Preferences] Current workspace from server:", fetchResult);
-
-            if (!fetchResult.success) {
-                throw new Error("Failed to fetch current workspace");
-            }
-
-            // Merge with new preference
-            const updatedWorkspace = {
-                ...fetchResult.data,
-                chatInputEnterToSend: pendingEnterToSend,
-            };
-            console.log("[Preferences] Saving updated workspace:", updatedWorkspace);
-
-            // Save directly to API
-            const saveResponse = await fetch("/api/workspace", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(updatedWorkspace),
-            });
-            const saveResult = await saveResponse.json();
-            console.log("[Preferences] Save response:", saveResult);
-
-            if (!saveResult.success) {
-                throw new Error("Failed to save workspace");
-            }
-
-            // Update local state
-            setChatInputEnterToSend(pendingEnterToSend);
-
-            console.log("[Preferences] Save complete");
-            setSavedPreference(true);
-            setPendingEnterToSend(null);
-            // Clear the saved indicator after 2 seconds
-            setTimeout(() => setSavedPreference(false), 2000);
-        } catch (error) {
-            console.error("[Preferences] Save failed:", error);
-        } finally {
-            setSavingPreference(false);
-        }
-    };
-
-    const currentValue = pendingEnterToSend !== null ? pendingEnterToSend : chatInputEnterToSend;
-    const hasUnsavedChanges = pendingEnterToSend !== null && pendingEnterToSend !== chatInputEnterToSend;
-
     // Secrets state
     const [secrets, setSecrets] = useState<SecretInfo[]>([]);
     const [editingSecret, setEditingSecret] = useState<string | null>(null);
@@ -547,7 +478,6 @@ function SettingsContent() {
             <Tabs defaultValue="keyboard" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="keyboard">Keyboard Shortcuts</TabsTrigger>
-                    <TabsTrigger value="preferences">Preferences</TabsTrigger>
                     <TabsTrigger value="theme">Theme</TabsTrigger>
                     <TabsTrigger value="secrets">API Keys</TabsTrigger>
                     <TabsTrigger value="storage">Storage</TabsTrigger>
@@ -678,74 +608,6 @@ function SettingsContent() {
                                     </Table>
                                 </div>
                             ))}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                <TabsContent value="preferences">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Chat Input Preferences</CardTitle>
-                            <CardDescription>Customize how the chat input behaves</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">
-                                        Send message with
-                                    </Label>
-                                    <p className="text-sm" style={{ color: currentTheme.styles.contentSecondary }}>
-                                        Choose which key combination sends your message
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Select
-                                        value={currentValue ? "enter" : "cmd-enter"}
-                                        onValueChange={(value) => {
-                                            const newValue = value === "enter";
-                                            console.log("[Preferences] Selection changed to:", newValue);
-                                            setPendingEnterToSend(newValue);
-                                        }}
-                                    >
-                                        <SelectTrigger className="w-[180px]">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="enter">Enter</SelectItem>
-                                            <SelectItem value="cmd-enter">Cmd + Enter</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            {hasUnsavedChanges && (
-                                <div className="flex items-center gap-2 pt-2">
-                                    <Button
-                                        onClick={handleSavePreference}
-                                        disabled={savingPreference}
-                                        size="sm"
-                                    >
-                                        {savingPreference ? "Saving..." : "Save"}
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setPendingEnterToSend(null)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                </div>
-                            )}
-                            {savedPreference && (
-                                <div className="flex items-center gap-2 pt-2">
-                                    <Check className="h-4 w-4" style={{ color: currentTheme.styles.semanticSuccess }} />
-                                    <span className="text-sm" style={{ color: currentTheme.styles.semanticSuccess }}>
-                                        Saved successfully
-                                    </span>
-                                </div>
-                            )}
-                            <div className="pt-4 text-xs" style={{ color: currentTheme.styles.contentTertiary }}>
-                                Debug: Current saved value = {String(chatInputEnterToSend)}
-                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -1054,7 +916,7 @@ function SettingsContent() {
                                     <div>
                                         <CardTitle>Custom API Keys</CardTitle>
                                         <CardDescription>
-                                            Add API keys for MCP servers and other integrations. Use the key name in your MCP server config with {`\${KEY_NAME}`} syntax.
+                                            Add API keys for integrations such as GitHub sync.
                                         </CardDescription>
                                     </div>
                                     {!isAddingCustom && (
@@ -1093,11 +955,11 @@ function SettingsContent() {
                                                         setNewSecretKey(e.target.value);
                                                         setNewSecretError("");
                                                     }}
-                                                    placeholder="e.g., LINEAR_API_KEY, OPENAI_API_KEY"
+                                                    placeholder="e.g., GITHUB_PAT"
                                                     className="font-mono"
                                                 />
                                                 <p className="text-xs" style={{ color: currentTheme.styles.contentTertiary }}>
-                                                    Will be converted to uppercase. Use this name in MCP server configs.
+                                                    Will be converted to uppercase.
                                                 </p>
                                             </div>
                                             <div className="space-y-1">
@@ -1164,7 +1026,7 @@ function SettingsContent() {
                                 {/* Existing custom secrets */}
                                 {secrets.filter((s) => !s.isPredefined).length === 0 && !isAddingCustom ? (
                                     <p className="text-sm" style={{ color: currentTheme.styles.contentSecondary }}>
-                                        No custom API keys configured. Add one to use with MCP servers.
+                                        No custom API keys configured.
                                     </p>
                                 ) : (
                                     <div className="space-y-4">
@@ -1183,7 +1045,7 @@ function SettingsContent() {
                                                             {secret.key}
                                                         </h4>
                                                         <p className="text-xs" style={{ color: currentTheme.styles.contentTertiary }}>
-                                                            Use as {`\${${secret.key}}`} in MCP server configs
+                                                            Available to the app as {`\${${secret.key}}`}
                                                         </p>
                                                     </div>
                                                 </div>

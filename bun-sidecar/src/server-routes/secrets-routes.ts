@@ -9,12 +9,6 @@ function getSecretsPath(): string {
 
 // Define the predefined secret keys and their metadata
 const PREDEFINED_SECRETS: Record<string, { label: string; description: string; placeholder: string; helpText: string }> = {
-    CLAUDE_CODE_OAUTH_TOKEN: {
-        label: "Claude OAuth Token",
-        description: "OAuth token for Claude Agent SDK. Generate with 'claude setup-token'",
-        placeholder: "sk-ant-oat01-...",
-        helpText: "Run 'claude setup-token' in terminal to generate a token",
-    },
     GITHUB_PAT: {
         label: "GitHub Personal Access Token",
         description: "PAT for git sync operations. Requires 'repo' scope.",

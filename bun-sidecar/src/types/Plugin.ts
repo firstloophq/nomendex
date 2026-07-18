@@ -12,15 +12,6 @@ export const PluginViewDefinitionSchema = z.object({
     component: z.any(),
 });
 
-export const mcpServerConfigSchema = z.object({
-    name: z.string(),
-    version: z.string(),
-    cmd: z.string(),
-    args: z.array(z.string()),
-});
-// infere type from zod schema
-export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
-
 export const PermissionsSchema = z.array(
     z.object({
         tool: z.string(),
@@ -32,7 +23,6 @@ export const PluginBaseSchema = z.object({
     id: z.string(),
     name: z.string(),
     icon: PluginIconSchema,
-    mcpServers: z.record(z.string(), mcpServerConfigSchema),
     views: z.record(z.string(), PluginViewDefinitionSchema),
     functionStubs: FunctionStubsSchema,
     commands: z.array(CommandSchema),

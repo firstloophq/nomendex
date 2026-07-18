@@ -2,11 +2,9 @@ import { startupLog } from "@/lib/logger";
 import { initializePaths, hasActiveWorkspace, getActiveWorkspacePath } from "@/storage/root-path";
 import { initializeTodosService } from "@/features/todos/fx";
 import { initializeNotesService } from "@/features/notes/fx";
-import { initializeProjectsService } from "@/features/projects/fx";
 import { secrets } from "@/lib/secrets";
 import { onStartup } from "@/onStartup";
 import { startNotesWatcher } from "@/services/notes-watcher";
-import { enableAgentEditing } from "@/services/agent-editing";
 
 /**
  * Initialize or reinitialize all workspace-dependent services.
@@ -60,11 +58,7 @@ export async function initializeWorkspaceServices(): Promise<void> {
         try {
             await initializeTodosService();
             await initializeNotesService();
-            await initializeProjectsService();
             startNotesWatcher();
-
-            // Provision Claude Code hooks for agent editing into the workspace
-            await enableAgentEditing();
 
             startupLog.info("Feature services initialized");
         } catch (error) {

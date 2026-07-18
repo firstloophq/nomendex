@@ -1,7 +1,6 @@
 import { globalConfig, type GlobalConfig, type WorkspaceInfo } from "@/storage/global-config";
 import { Result, ErrorCodes } from "../types/Result";
 import { initializeWorkspaceServices } from "@/services/workspace-init";
-import { getRootPath, hasActiveWorkspace } from "@/storage/root-path";
 
 export const workspacesRoutes = {
     // List all registered workspaces
@@ -196,58 +195,4 @@ export const workspacesRoutes = {
         },
     },
 
-    // Open terminal with Claude Code in workspace directory
-    "/api/workspaces/open-terminal": {
-        async POST(req: Request) {
-            try {
-                if (!hasActiveWorkspace()) {
-                    const response: Result = {
-                        success: false,
-                        code: ErrorCodes.BAD_REQUEST,
-                        message: "No active workspace",
-                    };
-                    return Response.json(response, { status: 400 });
-                }
-
-                const url = new URL(req.url);
-                const dangerous = url.searchParams.get("dangerous") === "true";
-                const workspacePath = getRootPath();
-                const claudeCmd = dangerous
-                    ? "claude --dangerously-skip-permissions"
-                    : "claude";
-
-                // Use osascript to launch Ghostty and run claude in the workspace directory
-                // This activates Ghostty, opens a new tab, and types the cd + claude command
-                const script = `
-                    tell application "Ghostty" to activate
-                    delay 0.3
-                    tell application "System Events"
-                        tell process "Ghostty"
-                            keystroke "t" using command down
-                            delay 0.3
-                            keystroke "cd ${workspacePath.replace(/"/g, '\\"')} && ${claudeCmd}"
-                            keystroke return
-                        end tell
-                    end tell
-                `;
-
-                await Bun.$`osascript -e ${script}`;
-
-                const response: Result<{ success: boolean }> = {
-                    success: true,
-                    data: { success: true },
-                };
-                return Response.json(response);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                const response: Result = {
-                    success: false,
-                    code: ErrorCodes.INTERNAL_SERVER_ERROR,
-                    message: `Failed to open terminal: ${message}`,
-                    error,
-                };
-                return Response.json(response, { status: 500 });
-            }
-        },
-    },
 };

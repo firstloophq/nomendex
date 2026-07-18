@@ -7,11 +7,6 @@ export const WorkspaceTabSchema = z.object({
     pluginInstance: PluginInstanceSchema,
 });
 
-export const McpServerStatusSchema = z.object({
-    serverId: z.string(),
-    enabled: z.boolean(),
-});
-
 export const ProjectPreferencesSchema = z.object({
     hideLaterColumn: z.boolean().default(false),
 });
@@ -55,16 +50,13 @@ export const WorkspaceStateSchema = z.object({
     layoutMode: LayoutModeSchema.default("single"),
 
     // Other settings
-    mcpServerConfigs: z.array(McpServerStatusSchema).default([]),
     projectPreferences: z.record(z.string(), ProjectPreferencesSchema).default({}),
     gitAuthMode: GitAuthModeSchema.default("local"),
     notesLocation: NotesLocationSchema.default("root"),
     autoSync: AutoSyncConfigSchema.default({ enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false }),
-    chatInputEnterToSend: z.boolean().default(true),
     showHiddenFiles: z.boolean().default(false),
 });
 
 export type WorkspaceTab = z.infer<typeof WorkspaceTabSchema>;
-export type McpServerStatus = z.infer<typeof McpServerStatusSchema>;
 export type ProjectPreferences = z.infer<typeof ProjectPreferencesSchema>;
 export type WorkspaceState = z.infer<typeof WorkspaceStateSchema>;

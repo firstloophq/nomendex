@@ -26,11 +26,6 @@ import {
     getExplicitTags,
 } from "@/features/notes/tags-service";
 import { addSSEClient, type NoteEvent } from "@/services/notes-watcher";
-import {
-    enableAgentEditing,
-    disableAgentEditing,
-    isAgentEditingEnabled,
-} from "@/services/agent-editing";
 
 export const notesRoutes = {
     "/api/notes/list": {
@@ -294,25 +289,6 @@ export const notesRoutes = {
                     Connection: "keep-alive",
                 },
             });
-        },
-    },
-    // Agent editing hooks management
-    "/api/notes/agent-editing/status": {
-        async GET() {
-            const enabled = await isAgentEditingEnabled();
-            return Response.json({ enabled });
-        },
-    },
-    "/api/notes/agent-editing/enable": {
-        async POST() {
-            const result = await enableAgentEditing();
-            return Response.json(result);
-        },
-    },
-    "/api/notes/agent-editing/disable": {
-        async POST() {
-            const result = await disableAgentEditing();
-            return Response.json(result);
         },
     },
 };

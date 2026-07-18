@@ -6,7 +6,6 @@ import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useGHSync } from "@/contexts/GHSyncContext";
-import { chatPluginSerial } from "@/features/chat";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -28,7 +27,6 @@ import {
     Check,
     X,
     Eye,
-    Bot,
     Key,
     ExternalLink
 } from "lucide-react";
@@ -139,7 +137,7 @@ function ChangedFilesList({ status }: { status: string }) {
 
 function SyncContent() {
     const navigate = useNavigate();
-    const { addNewTab, setActiveTabId, autoSync, setAutoSyncConfig } = useWorkspaceContext();
+    const { autoSync, setAutoSyncConfig } = useWorkspaceContext();
     const { status: syncStatus, setupStatus, needsSetup, checkForChanges, sync, recheckSetup, clearMergeConflict, gitAuthMode, setGitAuthMode } = useGHSync();
     const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
     const [loading, setLoading] = useState(true);
@@ -346,48 +344,6 @@ function SyncContent() {
             setOperationError(error instanceof Error ? error.message : "Failed to complete merge");
         } finally {
             setOperating(false);
-        }
-    };
-
-    const solveWithAgent = async (filePath: string) => {
-        try {
-            // Fetch the conflict content
-            const response = await fetch(`/api/git/conflict-content?path=${encodeURIComponent(filePath)}`);
-            if (!response.ok) {
-                setOperationError("Failed to load conflict content");
-                return;
-            }
-
-            const content = await response.json();
-
-            const prompt = `I have a merge conflict in the file "${filePath}" that I need help resolving.
-
-## Our Version (Local)
-\`\`\`
-${content.oursContent}
-\`\`\`
-
-## Their Version (Remote)
-\`\`\`
-${content.theirsContent}
-\`\`\`
-
-Please analyze both versions and create a merged version that combines the important changes from both. Explain what changes you're keeping and why. Then provide the final merged content that I should use.
-
-After you provide the merged content, I will manually update the file and mark the conflict as resolved.`;
-
-            const newTab = await addNewTab({
-                pluginMeta: chatPluginSerial,
-                view: "chat",
-                props: { initialPrompt: prompt },
-            });
-
-            if (newTab) {
-                setActiveTabId(newTab.id);
-                navigate("/");
-            }
-        } catch (error) {
-            setOperationError(error instanceof Error ? error.message : "Failed to open agent");
         }
     };
 
@@ -873,19 +829,6 @@ After you provide the merged content, I will manually update the file and mark t
                                                 </Button>
                                             ) : (
                                                 <>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 px-2 text-xs mr-auto"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            solveWithAgent(file.path);
-                                                        }}
-                                                        disabled={operating}
-                                                    >
-                                                        <Bot className="h-3 w-3 mr-1" />
-                                                        Solve with Agent
-                                                    </Button>
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
