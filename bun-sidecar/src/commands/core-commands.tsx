@@ -424,33 +424,5 @@ export function getCoreCommands(context: CoreCommandContext): Command[] {
                 });
             },
         },
-        {
-            id: "core.openClaudeCode",
-            name: "Open Claude Code",
-            description: "Launch Claude Code in the workspace directory",
-            icon: "Terminal",
-            callback: async () => {
-                context.closeCommandMenu();
-                try {
-                    await fetch("/api/workspaces/open-terminal", { method: "POST" });
-                } catch (error) {
-                    console.error("Failed to open Claude Code:", error);
-                }
-            },
-        },
-        {
-            id: "core.openClaudeCodeDangerous",
-            name: "Open Claude Code Dangerously",
-            description: "Launch Claude Code with --dangerously-skip-permissions",
-            icon: "Terminal",
-            callback: async () => {
-                context.closeCommandMenu();
-                try {
-                    await fetch("/api/workspaces/open-terminal?dangerous=true", { method: "POST" });
-                } catch (error) {
-                    console.error("Failed to open Claude Code:", error);
-                }
-            },
-        },
     ];
 }

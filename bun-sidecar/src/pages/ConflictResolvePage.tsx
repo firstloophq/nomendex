@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
-import { chatPluginSerial } from "@/features/chat";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import {
@@ -12,8 +10,7 @@ import {
     Loader2,
     FileText,
     ChevronLeft,
-    Check,
-    Bot
+    Check
 } from "lucide-react";
 
 interface ConflictContent {
@@ -166,7 +163,6 @@ function CodePanel(props: {
 function ConflictResolveContent() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const { addNewTab, setActiveTabId } = useWorkspaceContext();
     const filePath = searchParams.get("path") || "";
 
     const [content, setContent] = useState<ConflictContent | null>(null);
@@ -174,37 +170,6 @@ function ConflictResolveContent() {
     const [resolving, setResolving] = useState(false);
     const [error, setError] = useState("");
     const [resolved, setResolved] = useState(false);
-
-    const solveWithAgent = async () => {
-        if (!content) return;
-
-        const prompt = `I have a merge conflict in the file "${filePath}" that I need help resolving.
-
-## Our Version (Local)
-\`\`\`
-${content.oursContent}
-\`\`\`
-
-## Their Version (Remote)
-\`\`\`
-${content.theirsContent}
-\`\`\`
-
-Please analyze both versions and create a merged version that combines the important changes from both. Explain what changes you're keeping and why. Then provide the final merged content that I should use.
-
-After you provide the merged content, I will manually update the file and mark the conflict as resolved.`;
-
-        const newTab = await addNewTab({
-            pluginMeta: chatPluginSerial,
-            view: "chat",
-            props: { initialPrompt: prompt },
-        });
-
-        if (newTab) {
-            setActiveTabId(newTab.id);
-            navigate("/");
-        }
-    };
 
     useEffect(() => {
         async function loadContent() {
@@ -319,16 +284,6 @@ After you provide the merged content, I will manually update the file and mark t
 
                 {/* Resolve Buttons */}
                 <div className="flex gap-2 flex-shrink-0">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={solveWithAgent}
-                        disabled={resolving || !content}
-                        className="gap-1"
-                    >
-                        <Bot className="h-4 w-4" />
-                        Solve with Agent
-                    </Button>
                     <Button
                         variant="outline"
                         size="sm"

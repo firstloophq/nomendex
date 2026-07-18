@@ -4,7 +4,6 @@ import { FunctionsFromStubs } from "@/types/Functions";
 import { createServiceLogger } from "@/lib/logger";
 import { Todo } from "./todo-types";
 import { FileDatabase } from "@/storage/FileDatabase";
-import path from "path";
 import { getTodosPath, hasActiveWorkspace } from "@/storage/root-path";
 import type { Attachment } from "@/types/attachments";
 
@@ -379,24 +378,12 @@ const functions: FunctionsFromStubs<typeof functionStubs> = {
     getTags: { ...functionStubs.getTags, fx: getTags },
 };
 
-// MCP Server configuration (backend only)
-const mcpServers = {
-    todos: {
-        name: "todos-mcp-server",
-        version: "1.0.0",
-        cmd: "bun",
-        args: [path.resolve(__dirname, "./TodoMCPServer.ts")],
-    }
-};
-
 const TodosPlugin: TypedPluginWithFunctions<typeof functionStubs> = {
     ...TodosPluginBase,
-    mcpServers,
     functions,
 };
 
 export default TodosPlugin;
 export const TodosPluginWithFunctions = TodosPlugin;
 
-// Export individual functions for MCP
 export { getTodos, createTodo, updateTodo, deleteTodo, getTodoById, getProjects, reorderTodos, archiveTodo, unarchiveTodo, getArchivedTodos, getTags };

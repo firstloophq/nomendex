@@ -2,7 +2,6 @@ import { PluginBase, SerializablePlugin } from "@/types/Plugin";
 import { z } from "zod";
 import { TodosView } from "./view";
 import { TodosBrowserView } from "./browser-view";
-import { ProjectBrowserView } from "./ProjectBrowserView";
 import { ArchivedBrowserView } from "./archived-view";
 import { FunctionStubs } from "@/types/Functions";
 import { TodoSchema } from "./todo-types";
@@ -107,8 +106,9 @@ export type TodosBrowserViewProps = z.infer<typeof todosBrowserViewPropsSchema>;
 const views = {
     default: {
         id: "default",
-        name: "Projects",
-        component: ProjectBrowserView,
+        name: "Todos",
+        component: TodosBrowserView,
+        props: todosBrowserViewPropsSchema,
     },
     browser: {
         id: "browser",
@@ -121,11 +121,6 @@ const views = {
         name: "Archived",
         component: ArchivedBrowserView,
         props: todosBrowserViewPropsSchema,
-    },
-    projects: {
-        id: "projects",
-        name: "Projects",
-        component: ProjectBrowserView,
     },
     editor: {
         id: "editor",
@@ -140,7 +135,6 @@ export const TodosPluginBase: PluginBase = {
     name: todosPluginSerial.name,
     icon: todosPluginSerial.icon,
     views,
-    mcpServers: {}, // MCP servers are defined in fx.ts to keep them backend-only
     functionStubs,
     commands: [
         {

@@ -49,7 +49,6 @@ export const UploadsPluginBase: PluginBase = {
     id: uploadsPluginSerial.id,
     name: uploadsPluginSerial.name,
     icon: uploadsPluginSerial.icon,
-    mcpServers: {},
     views,
     functionStubs: functionStubs,
     commands: [],

@@ -33,7 +33,7 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
         {
             id: "todos.open",
             name: "Open Todos",
-            description: "Open the todos default view (projects)",
+            description: "Open the todos board",
             icon: "ListTodo",
             callback: () => {
                 context.closeCommandMenu();
@@ -59,25 +59,6 @@ export async function getTodosCommands(context: CommandContext): Promise<Command
                 context.openTab({
                     pluginMeta: todosPluginSerial,
                     view: "browser",
-                    props: {},
-                });
-
-                // Navigate to workspace if not already there
-                if (context.currentPath !== "/") {
-                    context.navigate("/");
-                }
-            },
-        },
-        {
-            id: "todos.openProjects",
-            name: "Open Projects View",
-            description: "Open the todos projects view",
-            icon: "FolderOpen",
-            callback: () => {
-                context.closeCommandMenu();
-                context.openTab({
-                    pluginMeta: todosPluginSerial,
-                    view: "projects",
                     props: {},
                 });
 

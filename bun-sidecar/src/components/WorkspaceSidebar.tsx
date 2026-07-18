@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, GitBranch, Bot, HelpCircle } from "lucide-react";
+import { Settings, GitBranch, HelpCircle } from "lucide-react";
 import {
     Sidebar,
     SidebarContent,
@@ -69,46 +69,7 @@ export function WorkspaceSidebar() {
                     <SidebarGroupLabel style={{ color: currentTheme.styles.contentSecondary }}>Workspace</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu>
-                            {plugins.filter(p => p.id !== 'chat').map((plugin) => {
-                                const IconComponent = getIcon(plugin.icon);
-                                return (
-                                    <SidebarMenuItem key={plugin.id}>
-                                        <SidebarMenuButton
-                                            onClick={() => handleAddPlugin(plugin)}
-                                            className="cursor-pointer transition-all duration-200"
-                                            style={{
-                                                color: currentTheme.styles.contentPrimary
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.backgroundColor = currentTheme.styles.surfaceAccent;
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.backgroundColor = 'transparent';
-                                            }}
-                                        >
-                                            <IconComponent className="size-4" />
-                                            <span>{plugin.name || plugin.id}</span>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                );
-                            })}
-                            <SidebarMenuItem>
-                                <SidebarMenuButton
-                                    onClick={() => handleNavigate("/agents")}
-                                    className="cursor-pointer transition-all duration-200"
-                                    style={{ color: currentTheme.styles.contentPrimary }}
-                                    onMouseEnter={(e) => {
-                                        e.currentTarget.style.backgroundColor = currentTheme.styles.surfaceAccent;
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.currentTarget.style.backgroundColor = 'transparent';
-                                    }}
-                                >
-                                    <Bot className="size-4" />
-                                    <span>Agents</span>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                            {plugins.filter(p => p.id === 'chat').map((plugin) => {
+                            {plugins.map((plugin) => {
                                 const IconComponent = getIcon(plugin.icon);
                                 return (
                                     <SidebarMenuItem key={plugin.id}>

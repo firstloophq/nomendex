@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Result, ErrorCodes } from "../types/Result";
 import { WorkspaceState, WorkspaceStateSchema } from "../types/Workspace";
-import { getNomendexPath, getRootPath, getNotesPath, getTodosPath, getUploadsPath, getSkillsPath, hasActiveWorkspace, initializePaths } from "../storage/root-path";
+import { getNomendexPath, getRootPath, getNotesPath, getTodosPath, getUploadsPath, hasActiveWorkspace, initializePaths } from "../storage/root-path";
 
 const ThemeRequestSchema = z.object({
     themeName: z.string(),
@@ -24,12 +24,10 @@ export const workspaceRoutes = {
                         activePaneId: null,
                         splitRatio: 0.5,
                         layoutMode: "single",
-                        mcpServerConfigs: [],
                         projectPreferences: {},
                         gitAuthMode: "local",
                         notesLocation: "root",
                         autoSync: { enabled: true, syncOnChanges: true, intervalSeconds: 60, paused: false },
-                        chatInputEnterToSend: true,
                         showHiddenFiles: false,
                     };
                     await Bun.write(`${getNomendexPath()}/workspace.json`, JSON.stringify(defaultWorkspace, null, 2));
@@ -162,7 +160,6 @@ export const workspaceRoutes = {
                     notes: getNotesPath(),
                     todos: getTodosPath(),
                     uploads: getUploadsPath(),
-                    skills: getSkillsPath(),
                 };
 
                 const response: Result<typeof paths> = {
