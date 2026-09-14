@@ -43,25 +43,9 @@
   <dict>
     <key>NSAllowsArbitraryLoads</key>
     <true/>
-    <key>NSAllowsLocalNetworking</key>
-    <true/>
-    <key>NSExceptionDomains</key>
-    <dict>
-      <key>localhost</key>
-      <dict>
-        <key>NSIncludesSubdomains</key>
-        <true/>
-        <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
-        <true/>
-      </dict>
-      <key>127.0.0.1</key>
-      <dict>
-        <key>NSIncludesSubdomains</key>
-        <true/>
-        <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
-        <true/>
-      </dict>
-    </dict>
+    <!-- Do NOT add NSAllowsLocalNetworking or NSExceptionDomains here: their presence makes
+         macOS ignore NSAllowsArbitraryLoads, and on macOS 26.5 loopback HTTP to the sidecar
+         then fails with ATS error -1022 (blank window). -->
   </dict>
 </dict>
 </plist>
