@@ -1,7 +1,7 @@
 import { RouteHandler } from "../types/Routes";
 import { getRootPath, getNomendexPath } from "../storage/root-path";
 import { createServiceLogger } from "../lib/logger";
-import { createGitClient, CommitInfo, ConflictFile, AuthConfig } from "../lib/git";
+import { createGitClient, getGitVersion, CommitInfo, ConflictFile, AuthConfig } from "../lib/git";
 import { GitAuthModeSchema } from "../types/Workspace";
 
 const logger = createServiceLogger("GIT-SYNC");
@@ -77,7 +77,7 @@ interface GitSyncResponse {
     error?: string;
 }
 
-// Check if git is available (always true with isomorphic-git)
+// Check if the system git binary is available (requires Xcode Command Line Tools on macOS)
 interface GitInstalledResponse {
     success: boolean;
     installed: boolean;
@@ -87,12 +87,19 @@ interface GitInstalledResponse {
 
 export const gitInstalledRoute: RouteHandler<GitInstalledResponse> = {
     GET: async (_req) => {
-        // With isomorphic-git, we don't need external git installed
-        logger.info("Checking git availability (isomorphic-git)");
+        const version = await getGitVersion();
+        logger.info("Checked git availability", { installed: version !== null, version });
+        if (!version) {
+            return Response.json({
+                success: true,
+                installed: false,
+                error: "Git is not installed. Install Xcode Command Line Tools to enable sync.",
+            });
+        }
         return Response.json({
             success: true,
             installed: true,
-            version: "isomorphic-git",
+            version,
         });
     },
 };
@@ -193,9 +200,7 @@ export const gitStatusRoute: RouteHandler<GitStatusResponse> = {
             const hasUncommittedChanges = statusResult.hasUncommittedChanges;
 
             // Check for merge conflicts
-            logger.info("=== /api/git/status: checking hasMergeConflict ===");
             const hasMergeConflict = await git.hasMergeConflict();
-            logger.info("=== /api/git/status: hasMergeConflict result ===", { hasMergeConflict });
             let conflictCount = 0;
             if (hasMergeConflict) {
                 const conflicts = await git.getConflictFiles();
@@ -704,27 +709,9 @@ export const gitConflictsRoute: RouteHandler<GitConflictsResponse> = {
     GET: async (_req) => {
         try {
             const git = getGitClient();
-            const rootPath = getRootPath();
-            logger.info("=== /api/git/conflicts called ===", { path: rootPath });
-
-            // Log the git directory being used
-            const gitDir = `${rootPath}/.git`;
-            const mergeStatePath = `${gitDir}/NOMENDEX_MERGE_STATE`;
-            const mergeHeadPath = `${gitDir}/MERGE_HEAD`;
-
-            // Check if files exist
-            const mergeStateExists = await Bun.file(mergeStatePath).exists();
-            const mergeHeadExists = await Bun.file(mergeHeadPath).exists();
-            logger.info("Conflict file check", {
-                gitDir,
-                mergeStateExists,
-                mergeStatePath,
-                mergeHeadExists,
-                mergeHeadPath
-            });
+            logger.info("Checking for merge conflicts", { path: getRootPath() });
 
             const hasMergeConflict = await git.hasMergeConflict();
-            logger.info("hasMergeConflict result", { hasMergeConflict });
 
             if (!hasMergeConflict) {
                 logger.info("No merge conflict, returning empty list");
@@ -736,7 +723,7 @@ export const gitConflictsRoute: RouteHandler<GitConflictsResponse> = {
             }
 
             const conflictFiles = await git.getConflictFiles();
-            logger.info("=== /api/git/conflicts complete ===", { hasMergeConflict, conflictCount: conflictFiles.length, files: conflictFiles.map(f => f.path) });
+            logger.info("Conflict check complete", { conflictCount: conflictFiles.length, files: conflictFiles.map(f => f.path) });
 
             return Response.json({
                 success: true,
@@ -853,11 +840,7 @@ export const gitContinueMergeRoute: RouteHandler<GitSyncResponse> = {
             const git = getGitClient();
             logger.info("Continuing merge", { path: getRootPath() });
 
-            // Use the new completeMerge function which handles everything:
-            // - Checks for unresolved conflicts
-            // - Stages all files
-            // - Creates proper merge commit with both parents
-            // - Cleans up merge state
+            // Verifies all conflicts are resolved, stages everything, and creates the merge commit
             await git.completeMerge();
 
             logger.info("Merge completed successfully");
