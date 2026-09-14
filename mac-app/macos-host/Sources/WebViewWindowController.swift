@@ -246,6 +246,27 @@ class WebViewWindowController: NSWindowController, WKNavigationDelegate, NSWindo
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        log("Navigation started:", webView.url?.absoluteString ?? "nil")
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        log("Navigation finished:", webView.url?.absoluteString ?? "nil")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        log("Provisional navigation FAILED:", (error as NSError).domain, (error as NSError).code, error.localizedDescription)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        log("Navigation FAILED:", (error as NSError).domain, (error as NSError).code, error.localizedDescription)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        log("WebContent process TERMINATED (crashed) - reloading")
+        webView.reload()
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
