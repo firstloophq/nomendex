@@ -1,16 +1,17 @@
 /**
- * Git operations wrapper using isomorphic-git
+ * Git operations wrapper around the system git binary.
  *
- * This module provides a clean interface for git operations without
- * requiring the git CLI to be installed.
+ * Shells out to /usr/bin/git (Xcode Command Line Tools) via Bun.$.
+ * Native git gives us proper fetch negotiation, delta packs, automatic
+ * garbage collection, real merges with conflict markers, and credential
+ * helpers for free — none of which isomorphic-git provided.
  */
 
-import git, { ReadCommitResult } from "isomorphic-git";
-import http from "isomorphic-git/http/node";
-import * as fs from "node:fs";
 import { createServiceLogger } from "./logger";
 
 const logger = createServiceLogger("GIT");
+
+const GIT_BIN = "/usr/bin/git";
 
 // Default author for commits
 const DEFAULT_AUTHOR = {
@@ -49,21 +50,6 @@ export interface ConflictFile {
     resolved: boolean;
 }
 
-/**
- * Merge state tracked by Nomendex (since isomorphic-git doesn't create MERGE_HEAD)
- */
-export interface MergeState {
-    inProgress: boolean;
-    oursRef: string;         // e.g., "main"
-    theirsRef: string;       // e.g., "origin/main"
-    theirsOid: string;       // The commit SHA we're merging in
-    oursOid: string;         // The commit SHA of our branch before merge
-    conflictFiles: string[]; // Files that had conflicts
-    startedAt: string;       // ISO timestamp
-}
-
-const MERGE_STATE_FILE = "NOMENDEX_MERGE_STATE";
-
 interface GitClientConfig {
     dir: string;
     author?: { name: string; email: string };
@@ -73,102 +59,29 @@ export type AuthConfig =
     | { mode: "token"; token: string }
     | { mode: "local" };
 
-/**
- * Get credentials from the system git credential manager (macOS Keychain, etc.)
- * Shells out to `git credential fill` which talks to whatever credential helper
- * the user has configured (osxkeychain, gh auth, etc.)
- */
-async function getSystemCredentials(url: string): Promise<{ username: string; password: string } | null> {
-    try {
-        const parsed = new URL(url);
-        const input = `protocol=${parsed.protocol.replace(":", "")}\nhost=${parsed.host}\n\n`;
+interface RunResult {
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+}
 
-        const proc = Bun.spawn(["git", "credential", "fill"], {
-            stdin: "pipe",
-            stdout: "pipe",
-            stderr: "pipe",
-        });
-
-        proc.stdin.write(input);
-        proc.stdin.end();
-
-        // Timeout after 5 seconds to prevent hanging if credential helper prompts
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
-        const outputPromise = new Response(proc.stdout).text();
-
-        const output = await Promise.race([outputPromise, timeoutPromise]);
-        if (!output) {
-            proc.kill();
-            logger.warn("System credential lookup timed out", { host: parsed.host });
-            return null;
-        }
-
-        await proc.exited;
-        if (proc.exitCode !== 0) {
-            logger.debug("System credential lookup failed", { exitCode: proc.exitCode, host: parsed.host });
-            return null;
-        }
-
-        const creds: Record<string, string> = {};
-        for (const line of output.split("\n")) {
-            const eqIdx = line.indexOf("=");
-            if (eqIdx > 0) {
-                creds[line.slice(0, eqIdx)] = line.slice(eqIdx + 1);
-            }
-        }
-
-        if (creds.username && creds.password) {
-            logger.info("Got credentials from system credential manager", { host: parsed.host, username: creds.username });
-            return { username: creds.username, password: creds.password };
-        }
-
-        logger.debug("No credentials returned from system credential manager", { host: parsed.host });
-        return null;
-    } catch (e) {
-        logger.debug("System credential lookup error", { error: String(e) });
-        return null;
-    }
+interface RunOptions {
+    auth?: AuthConfig;
+    /** Extra environment variables for this invocation */
+    env?: Record<string, string>;
 }
 
 /**
- * Inform the system credential manager that credentials were accepted
+ * Check whether the system git binary is usable.
+ * On a Mac without Xcode Command Line Tools, /usr/bin/git exists but exits non-zero.
  */
-async function approveSystemCredentials(url: string, auth: { username: string; password: string }): Promise<void> {
+export async function getGitVersion(): Promise<string | null> {
     try {
-        const parsed = new URL(url);
-        const input = `protocol=${parsed.protocol.replace(":", "")}\nhost=${parsed.host}\nusername=${auth.username}\npassword=${auth.password}\n\n`;
-
-        const proc = Bun.spawn(["git", "credential", "approve"], {
-            stdin: "pipe",
-            stdout: "pipe",
-            stderr: "pipe",
-        });
-        proc.stdin.write(input);
-        proc.stdin.end();
-        await proc.exited;
+        const result = await Bun.$`${GIT_BIN} --version`.nothrow().quiet();
+        if (result.exitCode !== 0) return null;
+        return result.stdout.toString().trim();
     } catch {
-        // Best effort — don't fail the operation
-    }
-}
-
-/**
- * Inform the system credential manager that credentials were rejected
- */
-async function rejectSystemCredentials(url: string, auth: { username: string; password: string }): Promise<void> {
-    try {
-        const parsed = new URL(url);
-        const input = `protocol=${parsed.protocol.replace(":", "")}\nhost=${parsed.host}\nusername=${auth.username}\npassword=${auth.password}\n\n`;
-
-        const proc = Bun.spawn(["git", "credential", "reject"], {
-            stdin: "pipe",
-            stdout: "pipe",
-            stderr: "pipe",
-        });
-        proc.stdin.write(input);
-        proc.stdin.end();
-        await proc.exited;
-    } catch {
-        // Best effort — don't fail the operation
+        return null;
     }
 }
 
@@ -178,65 +91,128 @@ async function rejectSystemCredentials(url: string, auth: { username: string; pa
 export function createGitClient(config: GitClientConfig) {
     const { dir, author = DEFAULT_AUTHOR } = config;
 
-    // Ensure pack files are writable so isomorphic-git can operate on repos
-    // created by the system git CLI (which makes pack files read-only)
-    const ensurePackFilesWritable = async () => {
-        const packDir = `${dir}/.git/objects/pack`;
-        try {
-            const dirEntries = await fs.promises.readdir(packDir);
-            for (const entry of dirEntries) {
-                const fullPath = `${packDir}/${entry}`;
-                try {
-                    const stat = await fs.promises.stat(fullPath);
-                    // If file is not owner-writable, make it writable
-                    if (stat.isFile() && (stat.mode & 0o200) === 0) {
-                        await fs.promises.chmod(fullPath, stat.mode | 0o200);
-                        logger.debug("Made pack file writable", { path: entry });
-                    }
-                } catch {
-                    // Skip individual files that fail
-                }
-            }
-        } catch {
-            // Pack directory might not exist yet — that's fine
+    /**
+     * Run a git command in the workspace directory.
+     * Never throws on non-zero exit; callers inspect exitCode.
+     */
+    const run = async (args: string[], opts: RunOptions = {}): Promise<RunResult> => {
+        const env: Record<string, string | undefined> = {
+            ...process.env,
+            // Never block on an interactive prompt
+            GIT_TERMINAL_PROMPT: "0",
+            GIT_AUTHOR_NAME: author.name,
+            GIT_AUTHOR_EMAIL: author.email,
+            GIT_COMMITTER_NAME: author.name,
+            GIT_COMMITTER_EMAIL: author.email,
+            ...opts.env,
+        };
+
+        const configArgs: string[] = [];
+        if (opts.auth?.mode === "token") {
+            // Feed the PAT through an inline credential helper so it never
+            // touches disk, the keychain, or the visible command line.
+            env.NOMENDEX_GIT_TOKEN = opts.auth.token;
+            configArgs.push(
+                "-c", "credential.helper=",
+                "-c", "credential.helper=!f() { echo username=x-access-token; echo \"password=$NOMENDEX_GIT_TOKEN\"; }; f",
+            );
         }
+
+        const fullArgs = [...configArgs, ...args];
+        const result = await Bun.$`${GIT_BIN} ${fullArgs}`.cwd(dir).env(env).nothrow().quiet();
+        return {
+            exitCode: result.exitCode,
+            stdout: result.stdout.toString(),
+            stderr: result.stderr.toString(),
+        };
     };
 
-    // Helper to create auth callbacks for isomorphic-git operations
-    // Returns an object with onAuth (and optionally onAuthSuccess/onAuthFailure) to spread into options
-    const createAuthCallbacks = (auth: AuthConfig) => {
-        if (auth.mode === "token") {
-            return {
-                onAuth: () => ({ username: auth.token }),
-            };
+    /** Run and throw a readable error on failure */
+    const runOrThrow = async (args: string[], opts: RunOptions = {}): Promise<string> => {
+        const result = await run(args, opts);
+        if (result.exitCode !== 0) {
+            const detail = (result.stderr || result.stdout).trim();
+            throw new Error(`git ${args[0]} failed: ${detail}`);
         }
+        return result.stdout;
+    };
 
-        // Local mode — use system git credentials
-        let lastUrl = "";
-        let lastAuth: { username: string; password: string } | null = null;
+    const revParse = async (ref: string): Promise<string | undefined> => {
+        const result = await run(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+        return result.exitCode === 0 ? result.stdout.trim() : undefined;
+    };
 
-        return {
-            onAuth: async (url: string) => {
-                lastUrl = url;
-                const creds = await getSystemCredentials(url);
-                if (creds) {
-                    lastAuth = creds;
-                    return { username: creds.username, password: creds.password };
-                }
-                // Return empty object — isomorphic-git will try unauthenticated
-                return {};
-            },
-            onAuthSuccess: async () => {
-                if (lastAuth && lastUrl) {
-                    await approveSystemCredentials(lastUrl, lastAuth);
-                }
-            },
-            onAuthFailure: async () => {
-                if (lastAuth && lastUrl) {
-                    await rejectSystemCredentials(lastUrl, lastAuth);
-                }
-            },
-        };
+    const parseLog = (output: string): CommitInfo[] => {
+        return output
+            .split("\n")
+            .filter((line) => line.length > 0)
+            .map((line) => {
+                const [hash = "", authorName = "", timestamp = "0", ...rest] = line.split("\x1f");
+                return {
+                    hash: hash.slice(0, 7),
+                    message: rest.join("\x1f"),
+                    author: authorName,
+                    date: formatRelativeTime(Number(timestamp) * 1000),
+                };
+            });
+    };
+
+    const LOG_FORMAT = "--format=%H%x1f%an%x1f%at%x1f%s";
+
+    /** Files with unmerged index entries, with their conflict type */
+    const getUnmergedFiles = async (): Promise<Array<{ path: string; status: ConflictFile["status"] }>> => {
+        const result = await run(["status", "--porcelain=v1", "-z", "--untracked-files=no"]);
+        if (result.exitCode !== 0) return [];
+
+        const files: Array<{ path: string; status: ConflictFile["status"] }> = [];
+        for (const entry of result.stdout.split("\0")) {
+            if (entry.length < 4) continue;
+            const xy = entry.slice(0, 2);
+            const path = entry.slice(3);
+            switch (xy) {
+                case "UU":
+                    files.push({ path, status: "both_modified" });
+                    break;
+                case "AA":
+                    files.push({ path, status: "both_added" });
+                    break;
+                case "DU":
+                    files.push({ path, status: "deleted_by_us" });
+                    break;
+                case "UD":
+                    files.push({ path, status: "deleted_by_them" });
+                    break;
+                case "AU":
+                case "UA":
+                case "DD":
+                    files.push({ path, status: "both_modified" });
+                    break;
+            }
+        }
+        return files;
+    };
+
+    /**
+     * Files git recorded as conflicted when the merge started.
+     * git writes a "# Conflicts:" section into .git/MERGE_MSG on a conflicted merge.
+     */
+    const getOriginalConflictFiles = async (): Promise<string[]> => {
+        try {
+            const file = Bun.file(`${dir}/.git/MERGE_MSG`);
+            if (!(await file.exists())) return [];
+            const lines = (await file.text()).split("\n");
+            const start = lines.findIndex((l) => l.trim() === "# Conflicts:");
+            if (start === -1) return [];
+            const files: string[] = [];
+            for (const line of lines.slice(start + 1)) {
+                const match = line.match(/^#\t(.+)$/);
+                if (!match?.[1]) break;
+                files.push(match[1]);
+            }
+            return files;
+        } catch {
+            return [];
+        }
     };
 
     return {
@@ -245,7 +221,7 @@ export function createGitClient(config: GitClientConfig) {
          */
         async init(): Promise<void> {
             logger.info("Initializing git repository", { dir });
-            await git.init({ fs, dir });
+            await runOrThrow(["init"]);
             logger.info("Git repository initialized");
         },
 
@@ -253,75 +229,74 @@ export function createGitClient(config: GitClientConfig) {
          * Check if directory is a git repository
          */
         async isRepo(): Promise<boolean> {
-            try {
-                await git.findRoot({ fs, filepath: dir });
-                return true;
-            } catch {
-                return false;
-            }
+            const result = await run(["rev-parse", "--is-inside-work-tree"]);
+            return result.exitCode === 0 && result.stdout.trim() === "true";
         },
 
         /**
          * Get current branch name
          */
         async currentBranch(): Promise<string | undefined> {
-            try {
-                const branch = await git.currentBranch({ fs, dir });
-                return branch ?? undefined;
-            } catch {
-                return undefined;
-            }
+            const result = await run(["symbolic-ref", "--short", "--quiet", "HEAD"]);
+            if (result.exitCode !== 0) return undefined;
+            const branch = result.stdout.trim();
+            return branch.length > 0 ? branch : undefined;
         },
 
         /**
          * List all local branches
          */
         async listBranches(): Promise<string[]> {
-            return await git.listBranches({ fs, dir });
+            const result = await run(["branch", "--format=%(refname:short)"]);
+            if (result.exitCode !== 0) return [];
+            return result.stdout.split("\n").map((b) => b.trim()).filter((b) => b.length > 0);
         },
 
         /**
          * Create a new branch
          */
         async createBranch(name: string): Promise<void> {
-            await git.branch({ fs, dir, ref: name });
+            await runOrThrow(["branch", name]);
         },
 
         /**
          * Checkout a branch
          */
         async checkout(ref: string): Promise<void> {
-            await git.checkout({ fs, dir, ref });
+            await runOrThrow(["checkout", ref]);
         },
 
         /**
          * Get repository status
          */
         async status(): Promise<StatusResult> {
-            const matrix = await git.statusMatrix({ fs, dir });
+            const result = await run(["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+            if (result.exitCode !== 0) {
+                throw new Error(`git status failed: ${result.stderr.trim()}`);
+            }
+
             const changedFiles: FileChange[] = [];
+            const entries = result.stdout.split("\0");
+            for (let i = 0; i < entries.length; i++) {
+                const entry = entries[i];
+                if (!entry || entry.length < 4) continue;
+                const x = entry[0];
+                const y = entry[1];
+                const path = entry.slice(3);
 
-            for (const [filepath, head, workdir, stage] of matrix) {
-                // Status matrix: [filepath, HEAD, WORKDIR, STAGE]
-                // HEAD: 0 = absent, 1 = present
-                // WORKDIR: 0 = absent, 1 = identical to HEAD, 2 = different
-                // STAGE: 0 = absent, 1 = identical to HEAD, 2 = identical to WORKDIR, 3 = different from both
+                // Renames/copies carry the original path in the next NUL-separated field
+                if (x === "R" || x === "C") i++;
 
-                // Untracked: not in HEAD, but present in workdir (not staged)
-                if (head === 0 && workdir === 2 && stage === 0) {
-                    changedFiles.push({ path: filepath, status: "untracked" });
-                }
-                // Added: not in HEAD, but staged
-                else if (head === 0 && stage !== 0) {
-                    changedFiles.push({ path: filepath, status: "added" });
-                }
-                // Deleted: in HEAD, but not in workdir
-                else if (head === 1 && workdir === 0) {
-                    changedFiles.push({ path: filepath, status: "deleted" });
-                }
-                // Modified: in HEAD, but different in workdir or stage
-                else if (head === 1 && (workdir === 2 || stage === 2 || stage === 3)) {
-                    changedFiles.push({ path: filepath, status: "modified" });
+                if (x === "?" && y === "?") {
+                    changedFiles.push({ path, status: "untracked" });
+                } else if (x === "A" && y !== "D") {
+                    changedFiles.push({ path, status: "added" });
+                } else if (x === "D" || y === "D") {
+                    changedFiles.push({ path, status: "deleted" });
+                } else if (x === "!" && y === "!") {
+                    // ignored - skip
+                } else {
+                    changedFiles.push({ path, status: "modified" });
                 }
             }
 
@@ -334,78 +309,48 @@ export function createGitClient(config: GitClientConfig) {
         /**
          * Get recent commits
          */
-        async log(opts: { depth?: number } = {}): Promise<CommitInfo[]> {
-            try {
-                const commits = await git.log({ fs, dir, depth: opts.depth ?? 5 });
-                return commits.map((c: ReadCommitResult) => ({
-                    hash: c.oid.slice(0, 7),
-                    message: c.commit.message.split("\n")[0] ?? "",
-                    author: c.commit.author.name,
-                    date: formatRelativeTime(c.commit.author.timestamp * 1000),
-                }));
-            } catch {
-                return [];
-            }
+        async log(opts: { depth?: number; ref?: string } = {}): Promise<CommitInfo[]> {
+            const args = ["log", `-n${opts.depth ?? 5}`, LOG_FORMAT];
+            if (opts.ref) args.push(opts.ref);
+            const result = await run(args);
+            if (result.exitCode !== 0) return [];
+            return parseLog(result.stdout);
         },
 
         /**
          * Stage all changes (add new/modified, remove deleted)
          */
         async addAll(): Promise<void> {
-            const matrix = await git.statusMatrix({ fs, dir });
-
-            for (const [filepath, head, workdir] of matrix) {
-                if (workdir === 0 && head === 1) {
-                    // File was deleted
-                    await git.remove({ fs, dir, filepath });
-                } else if (workdir === 2) {
-                    // File was added or modified
-                    await git.add({ fs, dir, filepath });
-                }
-            }
+            await runOrThrow(["add", "--all"]);
         },
 
         /**
          * Check if there are staged changes
          */
         async hasStagedChanges(): Promise<boolean> {
-            const matrix = await git.statusMatrix({ fs, dir });
-            for (const [, head, , stage] of matrix) {
-                if (stage !== head && stage !== 0) {
-                    return true;
-                }
-            }
-            return false;
+            // Exit code 1 means there are differences; 0 means none
+            const result = await run(["diff", "--cached", "--quiet"]);
+            return result.exitCode === 1;
         },
 
         /**
          * Create a commit
          */
         async commit(message: string): Promise<string> {
-            const sha = await git.commit({
-                fs,
-                dir,
-                message,
-                author,
-            });
+            await runOrThrow(["commit", "--quiet", "-m", message]);
+            const sha = (await revParse("HEAD")) ?? "";
             logger.info("Created commit", { sha: sha.slice(0, 7), message });
             return sha;
         },
 
         /**
-         * Add a remote
+         * Add a remote (or update its URL if it already exists)
          */
         async addRemote(name: string, url: string): Promise<void> {
-            try {
-                await git.addRemote({ fs, dir, remote: name, url });
-            } catch (e) {
-                // Remote might already exist, try to update it
-                if (String(e).includes("already exists")) {
-                    await git.deleteRemote({ fs, dir, remote: name });
-                    await git.addRemote({ fs, dir, remote: name, url });
-                } else {
-                    throw e;
-                }
+            if (await this.hasRemote(name)) {
+                await runOrThrow(["remote", "set-url", name, url]);
+            } else {
+                await runOrThrow(["remote", "add", name, url]);
             }
         },
 
@@ -413,36 +358,34 @@ export function createGitClient(config: GitClientConfig) {
          * Get remote URL
          */
         async getRemoteUrl(name: string): Promise<string | undefined> {
-            try {
-                const remotes = await git.listRemotes({ fs, dir });
-                const remote = remotes.find((r) => r.remote === name);
-                return remote?.url;
-            } catch {
-                return undefined;
-            }
+            const result = await run(["remote", "get-url", name]);
+            if (result.exitCode !== 0) return undefined;
+            const url = result.stdout.trim();
+            return url.length > 0 ? url : undefined;
         },
 
         /**
          * Check if a remote exists
          */
         async hasRemote(name: string): Promise<boolean> {
-            try {
-                const remotes = await git.listRemotes({ fs, dir });
-                return remotes.some((r) => r.remote === name);
-            } catch {
-                return false;
-            }
+            const remotes = await this.listRemotes();
+            return remotes.some((r) => r.remote === name);
         },
 
         /**
          * List remotes
          */
         async listRemotes(): Promise<Array<{ remote: string; url: string }>> {
-            try {
-                return await git.listRemotes({ fs, dir });
-            } catch {
-                return [];
+            const result = await run(["remote", "-v"]);
+            if (result.exitCode !== 0) return [];
+            const remotes: Array<{ remote: string; url: string }> = [];
+            for (const line of result.stdout.split("\n")) {
+                const match = line.match(/^(\S+)\s+(\S+)\s+\(fetch\)$/);
+                if (match?.[1] && match[2]) {
+                    remotes.push({ remote: match[1], url: match[2] });
+                }
             }
+            return remotes;
         },
 
         /**
@@ -450,141 +393,53 @@ export function createGitClient(config: GitClientConfig) {
          */
         async fetch(auth: AuthConfig, remote = "origin", ref?: string): Promise<void> {
             logger.info("Fetching from remote", { remote, ref });
-            await ensurePackFilesWritable();
-            await git.fetch({
-                fs,
-                http,
-                dir,
-                remote,
-                ref,
-                singleBranch: !!ref,
-                ...createAuthCallbacks(auth),
-            });
+            const args = ["fetch", "--quiet", remote];
+            if (ref) args.push(ref);
+            await runOrThrow(args, { auth });
             logger.info("Fetch completed");
         },
 
         /**
-         * Pull from remote (fetch + merge) with proper conflict handling
-         *
-         * This uses fetch + merge instead of git.pull() to support abortOnConflict: false,
-         * which writes conflict markers to files instead of aborting completely.
+         * Pull from remote (fetch + merge).
+         * On conflict, git leaves the repo in a merge state with conflict
+         * markers written to the working tree.
          */
         async pull(auth: AuthConfig, remote = "origin", ref?: string): Promise<{ hadConflicts: boolean; conflictFiles: string[] }> {
             logger.info("Pulling from remote", { remote, ref });
 
-            const branch = ref ?? await this.currentBranch();
+            const branch = ref ?? (await this.currentBranch());
             if (!branch) {
                 throw new Error("Not on any branch");
             }
 
-            // Step 1: Fetch from remote
-            await ensurePackFilesWritable();
-            await git.fetch({
-                fs,
-                http,
-                dir,
-                remote,
-                ref: branch,
-                singleBranch: true,
-                ...createAuthCallbacks(auth),
-            });
-            logger.info("Fetch completed");
+            await this.fetch(auth, remote, branch);
 
-            // Get current HEAD oid before merge
-            const oursOid = await git.resolveRef({ fs, dir, ref: "HEAD" });
+            const oursOid = await revParse("HEAD");
+            const theirsOid = await revParse(`${remote}/${branch}`);
 
-            // Get the remote ref oid
-            let theirsOid: string;
-            try {
-                theirsOid = await git.resolveRef({ fs, dir, ref: `${remote}/${branch}` });
-            } catch {
-                // Remote branch doesn't exist yet
+            if (!theirsOid) {
                 logger.info("Remote branch doesn't exist, nothing to merge");
                 return { hadConflicts: false, conflictFiles: [] };
             }
 
-            // Check if we're already up to date
             if (oursOid === theirsOid) {
                 logger.info("Already up to date");
                 return { hadConflicts: false, conflictFiles: [] };
             }
 
-            // Step 2: Merge with abortOnConflict: false to get conflict markers
-            try {
-                await git.merge({
-                    fs,
-                    dir,
-                    ours: branch,
-                    theirs: `${remote}/${branch}`,
-                    abortOnConflict: false,
-                    author,
-                });
-
-                // CRITICAL: isomorphic-git's merge() does NOT update the working directory,
-                // only the index and commit history. We must checkout HEAD to sync the working
-                // directory with the merged result. Without this, files added on remote but not
-                // local would be staged for deletion by addAll() because they exist in HEAD
-                // but not in the working directory.
-                logger.info("Merge completed, checking out HEAD to update working directory");
-                await git.checkout({
-                    fs,
-                    dir,
-                    ref: branch,
-                    force: false,
-                });
-
+            const merge = await run(["merge", "--no-edit", `${remote}/${branch}`]);
+            if (merge.exitCode === 0) {
                 logger.info("Pull completed (fast-forward or clean merge)");
                 return { hadConflicts: false, conflictFiles: [] };
-            } catch (e) {
-                const error = e as Error;
-                logger.info("Merge error caught", {
-                    name: error.name,
-                    message: error.message,
-                    data: (e as { data?: unknown }).data
-                });
-
-                // Check if this is a merge conflict error
-                if (error.name === "MergeConflictError" || error.message?.includes("Merge conflict") || error.message?.includes("CONFLICT")) {
-                    // Extract conflict files from the error
-                    // isomorphic-git puts them in error.data as an array of file paths
-                    let conflictFiles: string[] = [];
-
-                    const errorData = (e as { data?: unknown }).data;
-                    if (Array.isArray(errorData)) {
-                        conflictFiles = errorData.filter((item): item is string => typeof item === "string");
-                    }
-
-                    // If no conflict files from error, scan the working directory for conflict markers
-                    if (conflictFiles.length === 0) {
-                        logger.info("No conflict files in error data, scanning for conflict markers");
-                        const index = await git.listFiles({ fs, dir });
-                        for (const filepath of index) {
-                            if (await this.hasConflictMarkers(filepath)) {
-                                conflictFiles.push(filepath);
-                            }
-                        }
-                    }
-
-                    logger.info("Merge conflict detected", { conflictFiles, errorName: error.name });
-
-                    // Save merge state so we can complete the merge later
-                    const mergeState: MergeState = {
-                        inProgress: true,
-                        oursRef: branch,
-                        theirsRef: `${remote}/${branch}`,
-                        oursOid,
-                        theirsOid,
-                        conflictFiles,
-                        startedAt: new Date().toISOString(),
-                    };
-                    await this.saveMergeState(mergeState);
-
-                    return { hadConflicts: true, conflictFiles };
-                }
-
-                // Re-throw other errors
-                throw e;
             }
+
+            if (await this.hasMergeConflict()) {
+                const conflictFiles = (await getUnmergedFiles()).map((f) => f.path);
+                logger.info("Merge conflict detected", { conflictFiles });
+                return { hadConflicts: true, conflictFiles };
+            }
+
+            throw new Error(`git merge failed: ${(merge.stderr || merge.stdout).trim()}`);
         },
 
         /**
@@ -592,15 +447,9 @@ export function createGitClient(config: GitClientConfig) {
          */
         async push(auth: AuthConfig, remote = "origin", ref?: string): Promise<void> {
             logger.info("Pushing to remote", { remote, ref });
-            await ensurePackFilesWritable();
-            await git.push({
-                fs,
-                http,
-                dir,
-                remote,
-                ref,
-                ...createAuthCallbacks(auth),
-            });
+            const args = ["push", "--quiet", remote];
+            if (ref) args.push(ref);
+            await runOrThrow(args, { auth });
             logger.info("Push completed");
         },
 
@@ -608,25 +457,17 @@ export function createGitClient(config: GitClientConfig) {
          * Check if remote branch exists
          */
         async remoteBranchExists(auth: AuthConfig, remote: string, branch: string): Promise<boolean> {
-            try {
-                const url = await this.getRemoteUrl(remote);
-                if (!url) return false;
-
-                const refs = await git.listServerRefs({
-                    http,
-                    url,
-                    prefix: `refs/heads/${branch}`,
-                    ...createAuthCallbacks(auth),
-                });
-                return refs.length > 0;
-            } catch (e) {
-                logger.debug("Remote branch check failed", { error: String(e) });
-                return false;
+            const result = await run(["ls-remote", "--heads", "--exit-code", remote, branch], { auth });
+            if (result.exitCode === 0) return true;
+            if (result.exitCode !== 2) {
+                // 2 = no matching refs; anything else is a real error
+                logger.debug("Remote branch check failed", { error: result.stderr.trim() });
             }
+            return false;
         },
 
         /**
-         * Get fetch status (ahead/behind counts)
+         * Get fetch status (ahead/behind counts and incoming changes)
          */
         async getFetchStatus(auth: AuthConfig, branch: string): Promise<FetchStatusResult> {
             const result: FetchStatusResult = {
@@ -636,573 +477,200 @@ export function createGitClient(config: GitClientConfig) {
                 incomingFiles: [],
             };
 
-            try {
-                // Fetch latest
-                await this.fetch(auth, "origin", branch);
+            await this.fetch(auth, "origin", branch);
 
-                // Get local and remote commits
-                const localCommits = await git.log({ fs, dir, ref: branch });
-                let remoteCommits: ReadCommitResult[] = [];
-                try {
-                    remoteCommits = await git.log({ fs, dir, ref: `origin/${branch}` });
-                } catch {
-                    // Remote branch might not exist yet
-                    return result;
-                }
+            const remoteRef = `origin/${branch}`;
+            if (!(await revParse(remoteRef))) {
+                // Remote branch doesn't exist yet
+                return result;
+            }
 
-                const localOids = new Set(localCommits.map((c: ReadCommitResult) => c.oid));
-                const remoteOids = new Set(remoteCommits.map((c: ReadCommitResult) => c.oid));
+            const counts = await run(["rev-list", "--left-right", "--count", `${branch}...${remoteRef}`]);
+            if (counts.exitCode === 0) {
+                const [ahead = "0", behind = "0"] = counts.stdout.trim().split(/\s+/);
+                result.aheadCount = Number(ahead);
+                result.behindCount = Number(behind);
+            }
 
-                // Commits in remote but not in local = behind
-                const behind = remoteCommits.filter((c: ReadCommitResult) => !localOids.has(c.oid));
-                result.behindCount = behind.length;
-                result.incomingCommits = behind.map((c: ReadCommitResult) => ({
-                    hash: c.oid.slice(0, 7),
-                    message: c.commit.message.split("\n")[0] ?? "",
-                    author: c.commit.author.name,
-                    date: formatRelativeTime(c.commit.author.timestamp * 1000),
-                }));
+            if (result.behindCount > 0) {
+                result.incomingCommits = await this.log({ depth: 50, ref: `${branch}..${remoteRef}` });
 
-                // Commits in local but not in remote = ahead
-                result.aheadCount = localCommits.filter((c: ReadCommitResult) => !remoteOids.has(c.oid)).length;
-
-                // Get file changes if behind
-                if (result.behindCount > 0 && localCommits.length > 0 && remoteCommits.length > 0) {
-                    try {
-                        const localTree = localCommits[0]?.oid;
-                        const remoteTree = remoteCommits[0]?.oid;
-                        if (localTree && remoteTree) {
-                            const changes = await git.walk({
-                                fs,
-                                dir,
-                                trees: [git.TREE({ ref: localTree }), git.TREE({ ref: remoteTree })],
-                                map: async function (filepath, [local, remote]) {
-                                    if (filepath === ".") return undefined;
-                                    const localOid = local ? await local.oid() : null;
-                                    const remoteOid = remote ? await remote.oid() : null;
-
-                                    if (localOid !== remoteOid) {
-                                        let status = "M";
-                                        if (!localOid && remoteOid) status = "A";
-                                        if (localOid && !remoteOid) status = "D";
-                                        return { status, path: filepath };
-                                    }
-                                    return undefined;
-                                },
-                            });
-                            result.incomingFiles = changes.filter(Boolean) as Array<{ status: string; path: string }>;
+                const diff = await run(["diff", "--name-status", "-z", branch, remoteRef]);
+                if (diff.exitCode === 0) {
+                    const fields = diff.stdout.split("\0");
+                    for (let i = 0; i < fields.length; i++) {
+                        const code = fields[i];
+                        if (!code) continue;
+                        const status = code[0] ?? "M";
+                        // Renames and copies have two path fields; report the new path
+                        const path = status === "R" || status === "C" ? fields[i + 2] : fields[i + 1];
+                        i += status === "R" || status === "C" ? 2 : 1;
+                        if (path) {
+                            result.incomingFiles.push({ status, path });
                         }
-                    } catch (e) {
-                        logger.debug("Failed to get incoming files", { error: String(e) });
                     }
                 }
-            } catch (e) {
-                logger.error("Failed to get fetch status", { error: String(e) });
-                throw e;
             }
 
             return result;
         },
 
         /**
-         * Check if in merge conflict state
-         * Checks both our custom merge state and the standard MERGE_HEAD
+         * Check if a merge is in progress (git writes MERGE_HEAD on a conflicted merge)
          */
         async hasMergeConflict(): Promise<boolean> {
-            try {
-                // Check our custom merge state first
-                const state = await this.getMergeState();
-                const hasCustomState = state?.inProgress ?? false;
-                logger.info("Checking merge conflict - custom state", { hasCustomState, state: state ? JSON.stringify(state).slice(0, 200) : null });
-
-                if (hasCustomState) {
-                    return true;
-                }
-
-                // Also check standard MERGE_HEAD for compatibility
-                const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
-                const hasMergeHead = await Bun.file(mergeHeadPath).exists();
-                logger.info("Checking merge conflict - MERGE_HEAD", { hasMergeHead, path: mergeHeadPath });
-
-                return hasMergeHead;
-            } catch (e) {
-                logger.error("Error checking merge conflict", { error: String(e) });
-                return false;
-            }
+            const result = await run(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"]);
+            return result.exitCode === 0;
         },
 
         /**
-         * Get conflicting files
-         * Uses our stored merge state and scans for conflict markers
+         * Get conflicting files. Files still unmerged in the index are unresolved;
+         * files git originally flagged that have since been staged are resolved.
          */
         async getConflictFiles(): Promise<ConflictFile[]> {
-            const conflicts: ConflictFile[] = [];
-            const seenPaths = new Set<string>();
+            const unmerged = await getUnmergedFiles();
+            const conflicts: ConflictFile[] = unmerged.map((f) => ({ ...f, resolved: false }));
+            const seen = new Set(unmerged.map((f) => f.path));
 
-            logger.info("Getting conflict files - starting");
-
-            try {
-                // First, check our merge state for known conflict files
-                const mergeState = await this.getMergeState();
-                logger.info("Getting conflict files - merge state", {
-                    hasState: !!mergeState,
-                    conflictFilesCount: mergeState?.conflictFiles?.length ?? 0
-                });
-
-                if (mergeState?.conflictFiles) {
-                    for (const filepath of mergeState.conflictFiles) {
-                        const hasMarkers = await this.hasConflictMarkers(filepath);
-                        logger.info("Checking file from merge state", { filepath, hasMarkers });
-                        conflicts.push({
-                            path: filepath,
-                            status: "both_modified",
-                            resolved: !hasMarkers,
-                        });
-                        seenPaths.add(filepath);
-                    }
+            for (const path of await getOriginalConflictFiles()) {
+                if (!seen.has(path)) {
+                    conflicts.push({ path, status: "both_modified", resolved: true });
+                    seen.add(path);
                 }
-
-                // Also scan all tracked files for conflict markers
-                // This catches files that might have been missed or manually created
-                const index = await git.listFiles({ fs, dir });
-                logger.info("Scanning tracked files for markers", { fileCount: index.length });
-                let filesWithMarkers = 0;
-                for (const filepath of index) {
-                    if (!seenPaths.has(filepath)) {
-                        const hasMarkers = await this.hasConflictMarkers(filepath);
-                        if (hasMarkers) {
-                            filesWithMarkers++;
-                            logger.info("Found file with conflict markers", { filepath });
-                            conflicts.push({
-                                path: filepath,
-                                status: "both_modified",
-                                resolved: false,
-                            });
-                            seenPaths.add(filepath);
-                        }
-                    }
-                }
-                logger.info("Finished scanning for markers", { filesWithMarkers });
-
-                // Check status matrix for staged files (considered resolved)
-                const matrix = await git.statusMatrix({ fs, dir });
-                logger.info("Checking status matrix", { matrixSize: matrix.length });
-                for (const [filepath, head, workdir, stage] of matrix) {
-                    if (seenPaths.has(filepath)) continue;
-
-                    // File is staged and different from head - might be a resolved conflict
-                    if (stage === 3 || (head === 1 && workdir === 2 && stage === 2)) {
-                        const hasMarkers = await this.hasConflictMarkers(filepath);
-                        logger.info("Found file in status matrix", { filepath, head, workdir, stage, hasMarkers });
-                        conflicts.push({
-                            path: filepath,
-                            status: "both_modified",
-                            resolved: !hasMarkers,
-                        });
-                    }
-                }
-            } catch (e) {
-                logger.error("Failed to get conflict files", { error: String(e) });
             }
 
-            logger.info("Getting conflict files - done", { totalConflicts: conflicts.length });
             return conflicts;
         },
 
         /**
-         * Check if a file has conflict markers
-         * Requires ALL THREE markers to be present to avoid false positives
-         * (e.g., "=======" appears in Markdown Setext headings)
+         * Check if a file has conflict markers.
+         * Requires all three markers to avoid false positives
+         * (e.g. "=======" appears in Markdown Setext headings).
          */
         async hasConflictMarkers(filepath: string): Promise<boolean> {
             try {
-                const fullPath = `${dir}/${filepath}`;
-                const file = Bun.file(fullPath);
+                const file = Bun.file(`${dir}/${filepath}`);
                 if (!(await file.exists())) return false;
-
                 const content = await file.text();
-                // Must have all three markers to be a real conflict
-                const hasOurs = content.includes("<<<<<<<");
-                const hasSeparator = content.includes("=======");
-                const hasTheirs = content.includes(">>>>>>>");
-                return hasOurs && hasSeparator && hasTheirs;
+                return content.includes("<<<<<<<") && content.includes("=======") && content.includes(">>>>>>>");
             } catch {
                 return false;
             }
         },
 
         /**
-         * Resolve a conflict by choosing ours or theirs
-         * Uses our stored merge state to get the correct versions
+         * Resolve a conflict by choosing ours or theirs, or marking the
+         * working-tree version as resolved.
          */
         async resolveConflict(filepath: string, resolution: "ours" | "theirs" | "mark-resolved"): Promise<void> {
             logger.info("Resolving conflict", { filepath, resolution });
 
-            if (resolution === "mark-resolved") {
-                // Just stage the file as-is (user has manually resolved)
-                await git.add({ fs, dir, filepath });
-                return;
-            }
-
-            // Get our merge state
-            const mergeState = await this.getMergeState();
-
-            try {
-                let refToUse: string;
-
-                if (resolution === "ours") {
-                    // Use stored oursOid or fall back to HEAD
-                    refToUse = mergeState?.oursOid ?? "HEAD";
-                } else {
-                    // Use stored theirsOid or fall back to MERGE_HEAD
-                    refToUse = mergeState?.theirsOid ?? "MERGE_HEAD";
-
-                    // If we don't have theirsOid stored, try to read MERGE_HEAD
-                    if (!mergeState?.theirsOid) {
-                        try {
-                            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
-                            const mergeHeadFile = Bun.file(mergeHeadPath);
-                            if (await mergeHeadFile.exists()) {
-                                refToUse = (await mergeHeadFile.text()).trim();
-                            }
-                        } catch {
-                            // MERGE_HEAD doesn't exist, stick with default
-                        }
-                    }
+            if (resolution !== "mark-resolved") {
+                const checkout = await run(["checkout", `--${resolution}`, "--", filepath]);
+                if (checkout.exitCode !== 0) {
+                    // The chosen side deleted the file; honour that
+                    logger.info("Chosen side has no version of file, removing it", { filepath, resolution });
+                    await runOrThrow(["rm", "--quiet", "--force", "--", filepath]);
+                    return;
                 }
-
-                // Read the blob from the appropriate ref
-                const blob = await git.readBlob({
-                    fs,
-                    dir,
-                    oid: refToUse,
-                    filepath,
-                });
-
-                // Write the content to the file
-                const fullPath = `${dir}/${filepath}`;
-                await fs.promises.writeFile(fullPath, Buffer.from(blob.blob));
-
-                // Stage the file
-                await git.add({ fs, dir, filepath });
-                logger.info("Conflict resolved", { filepath, resolution, ref: refToUse });
-            } catch (e) {
-                logger.error("Failed to resolve conflict", { filepath, resolution, error: String(e) });
-                throw new Error(`Failed to resolve conflict: ${String(e)}`);
             }
+
+            await runOrThrow(["add", "--", filepath]);
+            logger.info("Conflict resolved", { filepath, resolution });
         },
 
         /**
          * Get conflict content (ours, theirs, merged)
-         * Uses our stored merge state to get the theirs version
          */
         async getConflictContent(filepath: string): Promise<{
             oursContent: string;
             theirsContent: string;
             mergedContent: string;
         }> {
-            let oursContent = "";
-            let theirsContent = "";
+            // Stage 2 = ours, stage 3 = theirs while the file is unmerged.
+            // Fall back to the commits themselves once the file has been staged.
+            const readBlob = async (specs: string[]): Promise<string> => {
+                for (const spec of specs) {
+                    const result = await run(["show", spec]);
+                    if (result.exitCode === 0) return result.stdout;
+                }
+                return "";
+            };
+
+            const oursContent = await readBlob([`:2:${filepath}`, `HEAD:${filepath}`]);
+            const theirsContent = await readBlob([`:3:${filepath}`, `MERGE_HEAD:${filepath}`]);
+
             let mergedContent = "";
-
-            // Get our merge state to find theirs oid
-            const mergeState = await this.getMergeState();
-            logger.info("Getting conflict content", {
-                filepath,
-                hasState: !!mergeState,
-                oursOid: mergeState?.oursOid?.slice(0, 7),
-                theirsOid: mergeState?.theirsOid?.slice(0, 7)
-            });
-
             try {
-                // Get ours (from our stored oursOid or HEAD)
-                try {
-                    const oursRef = mergeState?.oursOid ?? "HEAD";
-                    logger.info("Reading ours blob", { oursRef: oursRef.slice(0, 7), filepath });
-                    const ours = await git.readBlob({ fs, dir, oid: oursRef, filepath });
-                    oursContent = Buffer.from(ours.blob).toString("utf-8");
-                    logger.info("Got ours content", { length: oursContent.length });
-                } catch (e) {
-                    logger.error("Failed to read ours blob", { filepath, error: String(e) });
-                    oursContent = "";
+                const file = Bun.file(`${dir}/${filepath}`);
+                if (await file.exists()) {
+                    mergedContent = await file.text();
                 }
-
-                // Get theirs (from stored theirsOid, or fall back to MERGE_HEAD for compatibility)
-                try {
-                    let theirsRef = mergeState?.theirsOid;
-                    if (!theirsRef) {
-                        // Fall back to MERGE_HEAD for compatibility
-                        try {
-                            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
-                            const mergeHeadFile = Bun.file(mergeHeadPath);
-                            if (await mergeHeadFile.exists()) {
-                                theirsRef = (await mergeHeadFile.text()).trim();
-                            }
-                        } catch {
-                            // MERGE_HEAD doesn't exist
-                        }
-                    }
-
-                    if (theirsRef) {
-                        logger.info("Reading theirs blob", { theirsRef: theirsRef.slice(0, 7), filepath });
-                        const theirs = await git.readBlob({ fs, dir, oid: theirsRef, filepath });
-                        theirsContent = Buffer.from(theirs.blob).toString("utf-8");
-                        logger.info("Got theirs content", { length: theirsContent.length });
-                    } else {
-                        logger.warn("No theirs ref available", { filepath });
-                    }
-                } catch (e) {
-                    logger.error("Failed to read theirs blob", { filepath, error: String(e) });
-                    theirsContent = "";
-                }
-
-                // Get current merged content (with conflict markers) from working directory
-                try {
-                    const fullPath = `${dir}/${filepath}`;
-                    const file = Bun.file(fullPath);
-                    if (await file.exists()) {
-                        mergedContent = await file.text();
-                    }
-                } catch {
-                    mergedContent = "";
-                }
-
-                // If ours or theirs failed but we have merged content with markers,
-                // try to extract ours/theirs from the conflict markers
-                if ((oursContent === "" || theirsContent === "") && mergedContent.includes("<<<<<<<")) {
-                    logger.info("Extracting content from conflict markers");
-                    const extracted = this.extractFromConflictMarkers(mergedContent);
-                    if (oursContent === "" && extracted.ours) {
-                        oursContent = extracted.ours;
-                    }
-                    if (theirsContent === "" && extracted.theirs) {
-                        theirsContent = extracted.theirs;
-                    }
-                }
-            } catch (e) {
-                logger.error("Failed to get conflict content", { filepath, error: String(e) });
+            } catch {
+                mergedContent = "";
             }
 
             return { oursContent, theirsContent, mergedContent };
         },
 
         /**
-         * Extract ours/theirs content from a file with conflict markers
-         */
-        extractFromConflictMarkers(content: string): { ours: string; theirs: string } {
-            const lines = content.split("\n");
-            const oursLines: string[] = [];
-            const theirsLines: string[] = [];
-            const commonLines: string[] = [];
-
-            let inConflict = false;
-            let inOurs = false;
-            let inTheirs = false;
-
-            for (const line of lines) {
-                if (line.startsWith("<<<<<<<")) {
-                    inConflict = true;
-                    inOurs = true;
-                    inTheirs = false;
-                } else if (line.startsWith("=======")) {
-                    inOurs = false;
-                    inTheirs = true;
-                } else if (line.startsWith(">>>>>>>")) {
-                    inConflict = false;
-                    inOurs = false;
-                    inTheirs = false;
-                } else if (inConflict) {
-                    if (inOurs) {
-                        oursLines.push(line);
-                    } else if (inTheirs) {
-                        theirsLines.push(line);
-                    }
-                } else {
-                    // Common line - add to both
-                    commonLines.push(line);
-                    oursLines.push(line);
-                    theirsLines.push(line);
-                }
-            }
-
-            return {
-                ours: oursLines.join("\n"),
-                theirs: theirsLines.join("\n")
-            };
-        },
-
-        /**
-         * Abort the current merge
+         * Abort the current merge and restore the pre-merge state
          */
         async abortMerge(): Promise<void> {
             logger.info("Aborting merge");
-
-            // Get merge state to know what to reset to
-            const mergeState = await this.getMergeState();
-            const resetRef = mergeState?.oursOid ?? "HEAD";
-
-            // Remove MERGE_HEAD file (for compatibility)
-            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
-            try {
-                await fs.promises.unlink(mergeHeadPath);
-            } catch {
-                // File might not exist
-            }
-
-            // Clear our custom merge state
-            await this.clearMergeState();
-
-            // Reset to HEAD (or stored oursOid)
-            await git.checkout({ fs, dir, ref: resetRef, force: true });
-            logger.info("Merge aborted", { resetRef });
+            await runOrThrow(["merge", "--abort"]);
+            logger.info("Merge aborted");
         },
 
         /**
          * Complete a merge after all conflicts have been resolved
-         * Creates a proper merge commit with both parents
          */
         async completeMerge(message?: string): Promise<string> {
             logger.info("Completing merge");
 
-            // Get our merge state
-            const mergeState = await this.getMergeState();
-            if (!mergeState) {
+            if (!(await this.hasMergeConflict())) {
                 throw new Error("No merge in progress");
             }
 
-            // Check that all conflicts are resolved
-            const conflicts = await this.getConflictFiles();
-            const unresolvedConflicts = conflicts.filter((c) => !c.resolved);
-            if (unresolvedConflicts.length > 0) {
-                throw new Error(`There are still ${unresolvedConflicts.length} unresolved conflicts`);
+            const unresolved = await getUnmergedFiles();
+            if (unresolved.length > 0) {
+                throw new Error(`There are still ${unresolved.length} unresolved conflicts`);
             }
 
-            // Stage any remaining changes
             await this.addAll();
 
-            // Create merge commit with both parents
-            const commitMessage = message ?? `Merge ${mergeState.theirsRef} into ${mergeState.oursRef}`;
-            const sha = await git.commit({
-                fs,
-                dir,
-                message: commitMessage,
-                author,
-                parent: [mergeState.oursOid, mergeState.theirsOid],
-            });
-
-            logger.info("Merge commit created", { sha: sha.slice(0, 7), message: commitMessage });
-
-            // Clean up merge state
-            await this.clearMergeState();
-
-            // Also remove MERGE_HEAD if it exists (for compatibility)
-            const mergeHeadPath = `${dir}/.git/MERGE_HEAD`;
-            try {
-                await fs.promises.unlink(mergeHeadPath);
-            } catch {
-                // File might not exist
+            const args = ["commit", "--quiet"];
+            if (message) {
+                args.push("-m", message);
+            } else {
+                args.push("--no-edit");
             }
+            await runOrThrow(args);
 
-            logger.info("Merge completed");
+            const sha = (await revParse("HEAD")) ?? "";
+            logger.info("Merge commit created", { sha: sha.slice(0, 7) });
             return sha;
-        },
-
-        /**
-         * Get the merge state file path
-         */
-        getMergeStatePath(): string {
-            return `${dir}/.git/${MERGE_STATE_FILE}`;
-        },
-
-        /**
-         * Save merge state to file
-         */
-        async saveMergeState(state: MergeState): Promise<void> {
-            const statePath = this.getMergeStatePath();
-            await Bun.write(statePath, JSON.stringify(state, null, 2));
-            logger.info("Saved merge state", { oursRef: state.oursRef, theirsRef: state.theirsRef, conflictCount: state.conflictFiles.length });
-        },
-
-        /**
-         * Load merge state from file
-         */
-        async getMergeState(): Promise<MergeState | null> {
-            try {
-                const statePath = this.getMergeStatePath();
-                logger.info("Reading merge state file", { statePath });
-                const file = Bun.file(statePath);
-                const exists = await file.exists();
-                logger.info("Merge state file exists check", { exists, statePath });
-                if (!exists) return null;
-                const content = await file.text();
-                const state = JSON.parse(content) as MergeState;
-                logger.info("Loaded merge state from file", {
-                    inProgress: state.inProgress,
-                    conflictFilesCount: state.conflictFiles?.length,
-                    oursRef: state.oursRef,
-                    theirsRef: state.theirsRef,
-                    startedAt: state.startedAt
-                });
-                return state;
-            } catch (e) {
-                logger.error("Failed to load merge state", { error: String(e) });
-                return null;
-            }
-        },
-
-        /**
-         * Delete merge state file
-         */
-        async clearMergeState(): Promise<void> {
-            const statePath = this.getMergeStatePath();
-            try {
-                const exists = await Bun.file(statePath).exists();
-                if (exists) {
-                    await fs.promises.unlink(statePath);
-                    logger.info("Cleared merge state file", { statePath });
-                } else {
-                    logger.info("No merge state file to clear", { statePath });
-                }
-            } catch (e) {
-                logger.warn("Failed to clear merge state file", { statePath, error: String(e) });
-            }
         },
 
         /**
          * Set upstream tracking
          */
         async setUpstream(branch: string, remote: string, remoteBranch: string): Promise<void> {
-            // isomorphic-git doesn't have a direct setUpstream, so we modify the config
-            await git.setConfig({
-                fs,
-                dir,
-                path: `branch.${branch}.remote`,
-                value: remote,
-            });
-            await git.setConfig({
-                fs,
-                dir,
-                path: `branch.${branch}.merge`,
-                value: `refs/heads/${remoteBranch}`,
-            });
+            await runOrThrow(["config", `branch.${branch}.remote`, remote]);
+            await runOrThrow(["config", `branch.${branch}.merge`, `refs/heads/${remoteBranch}`]);
         },
 
         /**
          * Get upstream tracking info
          */
         async getUpstream(branch: string): Promise<{ remote: string; ref: string } | undefined> {
-            try {
-                const remote = await git.getConfig({ fs, dir, path: `branch.${branch}.remote` });
-                const merge = await git.getConfig({ fs, dir, path: `branch.${branch}.merge` });
-
-                if (remote && merge) {
-                    const ref = String(merge).replace("refs/heads/", "");
-                    return { remote: String(remote), ref };
-                }
-            } catch {
-                // No upstream configured
-            }
-            return undefined;
+            const remote = await run(["config", "--get", `branch.${branch}.remote`]);
+            const merge = await run(["config", "--get", `branch.${branch}.merge`]);
+            if (remote.exitCode !== 0 || merge.exitCode !== 0) return undefined;
+            const remoteName = remote.stdout.trim();
+            const ref = merge.stdout.trim().replace("refs/heads/", "");
+            if (!remoteName || !ref) return undefined;
+            return { remote: remoteName, ref };
         },
     };
 }
